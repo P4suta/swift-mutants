@@ -23,7 +23,7 @@ public struct SwiftMutantsCommand: AsyncParsableCommand {
             without building anything.
             """,
         version: Version.current,
-        subcommands: [ListCommand.self, DoctorCommand.self],
+        subcommands: [RunCommand.self, ListCommand.self, DoctorCommand.self],
         defaultSubcommand: nil
     )
 

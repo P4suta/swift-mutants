@@ -90,8 +90,9 @@ let package = Package(
             name: "SwiftMutantsEngine",
             dependencies: [
                 "SwiftMutantsBuild", "SwiftMutantsConfig", "SwiftMutantsConsole",
-                "SwiftMutantsCore", "SwiftMutantsDiscover", "SwiftMutantsInstrument",
-                "SwiftMutantsRunner", "SwiftMutantsSnapshot", "SwiftMutantsTrace",
+                "SwiftMutantsCore", "SwiftMutantsDiscover", "SwiftMutantsExecute",
+                "SwiftMutantsInstrument", "SwiftMutantsRunner", "SwiftMutantsSnapshot",
+                "SwiftMutantsTrace", "SwiftMutantsValidate",
             ],
             swiftSettings: strict
         ),
@@ -100,7 +101,7 @@ let package = Package(
         .target(
             name: "SwiftMutantsCLI",
             dependencies: [
-                "SwiftMutantsEngine",
+                "SwiftMutantsEngine", "SwiftMutantsExecute",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: strict
@@ -224,6 +225,11 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsInstrumentTests",
             dependencies: ["SwiftMutantsInstrument"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "RunIntegrationTests",
+            dependencies: ["SwiftMutantsEngine", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
         .testTarget(

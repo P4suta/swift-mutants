@@ -27,6 +27,15 @@ public struct Listing: Sendable {
 
     /// How many files were read.
     public let filesRead: Int
+
+    /// The files that hold at least one mutant, in catalogue order.
+    ///
+    /// A file with nothing to mutate is not instrumented, not compiled a second time, and
+    /// not part of what a run has to prove. Most of a package is usually this.
+    public var filesWithMutants: [WorkspaceRelativePath] {
+        var seen: Set<WorkspaceRelativePath> = []
+        return catalog.mutants.compactMap { seen.insert($0.path).inserted ? $0.path : nil }
+    }
 }
 
 /// Runs the `list` pipeline.
