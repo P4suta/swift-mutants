@@ -47,39 +47,52 @@ public struct Runner: Sendable {
     /// the account needs to be told about, and an error thrown past the recorder would be a
     /// command nobody wrote down.
     public func run(_ spec: ProcessSpec) async -> ProcessOutcome {
-        let started = ContinuousClock.now
-        let timedOut = Deadline()
+        await run(spec, watching: nil, onLine: { _ in true })
+    }
 
+    /// Runs a command while reading the lines it writes into a pipe, stopping it the
+    /// moment `onLine` says the answer is known.
+    ///
+    /// This is what makes a mutant cost "time until something notices" rather than "time
+    /// for the whole suite". swift-testing writes an event per line as it happens, so a
+    /// failure is readable while the rest of the suite is still running - and once one test
+    /// has noticed the mutant, every further second is spent establishing something already
+    /// established.
+    ///
+    /// `onLine` returning `false` ends the whole process tree, not just the command: the
+    /// test binary is usually a grandchild.
+    public func run(
+        _ spec: ProcessSpec,
+        watching pipe: EventPipe?,
+        onLine: @escaping @Sendable (String) -> Bool
+    ) async -> ProcessOutcome {
+        let started = ContinuousClock.now
+        let supervision = Supervision(
+            timeout: spec.timeout,
+            limit: outputLimit,
+            timedOut: Deadline(),
+            stopped: Deadline(),
+            pipe: pipe,
+            onLine: onLine
+        )
         do {
             let collected = try await Subprocess.run(
-                Configuration(
-                    executable: .path(FilePath(spec.executable)),
-                    arguments: Arguments(spec.arguments),
-                    environment: .custom(Self.environmentBlock(spec.environment)),
-                    workingDirectory: FilePath(spec.directory),
-                    platformOptions: Self.ownProcessGroup()
-                ),
+                Self.configuration(for: spec),
                 input: .none,
                 output: .sequence,
                 error: .sequence
             ) { execution in
-                try await Self.superviseLoop(
-                    execution: execution,
-                    timeout: spec.timeout,
-                    limit: outputLimit,
-                    timedOut: timedOut
-                )
+                try await Self.superviseLoop(execution: execution, supervision: supervision)
             }
-
-            let elapsed = Self.milliseconds(since: started)
             let status = Self.status(of: collected.terminationStatus)
             return finish(
                 spec,
                 Completion(
                     exitCode: status.code,
                     signal: status.signal,
-                    timedOut: timedOut.wasExceeded,
-                    duration: elapsed,
+                    stoppedEarly: supervision.stopped.wasExceeded,
+                    timedOut: supervision.timedOut.wasExceeded,
+                    duration: Self.milliseconds(since: started),
                     output: collected.closureResult.standardOutput,
                     error: collected.closureResult.standardError,
                     startFailure: nil
@@ -91,7 +104,8 @@ public struct Runner: Sendable {
                 Completion(
                     exitCode: -1,
                     signal: nil,
-                    timedOut: timedOut.wasExceeded,
+                    stoppedEarly: supervision.stopped.wasExceeded,
+                    timedOut: supervision.timedOut.wasExceeded,
                     duration: Self.milliseconds(since: started),
                     output: BoundedBytes(limit: outputLimit),
                     error: BoundedBytes(limit: outputLimit),
@@ -101,33 +115,84 @@ public struct Runner: Sendable {
         }
     }
 
-    /// Drains both streams while a deadline watches the process group.
+    /// How one command is spelled to the process layer.
     ///
-    /// The two drains end when the process does, because its streams close; the deadline is
-    /// cancelled at that point. Draining concurrently is not an optimisation - a child that
-    /// fills a pipe nobody is reading blocks forever, which is the failure that makes
-    /// `Foundation.Process` a poor foundation for this.
+    /// Its own process group, always: the thing that has to be ended when a deadline runs
+    /// out or an answer arrives is usually a grandchild, and a group is what reaches it.
+    private static func configuration(for spec: ProcessSpec) -> Configuration {
+        Configuration(
+            executable: .path(FilePath(spec.executable)),
+            arguments: Arguments(spec.arguments),
+            environment: .custom(Self.environmentBlock(spec.environment)),
+            workingDirectory: FilePath(spec.directory),
+            platformOptions: Self.ownProcessGroup()
+        )
+    }
+
+    /// Everything the supervision of one command needs to know, gathered so that adding a
+    /// way to watch a command does not add a parameter to everything that supervises one.
+    private struct Supervision: Sendable {
+        let timeout: Duration?
+        let limit: Int
+        let timedOut: Deadline
+        let stopped: Deadline
+        let pipe: EventPipe?
+        let onLine: @Sendable (String) -> Bool
+    }
+
     private static func superviseLoop(
         execution: Execution<NoInput, SequenceOutput, SequenceOutput>,
-        timeout: Duration?,
-        limit: Int,
-        timedOut: Deadline
+        supervision: Supervision
     ) async throws -> Streams {
         let identifier = execution.processIdentifier.value
+        let deadline = Self.deadlineTask(for: identifier, supervision: supervision)
+        defer { deadline?.cancel() }
 
-        let deadline = timeout.map { budget in
+        // Started before the drains, because the child is already running and writing.
+        let watcher = supervision.pipe.map { pipe in
+            Task { await pipe.lines(supervision.onLine) }
+        }
+
+        async let output = Self.drain(execution.standardOutput, limit: supervision.limit)
+        async let errors = Self.drain(execution.standardError, limit: supervision.limit)
+
+        guard let pipe = supervision.pipe, let watcher else {
+            return Streams(standardOutput: try await output, standardError: try await errors)
+        }
+
+        // The reader ends either because it decided, or because the child is gone. The
+        // first case has to end the child; the second has to end the reader. Racing them is
+        // what makes this a stream rather than a report.
+        let ending = Task {
+            await watcher.value
+            guard !Task.isCancelled else { return }
+            supervision.stopped.markExceeded()
+            await Self.killTree(identifier)
+        }
+        defer { ending.cancel() }
+
+        let streams = Streams(
+            standardOutput: try await output, standardError: try await errors)
+        // The child has gone, so the reader is told so and then waited for: whatever was
+        // written just before it exited is still in the pipe, and a line dropped here is a
+        // mutant reported as surviving the test that caught it.
+        pipe.finish()
+        await watcher.value
+        return streams
+    }
+
+    /// The task that ends a command which has run out of time, if it was given any.
+    private static func deadlineTask(
+        for identifier: pid_t, supervision: Supervision
+    ) -> Task<Void, Never>? {
+        supervision.timeout.map { budget in
             Task {
                 try? await Task.sleep(for: budget)
                 guard !Task.isCancelled else { return }
-                timedOut.markExceeded()
+                supervision.timedOut.markExceeded()
                 await Self.killTree(identifier)
             }
         }
-        defer { deadline?.cancel() }
-
-        async let output = Self.drain(execution.standardOutput, limit: limit)
-        async let errors = Self.drain(execution.standardError, limit: limit)
-        return Streams(standardOutput: try await output, standardError: try await errors)
     }
 
     /// Ends the whole tree the command started, not only the command.
@@ -164,6 +229,7 @@ public struct Runner: Sendable {
     private struct Completion {
         let exitCode: Int
         let signal: Int?
+        let stoppedEarly: Bool
         let timedOut: Bool
         let duration: Int
         let output: BoundedBytes
@@ -198,6 +264,7 @@ public struct Runner: Sendable {
             exitCode: completion.exitCode,
             signal: completion.signal,
             timedOut: completion.timedOut,
+            stoppedEarly: completion.stoppedEarly,
             durationMilliseconds: completion.duration,
             standardOutput: output.retained,
             standardError: completion.error.retained,

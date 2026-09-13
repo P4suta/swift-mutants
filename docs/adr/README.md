@@ -13,3 +13,4 @@ projects and, where swift-mutants departs from them, why.
 | --- | --- |
 | [0001](0001-mutants-are-anchored-to-byte-spans.md) | A mutant is anchored to a UTF-8 byte span, never to a syntax node identity |
 | [0002](0002-expression-guards-are-the-default-form.md) | Expression-level ternary guards are the default instrumentation form |
+| [0003](0003-tests-are-launched-through-the-swiftpm-helper.md) | Tests are launched through the SwiftPM testing helper, not through `swift test` |

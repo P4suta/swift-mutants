@@ -88,6 +88,13 @@ public struct ProcessOutcome: Sendable {
     /// Whether it was stopped for overrunning its deadline.
     public let timedOut: Bool
 
+    /// Whether it was stopped because whoever was watching it had its answer.
+    ///
+    /// Distinct from ``timedOut`` because they mean opposite things: a deadline means
+    /// nothing was learned in the time allowed, and this means everything was. Both end
+    /// with a signal, so without the distinction a kill and a hang would look alike.
+    public let stoppedEarly: Bool
+
     /// How long it ran.
     public let durationMilliseconds: Int
 
