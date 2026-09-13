@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-import Foundation
+public import Foundation
 import SwiftMutantsRunner
 
 extension SwiftPackageManager {
@@ -156,8 +156,8 @@ extension SwiftPackageManager {
     /// `/usr/bin/swift` on macOS is a shim, and the helper lives beside the real one. The
     /// compiler is asked where its own resources are and the answer is walked up from
     /// there, so a run with a pinned toolchain finds that toolchain's helper.
-    private func testingHelper(
-        environment: [String: String]
+    public func testingHelper(
+        environment: [String: String] = [:]
     ) async throws(BuildSystemError) -> URL {
         let outcome = await runner.run(
             ProcessSpec(

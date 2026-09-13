@@ -3,6 +3,7 @@
 
 import ArgumentParser
 import Foundation
+import SwiftMutantsBuild
 import SwiftMutantsRunner
 import SwiftMutantsTrace
 
@@ -47,6 +48,19 @@ struct DoctorCommand: AsyncParsableCommand {
             String(decoding: version.standardOutput, as: UTF8.self)
             .split(separator: "\n").first.map(String.init) ?? ""
         report(version.exitCode == 0, "swift", versionText.isEmpty ? "not on PATH" : versionText)
+
+        // The program that loads a test bundle on this platform. It lives in the
+        // toolchain's `libexec` and carries no compatibility promise, so a machine without
+        // it should be told now rather than after the first mutant fails to launch - which
+        // is the failure that reads like a bug in this tool.
+        do {
+            let helper = try await SwiftPackageManager(
+                root: root, runner: runner, executable: "/usr/bin/swift"
+            ).testingHelper(environment: Ambient.environment)
+            report(true, "test launcher", helper.path)
+        } catch {
+            report(false, "test launcher", error.description)
+        }
 
         let manifest = root.appending(path: "Package.swift")
         report(
