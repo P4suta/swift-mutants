@@ -39,6 +39,14 @@ public struct Verdict: Sendable, Hashable {
     ///
     /// A run that started none is a run that proves nothing, whatever it exited with.
     public let testsStarted: Int
+
+    /// How the process ended.
+    ///
+    /// Kept beside the outcome rather than folded into it, because two mutants that are
+    /// both `killed` are not the same news: one was caught by the second test and the
+    /// suite was stopped there, the other ran to the end and failed at the last. `explain`
+    /// prints this, and a reader deciding whether their suite is slow needs it.
+    public let termination: Termination
 }
 
 /// Watches an event stream and says when the answer is known.
@@ -112,7 +120,8 @@ public struct StreamWatcher: Sendable {
             outcome: outcome(after: termination),
             killedBy: killers,
             firstFailure: firstFailure,
-            testsStarted: testsStarted
+            testsStarted: testsStarted,
+            termination: termination
         )
     }
 
