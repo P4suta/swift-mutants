@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-public import SwiftMutantsCore
+import SwiftMutantsCore
 public import SwiftMutantsDiscover
 
 /// Puts every mutant of a file into that file at once, each behind a runtime guard.

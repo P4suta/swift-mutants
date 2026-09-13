@@ -9,7 +9,7 @@ import Glibc
 
 import Subprocess
 import Synchronization
-public import SwiftMutantsCore
+import SwiftMutantsCore
 public import SwiftMutantsTrace
 import System
 

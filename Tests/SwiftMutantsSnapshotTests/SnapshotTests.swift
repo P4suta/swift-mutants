@@ -132,7 +132,9 @@ struct SnapshotTests {
             try? FileManager.default.removeItem(at: source)
             try? FileManager.default.removeItem(at: target)
         }
-        #expect(mkfifo(source.appending(path: "pipe").path, 0o644) == 0)
+        // mkfifo is a C call, and -strict-memory-safety wants that said rather than
+        // hidden. Making a pipe is the only way to get a file that is not a file.
+        #expect(unsafe mkfifo(source.appending(path: "pipe").path, 0o644) == 0)
 
         #expect(throws: SnapshotError.self) { try Snapshot.create(of: source, at: target) }
     }
