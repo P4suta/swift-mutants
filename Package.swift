@@ -82,6 +82,13 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // What a package holds, asked of whatever build system owns it.
+        .target(
+            name: "SwiftMutantsBuild",
+            dependencies: ["SwiftMutantsCore", "SwiftMutantsRunner", "SwiftMutantsTrace"],
+            swiftSettings: strict
+        ),
+
         // Putting every compilable mutant into one tree, each dormant behind a guard.
         .target(
             name: "SwiftMutantsInstrument",
@@ -147,6 +154,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsBuildTests",
+            dependencies: ["SwiftMutantsBuild", "SwiftMutantsTestKit"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "InstrumentIntegrationTests",
             dependencies: ["SwiftMutantsInstrument", "SwiftMutantsTestKit"],
