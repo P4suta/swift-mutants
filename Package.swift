@@ -49,6 +49,9 @@ let package = Package(
         // Parsing Swift. The major version is a hard toolchain boundary - 603 is Swift 6.3 -
         // so it is pinned to the range rather than left to float.
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "603.0.2"..<"604.0.0"),
+
+        // The command line. 1.8 is the first that requires Swift 6, which this does anyway.
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
     ],
     targets: [
         .target(name: "SwiftMutantsCore", swiftSettings: strict),
@@ -79,6 +82,34 @@ let package = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftOperators", package: "swift-syntax"),
             ],
+            swiftSettings: strict
+        ),
+
+        // The pipeline: what a run does, in the order it does it.
+        .target(
+            name: "SwiftMutantsEngine",
+            dependencies: [
+                "SwiftMutantsBuild", "SwiftMutantsConfig", "SwiftMutantsConsole",
+                "SwiftMutantsCore", "SwiftMutantsDiscover", "SwiftMutantsInstrument",
+                "SwiftMutantsRunner", "SwiftMutantsSnapshot", "SwiftMutantsTrace",
+            ],
+            swiftSettings: strict
+        ),
+
+        // The command tree, and nothing else.
+        .target(
+            name: "SwiftMutantsCLI",
+            dependencies: [
+                "SwiftMutantsEngine",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: strict
+        ),
+
+        // A thin main.
+        .executableTarget(
+            name: "swift-mutants",
+            dependencies: ["SwiftMutantsCLI"],
             swiftSettings: strict
         ),
 
@@ -154,6 +185,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsEngineTests",
+            dependencies: ["SwiftMutantsEngine", "SwiftMutantsTestKit"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsBuildTests",
             dependencies: ["SwiftMutantsBuild", "SwiftMutantsTestKit"],

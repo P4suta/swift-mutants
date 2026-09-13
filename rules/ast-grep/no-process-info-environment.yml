@@ -20,5 +20,8 @@ ignores:
   # The scripted toolchain *is* a process being told what to do, and the only thing it can
   # be told through is its own environment. It is test support and never ships.
   - "Sources/swift-mutants-fake-toolchain/**"
+  # A program has to read its own environment somewhere. `Ambient` is that somewhere, and
+  # `AmbientGateTests` asserts it stays the only one.
+  - "Sources/SwiftMutantsCLI/Ambient.swift"
 rule:
   pattern: ProcessInfo.processInfo.environment
