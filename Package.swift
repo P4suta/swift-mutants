@@ -65,6 +65,14 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // A disposable copy of somebody's package, and the manifest that says what is
+        // in it. The first invariant: the tree a run was pointed at is never written to.
+        .target(
+            name: "SwiftMutantsSnapshot",
+            dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
         // Where an account goes when it leaves memory: the recording a traced run
         // writes, and the bundle a failed run leaves behind.
         .target(
@@ -115,6 +123,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsSnapshotTests",
+            dependencies: ["SwiftMutantsSnapshot"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsDiagnosticsTests",
             dependencies: ["SwiftMutantsDiagnostics"],
