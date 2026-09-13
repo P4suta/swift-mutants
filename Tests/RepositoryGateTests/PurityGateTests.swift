@@ -33,7 +33,9 @@ struct PurityGateTests {
     /// line needs Foundation's encoder. That is a deliberate trade: a hand-written encoder
     /// would own the byte-exact output, but a golden test pins those bytes for a fraction
     /// of the code and fails just as loudly if Foundation ever changes its mind.
-    static let effectFreeModules = ["SwiftMutantsCore", "SwiftMutantsTrace"]
+    static let effectFreeModules = [
+        "SwiftMutantsCore", "SwiftMutantsTrace", "SwiftMutantsConsole",
+    ]
 
     /// Names that mean "this code reached for the world".
     ///

@@ -51,6 +51,14 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // How a run reads. Pure: it turns values into lines, and something else puts
+        // them on a terminal.
+        .target(
+            name: "SwiftMutantsConsole",
+            dependencies: ["SwiftMutantsCore", "SwiftMutantsTrace"],
+            swiftSettings: strict
+        ),
+
         // Test support, and test support only. It lives under Sources/ because a
         // .testTarget cannot be a dependency of another .testTarget, not because it ships.
         // `TestKitIsolationGateTests` is what keeps production from importing it.
@@ -61,6 +69,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsConsoleTests",
+            dependencies: ["SwiftMutantsConsole"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsTraceTests",
             dependencies: ["SwiftMutantsTrace"],

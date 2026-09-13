@@ -39,6 +39,18 @@ struct TestTierGateTests {
         )
     }
 
+    /// The ways a test can actually start a process.
+    ///
+    /// Execution primitives rather than command names. The first version of this gate
+    /// looked for `"swift build"` and `"xcodebuild"` as text and immediately reported a
+    /// console test whose *fixture* was a recorded argument vector - a test that mentions a
+    /// command is not a test that runs one, and a gate that cannot tell the difference gets
+    /// suppressed rather than obeyed. Anything that reaches a toolchain has to construct a
+    /// process, so that is what is looked for.
+    static let executionPrimitives = [
+        "ToolchainGate.run", "Process(", "Subprocess.run", "posix_spawn",
+    ]
+
     /// A unit-tier target that shells out to the toolchain would pass this gate's name
     /// check and then quietly cost the inner loop a build. The source is checked too.
     @Test("no unit-tier target reaches for a toolchain")
@@ -54,10 +66,7 @@ struct TestTierGateTests {
             for file in try RepositoryGate.swiftFiles(under: "Tests/\(target)")
             where RepositoryGate.repositoryRelativePath(file) != selfPath {
                 let code = try RepositoryGate.codeLines(of: file)
-                for reach in [
-                    "ToolchainGate.run", "Process(", "xcodebuild", "swift build", "swift test",
-                ]
-                where code.contains(reach) {
+                for reach in Self.executionPrimitives where code.contains(reach) {
                     offences.append("\(RepositoryGate.repositoryRelativePath(file)): \(reach)")
                 }
             }
