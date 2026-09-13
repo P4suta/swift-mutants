@@ -161,9 +161,9 @@ struct ValidateIntegrationTests {
         #expect(produced - file.runtimeLineCount == original)
     }
 
-    /// A file that does not compile on its own is not a mutant's fault, and saying it was
-    /// would blame this tool's work for the state of somebody's package.
-    @Test("refuses to blame a mutant for a file that never compiled", .tags(.integration))
+    /// A package that does not build on its own is not a mutant's fault, and saying it
+    /// was would blame this tool's work for the state of somebody's code.
+    @Test("refuses to blame a mutant for code that never compiled", .tags(.integration))
     func brokenOriginal() async throws {
         let scratch = try Self.scratch()
         defer { scratch.cleanUp() }
@@ -177,7 +177,7 @@ struct ValidateIntegrationTests {
         let failure = await #expect(throws: ValidationError.self) {
             try await Self.validator(in: scratch.directory).validate([Self.subjectFile(broken)])
         }
-        #expect(failure?.reason.contains("does not compile") == true)
+        #expect(failure?.reason.contains("no mutants in it at all") == true)
         // The compiler's own sentence reaches the person reading the error, not only the
         // fact that there was one. "It did not compile" without the why is the least
         // useful thing a tool can say.
