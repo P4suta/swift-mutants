@@ -44,7 +44,11 @@ let package = Package(
         // Foundation.Process has no structured-concurrency cancellation and deadlocks when
         // a child fills a pipe nobody is draining. A mutant deadline needs both, and a
         // teardown sequence besides, so the runner is built on this instead.
-        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "1.0.0")
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "1.0.0"),
+
+        // Parsing Swift. The major version is a hard toolchain boundary - 603 is Swift 6.3 -
+        // so it is pinned to the range rather than left to float.
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", "603.0.2"..<"604.0.0"),
     ],
     targets: [
         .target(name: "SwiftMutantsCore", swiftSettings: strict),
@@ -62,6 +66,19 @@ let package = Package(
         .target(
             name: "SwiftMutantsTrace",
             dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
+        // Finding what could be mutated, and what was deliberately passed over.
+        .target(
+            name: "SwiftMutantsDiscover",
+            dependencies: [
+                "SwiftMutantsCore",
+                "SwiftMutantsConfig",
+                .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftOperators", package: "swift-syntax"),
+            ],
             swiftSettings: strict
         ),
 
@@ -123,6 +140,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsDiscoverTests",
+            dependencies: ["SwiftMutantsDiscover"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsSnapshotTests",
             dependencies: ["SwiftMutantsSnapshot"],
