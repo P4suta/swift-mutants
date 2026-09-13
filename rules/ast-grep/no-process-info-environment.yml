@@ -16,5 +16,9 @@ note: |
   hermetically and cannot record what a child process actually received.
 files:
   - "Sources/**/*.swift"
+ignores:
+  # The scripted toolchain *is* a process being told what to do, and the only thing it can
+  # be told through is its own environment. It is test support and never ships.
+  - "Sources/swift-mutants-fake-toolchain/**"
 rule:
   pattern: ProcessInfo.processInfo.environment

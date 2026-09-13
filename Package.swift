@@ -77,16 +77,33 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // A `swift` and an `xcodebuild` that answer from a rule table a test wrote.
+        // It is a product rather than a function because the thing under test starts it as
+        // a process: the only honest way to script a toolchain is to be one.
+        .executableTarget(
+            name: "swift-mutants-fake-toolchain",
+            dependencies: ["SwiftMutantsTestKit"],
+            swiftSettings: strict
+        ),
+
         // Test support, and test support only. It lives under Sources/ because a
         // .testTarget cannot be a dependency of another .testTarget, not because it ships.
         // `TestKitIsolationGateTests` is what keeps production from importing it.
-        .target(name: "SwiftMutantsTestKit", swiftSettings: strict),
+        .target(
+            name: "SwiftMutantsTestKit",
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsCoreTests",
             dependencies: ["SwiftMutantsCore"],
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "FakeToolchainTests",
+            dependencies: ["SwiftMutantsTestKit", "SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsRunnerTests",
             dependencies: ["SwiftMutantsRunner"],

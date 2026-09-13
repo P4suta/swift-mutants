@@ -82,13 +82,27 @@ struct TestTierGateTests {
         )
     }
 
+    /// The targets that are test support despite living under `Sources/`.
+    ///
+    /// `SwiftMutantsTestKit` is there because a `.testTarget` cannot be the dependency of
+    /// another one. `swift-mutants-fake-toolchain` is there because the only honest way to
+    /// script a toolchain is to *be* one, which means being a process, which means being a
+    /// product. Neither ships.
+    static let testSupportTargets = ["SwiftMutantsTestKit", "swift-mutants-fake-toolchain"]
+
+    /// Whether a file belongs to a target that is test support despite living under
+    /// `Sources/`.
+    static func isTestSupport(_ file: URL) -> Bool {
+        let path = RepositoryGate.repositoryRelativePath(file)
+        return testSupportTargets.contains { path.hasPrefix("Sources/\($0)/") }
+    }
+
     /// Test support must not reach shipped code, in either direction.
     @Test("production code never imports the test kit")
     func testKitStaysOutOfProduction() throws {
         var offenders: [String] = []
         for file in try RepositoryGate.swiftFiles(under: "Sources")
-        where !RepositoryGate.repositoryRelativePath(file).hasPrefix("Sources/SwiftMutantsTestKit/")
-        {
+        where !Self.isTestSupport(file) {
             if try RepositoryGate.codeLines(of: file).contains("import SwiftMutantsTestKit") {
                 offenders.append(RepositoryGate.repositoryRelativePath(file))
             }
