@@ -39,17 +39,18 @@ struct TestTierGateTests {
         )
     }
 
-    /// The ways a test can actually start a process.
+    /// The one way a test is allowed to reach a real toolchain.
     ///
-    /// Execution primitives rather than command names. The first version of this gate
-    /// looked for `"swift build"` and `"xcodebuild"` as text and immediately reported a
-    /// console test whose *fixture* was a recorded argument vector - a test that mentions a
-    /// command is not a test that runs one, and a gate that cannot tell the difference gets
-    /// suppressed rather than obeyed. Anything that reaches a toolchain has to construct a
-    /// process, so that is what is looked for.
-    static let executionPrimitives = [
-        "ToolchainGate.run", "Process(", "Subprocess.run", "posix_spawn",
-    ]
+    /// What makes the inner loop slow is `swift` and `xcodebuild`, not processes: a unit
+    /// test that runs `/bin/sh` costs a millisecond, and the process runner needs to start
+    /// something in order to be tested at all. So the capability is centralised in
+    /// `ToolchainGate`, and the rule is that the unit tier may not name it.
+    ///
+    /// Two earlier versions of this rule were worse. Looking for `"swift build"` as text
+    /// reported a console test whose *fixture* was a recorded argument vector - mentioning
+    /// a command is not running one. Looking for every execution primitive would have
+    /// banned the runner's own tests from the tier they belong in.
+    static let toolchainReaches = ["ToolchainGate"]
 
     /// A unit-tier target that shells out to the toolchain would pass this gate's name
     /// check and then quietly cost the inner loop a build. The source is checked too.
@@ -66,7 +67,7 @@ struct TestTierGateTests {
             for file in try RepositoryGate.swiftFiles(under: "Tests/\(target)")
             where RepositoryGate.repositoryRelativePath(file) != selfPath {
                 let code = try RepositoryGate.codeLines(of: file)
-                for reach in Self.executionPrimitives where code.contains(reach) {
+                for reach in Self.toolchainReaches where code.contains(reach) {
                     offences.append("\(RepositoryGate.repositoryRelativePath(file)): \(reach)")
                 }
             }

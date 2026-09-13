@@ -40,6 +40,12 @@ let package = Package(
     products: [
         .library(name: "SwiftMutantsCore", targets: ["SwiftMutantsCore"])
     ],
+    dependencies: [
+        // Foundation.Process has no structured-concurrency cancellation and deadlocks when
+        // a child fills a pipe nobody is draining. A mutant deadline needs both, and a
+        // teardown sequence besides, so the runner is built on this instead.
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "1.0.0")
+    ],
     targets: [
         .target(name: "SwiftMutantsCore", swiftSettings: strict),
 
@@ -48,6 +54,18 @@ let package = Package(
         .target(
             name: "SwiftMutantsTrace",
             dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
+        // The one place a subprocess is started, and therefore the one place one is
+        // recorded. A call site can forget to record; it cannot forget to go through here.
+        .target(
+            name: "SwiftMutantsRunner",
+            dependencies: [
+                "SwiftMutantsCore",
+                "SwiftMutantsTrace",
+                .product(name: "Subprocess", package: "swift-subprocess"),
+            ],
             swiftSettings: strict
         ),
 
@@ -69,6 +87,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsRunnerTests",
+            dependencies: ["SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsConsoleTests",
             dependencies: ["SwiftMutantsConsole"],
