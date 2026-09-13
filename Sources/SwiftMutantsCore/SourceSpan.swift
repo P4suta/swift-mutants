@@ -112,3 +112,18 @@ extension SourceSpan {
         self = span
     }
 }
+
+extension SourceSpan {
+
+    /// The same span, moved along by `distance` bytes, or `nil` if that leaves the file.
+    ///
+    /// Instrumentation builds its output by concatenation, so a span recorded relative to
+    /// one piece has to be rebased as that piece is wrapped in the next. Doing the
+    /// arithmetic here rather than at each call site is what keeps the wrapping readable.
+    ///
+    /// Forward shifts - the only kind instrumentation performs - always succeed, since
+    /// moving both ends by the same non-negative amount preserves both invariants.
+    public func shifted(by distance: Int) -> SourceSpan? {
+        SourceSpan(start: start + distance, end: end + distance)
+    }
+}

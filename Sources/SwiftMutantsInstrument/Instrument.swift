@@ -63,12 +63,22 @@ public enum Instrument {
         let numbered = Self.number(forest, token: token, discovery: discovery)
 
         var rewritten = ""
+        var produced = 0
+        var placements: [UInt32: SourceSpan] = [:]
         var cursor = 0
         for root in forest.roots {
             let span = root.span
-            rewritten += String(decoding: bytes[cursor..<span.start], as: UTF8.self)
-            rewritten += try Self.render(
+            let lead = String(decoding: bytes[cursor..<span.start], as: UTF8.self)
+            rewritten += lead
+            produced += lead.utf8.count
+
+            let rendered = try Self.render(
                 root, bytes: bytes, token: token, indices: numbered.indices)
+            rewritten += rendered.text
+            for (index, relative) in rendered.placements {
+                placements[index] = relative.shifted(by: produced)
+            }
+            produced += rendered.text.utf8.count
             cursor = span.end
         }
         rewritten += String(decoding: bytes[cursor...], as: UTF8.self)
@@ -77,15 +87,74 @@ public enum Instrument {
         return InstrumentedFile(
             source: rewritten + runtime,
             runtime: runtime,
-            mutants: numbered.mutants,
+            mutants: try Self.place(numbered.mutants, at: placements, in: discovery),
             runtimeToken: token
         )
     }
 
+    /// Tells every numbered mutant where it landed.
+    ///
+    /// A mutant that was numbered but never rendered is an instrumenter defect, and the
+    /// one thing it must not do is travel onward: attribution would then have a mutant
+    /// with no place in the file, and the compiler diagnostic that belongs to it would be
+    /// reported as an error in the original program instead. Muter's four hundred false
+    /// regressions began as exactly this - a mutant in the catalogue that was not in the
+    /// file - so it is raised here rather than carried.
+    private static func place(
+        _ mutants: [Numbered],
+        at placements: [UInt32: SourceSpan],
+        in discovery: FileDiscovery
+    ) throws(InstrumentError) -> [InstrumentedMutant] {
+        var placed: [InstrumentedMutant] = []
+        placed.reserveCapacity(mutants.count)
+        for mutant in mutants {
+            guard let span = placements[mutant.index] else {
+                throw InstrumentError(
+                    """
+                    \(discovery.path): mutant \(mutant.index) (\(mutant.rule.rendered)) was \
+                    numbered but never rendered into the file. This is a defect in the \
+                    instrumenter, not in the file.
+                    """
+                )
+            }
+            placed.append(
+                InstrumentedMutant(
+                    identity: mutant.identity,
+                    index: mutant.index,
+                    marker: mutant.marker,
+                    span: mutant.span,
+                    instrumentedSpan: span,
+                    rule: mutant.rule
+                )
+            )
+        }
+        return placed
+    }
+
     /// What was numbered, and the index each edit's guard spells.
     private struct Numbering {
-        var mutants: [InstrumentedMutant] = []
-        var indices: [SourceSpan: UInt32] = [:]
+        var mutants: [Numbered] = []
+
+        /// The indices one site's candidates were given, in the order the site lists them.
+        ///
+        /// Keyed by site rather than by edit, and a list rather than a single index,
+        /// because two candidates at one site can edit the same bytes: `a && b` becoming
+        /// `a` and becoming `b` both replace the whole expression. Keying by the edit
+        /// collapsed them onto one number, and the second was numbered but never rendered.
+        var indices: [SourceSpan: [UInt32]] = [:]
+    }
+
+    /// A mutant that has an index but does not yet know where it landed.
+    ///
+    /// It exists so that ``InstrumentedMutant`` cannot: a mutant in an instrumented file
+    /// always knows its place in that file, which is what attribution rests on. Numbering
+    /// runs before rendering, so this is the shape of the thing in between.
+    private struct Numbered {
+        let identity: MutantIdentity
+        let index: UInt32
+        let marker: String
+        let span: SourceSpan
+        let rule: RuleIdentifier
     }
 
     /// Gives every mutant a dense index, innermost site first.
@@ -100,10 +169,11 @@ public enum Instrument {
         var numbering = Numbering()
         var next: UInt32 = 0
         for node in forest.innermostFirst {
+            var assigned: [UInt32] = []
             for candidate in node.values.flatMap({ $0 }) {
-                numbering.indices[candidate.span] = next
+                assigned.append(next)
                 numbering.mutants.append(
-                    InstrumentedMutant(
+                    Numbered(
                         identity: Self.identity(of: candidate, in: discovery),
                         index: next,
                         marker: Runtime.marker(token: token, index: next),
@@ -113,6 +183,7 @@ public enum Instrument {
                 )
                 next += 1
             }
+            numbering.indices[node.span] = assigned
         }
         return numbering
     }
@@ -125,14 +196,24 @@ public enum Instrument {
         _ node: IntervalForest<[Candidate]>.Node,
         bytes: [UInt8],
         token: String,
-        indices: [SourceSpan: UInt32]
-    ) throws(InstrumentError) -> String {
+        indices: [SourceSpan: [UInt32]]
+    ) throws(InstrumentError) -> Rendered {
         // The original side keeps its bytes, with any nested guards spliced into it.
         var original = ""
+        var produced = 0
+        var placements: [UInt32: SourceSpan] = [:]
         var cursor = node.span.start
         for child in node.children {
-            original += String(decoding: bytes[cursor..<child.span.start], as: UTF8.self)
-            original += try render(child, bytes: bytes, token: token, indices: indices)
+            let lead = String(decoding: bytes[cursor..<child.span.start], as: UTF8.self)
+            original += lead
+            produced += lead.utf8.count
+
+            let rendered = try render(child, bytes: bytes, token: token, indices: indices)
+            original += rendered.text
+            for (index, relative) in rendered.placements {
+                placements[index] = relative.shifted(by: produced)
+            }
+            produced += rendered.text.utf8.count
             cursor = child.span.end
         }
         original += String(decoding: bytes[cursor..<node.span.end], as: UTF8.self)
@@ -140,13 +221,33 @@ public enum Instrument {
         // The mutated sides carry the pristine expression with one edit applied, because
         // only one mutant is ever awake and a nested guard in here would never fire.
         var rendered = "(\(original))"
-        for candidate in node.values.flatMap({ $0 }).reversed() {
-            guard let index = indices[candidate.span] else { continue }
+        // The children just placed sit one byte in, past the opening parenthesis.
+        placements = placements.compactMapValues { $0.shifted(by: 1) }
+
+        // Zipped rather than looked up: numbering walked this same list in this same
+        // order, so position is the join. A length mismatch drops a mutant here, and the
+        // placement check then refuses the file rather than shipping a phantom.
+        let alternatives = Array(zip(node.values.flatMap { $0 }, indices[node.span] ?? []))
+        for (candidate, index) in alternatives.reversed() {
             let mutated = try Self.apply(candidate, to: bytes, within: node.span)
-            rendered =
-                "(\(Runtime.guardCall(token: token, index: index)) ? (\(mutated)) : \(rendered))"
+            let head = "(\(Runtime.guardCall(token: token, index: index)) ? ("
+            rendered = "\(head)\(mutated)) : \(rendered))"
+
+            // Everything already rendered moved right by this guard's head, its mutated
+            // copy, and the `) : ` that separates the two sides.
+            let shift = head.utf8.count + mutated.utf8.count + 4
+            placements = placements.compactMapValues { $0.shifted(by: shift) }
+            placements[index] = SourceSpan(
+                start: head.utf8.count, end: head.utf8.count + mutated.utf8.count)
         }
-        return rendered
+        return Rendered(text: rendered, placements: placements)
+    }
+
+    /// One site's text, and where inside it each mutant's copy of the expression landed.
+    private struct Rendered {
+        var text: String
+        /// Byte spans relative to the start of ``text``.
+        var placements: [UInt32: SourceSpan]
     }
 
     /// The site's bytes with one candidate's edit applied, flattened onto one line.

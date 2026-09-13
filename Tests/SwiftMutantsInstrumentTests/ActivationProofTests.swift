@@ -34,8 +34,8 @@ struct ActivationProofTests {
         )
         let proof = ActivationProof.inSource(file)
         #expect(proof.isProved)
-        #expect(proof.expected == 4)
-        #expect(proof.found == 4)
+        #expect(proof.expected == 8)
+        #expect(proof.found == 8)
     }
 
     /// The #307 shape exactly: the mutants are known about and none of them is in the file.

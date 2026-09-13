@@ -139,9 +139,10 @@ struct DiscoverTests {
         let discovery = Self.discover(source)
         let arid = discovery.skips.filter { $0.reason == .arid }
         #expect(arid.count == 1)
-        // Three operators inside the call: the two comparisons and the connective between
-        // them. The count is of what the region would have yielded, not of what is obvious.
-        #expect(arid.first?.candidatesHidden == 3)
+        // Five: a shift at each of the two comparisons, and three at the conjunction -
+        // the swap and the two prunes that drop one operand each. The count is of what the
+        // region would have yielded, not of what is obvious from reading the line.
+        #expect(arid.first?.candidatesHidden == 5)
     }
 
     @Test("still mutates what sits beside something arid")

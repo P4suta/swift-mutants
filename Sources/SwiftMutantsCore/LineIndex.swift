@@ -69,4 +69,26 @@ public struct LineIndex: Sendable {
         }
         return SourcePosition(line: low + 1, column: offset - lineStarts[low] + 1)
     }
+
+    /// Where `position` is, or nothing when the file has no such place.
+    ///
+    /// The direction a compiler diagnostic arrives in. Swift reports `line:col` with the
+    /// column counted in UTF-8 bytes - the same unit spans are in - so this is a lookup
+    /// and an addition rather than a re-scan of the line.
+    ///
+    /// A column past the end of its line is refused rather than clamped. Clamping would
+    /// turn an off-by-one in a diagnostic into a byte offset inside the *next* line, and
+    /// attribution would then reject a mutant that compiles perfectly well while leaving
+    /// the one that does not in the catalogue.
+    public func offset(of position: SourcePosition) -> Int? {
+        guard position.line >= 1, position.line <= lineStarts.count, position.column >= 1
+        else { return nil }
+
+        let start = lineStarts[position.line - 1]
+        let end =
+            position.line < lineStarts.count ? lineStarts[position.line] - 1 : byteCount
+        let offset = start + position.column - 1
+        guard offset <= end else { return nil }
+        return offset
+    }
 }

@@ -103,7 +103,23 @@ final class CandidateWalker: SyntaxVisitor {
             return .visitChildren
         }
         record(swap, replacing: Syntax(token), within: Syntax(node))
+        recordPrunes(of: node, spelled: token.operator.text)
         return .visitChildren
+    }
+
+    /// Offers each operand of a connective as a replacement for the whole expression.
+    ///
+    /// The operand is taken from the folded tree rather than from the flat sequence
+    /// SwiftSyntax parses. `a && b || c` arrives as one `SequenceExprSyntax` with no
+    /// grouping at all, so a walk over the raw tree would have to guess which operands
+    /// belong to which connective - and would guess wrong in exactly the cases where
+    /// precedence is the thing under test.
+    private func recordPrunes(of node: InfixOperatorExprSyntax, spelled operatorText: String) {
+        guard let prunes = Rules.connectivePrunes[operatorText] else { return }
+        for prune in prunes {
+            let operand = prune.side == .left ? node.leftOperand : node.rightOperand
+            record(prune, keeping: Syntax(operand), of: Syntax(node))
+        }
     }
 
     override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind {
@@ -166,6 +182,25 @@ final class CandidateWalker: SyntaxVisitor {
                 original: token.trimmedDescription,
                 replacement: swap.replacement,
                 guardSpan: wrapped,
+                enclosingDeclaration: declarationPath.joined(separator: ".")
+            )
+        )
+    }
+
+    /// Records a prune: the expression replaced by one of its own operands.
+    private func record(_ prune: Rules.Prune, keeping operand: Syntax, of expression: Syntax) {
+        guard let region = Self.span(of: expression) else { return }
+        if !countOnly, isSuppressed(prune.family, at: expression) {
+            skips.append(Skip(reason: .disabledByComment, span: region, candidatesHidden: 1))
+            return
+        }
+        candidates.append(
+            Candidate(
+                rule: Rules.identifier(for: prune),
+                span: region,
+                original: expression.trimmedDescription,
+                replacement: operand.trimmedDescription,
+                guardSpan: region,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
         )

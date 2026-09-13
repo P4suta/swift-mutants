@@ -67,3 +67,49 @@ struct LineIndexTests {
         #expect(try #require(index.position(of: 14)).description == "2:5")
     }
 }
+
+/// Going back the other way: from what a compiler said to where it is.
+///
+/// A compiler reports `line:col`; a mutant is a byte span. Attribution is the join of the
+/// two, so this direction is load-bearing rather than a convenience.
+@Suite("LineIndex, in reverse")
+struct LineIndexReverseTests {
+
+    /// Swift's own diagnostics count columns in UTF-8 bytes, not characters: an error
+    /// after three three-byte arrows is reported at column 30, not 22. Measured against
+    /// the pinned toolchain rather than assumed, because a tool that assumed characters
+    /// would attribute a diagnostic to the wrong mutant on every line holding a non-ASCII
+    /// literal, and would do it silently.
+    @Test("counts columns in the unit the compiler uses")
+    func columnsAreBytes() throws {
+        let index = LineIndex("let x = \"\u{2192}\u{2192}\u{2192}\" + y")
+        #expect(index.offset(of: SourcePosition(line: 1, column: 22)) == 21)
+    }
+
+    @Test("inverts position lookup at every offset in a file")
+    func roundTrips() throws {
+        let source = "let a = 1\n\n  let b = 2\nlet c = 3\n"
+        let index = LineIndex(source)
+        for offset in 0...source.utf8.count {
+            let position = try #require(index.position(of: offset))
+            #expect(index.offset(of: position) == offset)
+        }
+    }
+
+    @Test("refuses a position the file does not have")
+    func refusesPositionsOutsideTheFile() {
+        let index = LineIndex("let a = 1\nlet b = 2\n")
+        #expect(index.offset(of: SourcePosition(line: 0, column: 1)) == nil)
+        #expect(index.offset(of: SourcePosition(line: 4, column: 1)) == nil)
+        #expect(index.offset(of: SourcePosition(line: 1, column: 0)) == nil)
+    }
+
+    /// A column past the end of its line would land inside the next one, which is how an
+    /// off-by-one in a diagnostic becomes a mutant rejected in the wrong place.
+    @Test("refuses a column past the end of its line")
+    func refusesColumnsPastTheLine() {
+        let index = LineIndex("let a = 1\nlet b = 2\n")
+        #expect(index.offset(of: SourcePosition(line: 1, column: 10)) == 9)
+        #expect(index.offset(of: SourcePosition(line: 1, column: 11)) == nil)
+    }
+}

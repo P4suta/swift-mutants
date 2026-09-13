@@ -115,8 +115,12 @@ struct InstrumentTests {
     func chainsOneSite() throws {
         let source = "func f(_ a: Bool, _ b: Bool) -> Bool { a && b }"
         let instrumented = try Self.instrument(source)
-        #expect(instrumented.mutants.count == 1)
-        #expect(instrumented.source.contains("? (a || b) : (a && b)"))
+        #expect(instrumented.mutants.count == 3)
+        #expect(instrumented.source.contains("? (a || b) : ("))
+        // Three alternatives, one copy of the expression they are alternatives to. Nesting
+        // whole copies instead would be exponential in the number of rules at a site.
+        let originals = instrumented.source.components(separatedBy: "(a && b)").count - 1
+        #expect(originals == 1, "the original was copied per mutant: \(instrumented.source)")
     }
 
     /// Only one mutant is ever awake, so the mutated side of an outer guard carries the
@@ -127,11 +131,11 @@ struct InstrumentTests {
     func nestedSitesDoNotDuplicate() throws {
         let source = "func f(_ a: Int, _ b: Int, _ c: Bool) -> Bool { return a < b && c }"
         let instrumented = try Self.instrument(source)
-        let guardCount = instrumented.source.components(separatedBy: "__sm_").count - 1
-        // One in the runtime's global, one in its function, one per guard site, and one per
-        // guard use. Two sites here, so the inner guard must appear once rather than twice.
-        #expect(instrumented.mutants.count == 2)
-        #expect(guardCount <= 8, "the inner guard was duplicated: \(instrumented.source)")
+        // The inner site is the comparison; the outer one is the conjunction around it.
+        let inner = try #require(instrumented.mutants.first { $0.rule.name == "lt-to-le" })
+        let call = "__sm_\(instrumented.runtimeToken)(\(inner.index) "
+        let uses = instrumented.source.components(separatedBy: call).count - 1
+        #expect(uses == 1, "the inner guard was duplicated: \(instrumented.source)")
     }
 
     /// The activation proof looks for these in the built binary. A marker that cannot be
@@ -145,7 +149,7 @@ struct InstrumentTests {
             }
             """
         let instrumented = try Self.instrument(source)
-        #expect(instrumented.mutants.count == 4)
+        #expect(instrumented.mutants.count == 8)
         #expect(Set(instrumented.mutants.map(\.marker)).count == instrumented.mutants.count)
         for mutant in instrumented.mutants {
             let occurrences = instrumented.source.components(separatedBy: mutant.marker).count - 1
@@ -161,7 +165,11 @@ struct InstrumentTests {
             }
             """
         let instrumented = try Self.instrument(source)
-        #expect(instrumented.mutants.map(\.index).sorted() == [0, 1, 2, 3])
+        #expect(instrumented.mutants.count == 8)
+        #expect(
+            instrumented.mutants.map(\.index).sorted() == Array(0..<UInt32(8)),
+            "indices must be dense from zero: the runtime reads one integer and compares"
+        )
     }
 
     /// The identity is computed from the original file, not from the instrumented one.

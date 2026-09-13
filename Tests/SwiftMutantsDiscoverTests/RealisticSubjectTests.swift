@@ -38,7 +38,17 @@ struct RealisticSubjectTests {
         let found = Self.discovery().candidates.map {
             "\($0.rule.name) \($0.original)->\($0.replacement)"
         }
-        #expect(found == ["le-to-lt <=-><", "and-to-or &&->||", "or-to-and ||->&&"])
+        #expect(
+            found.sorted() == [
+                "and-keep-lhs length <= limit && (strict || lenient)->length <= limit",
+                "and-keep-rhs length <= limit && (strict || lenient)->(strict || lenient)",
+                "and-to-or &&->||",
+                "le-to-lt <=-><",
+                "or-keep-lhs strict || lenient->strict",
+                "or-keep-rhs strict || lenient->lenient",
+                "or-to-and ||->&&",
+            ]
+        )
     }
 
     @Test("names where each edit lives")
@@ -57,8 +67,10 @@ struct RealisticSubjectTests {
         let wrapped = Self.discovery().candidates.map {
             String(decoding: bytes[$0.guardSpan.start..<$0.guardSpan.end], as: UTF8.self)
         }
+        // Three sites, not seven: the prunes at a connective share the site its swap has,
+        // because they are alternatives at one expression rather than sites of their own.
         #expect(
-            wrapped == [
+            Set(wrapped) == [
                 "length <= limit",
                 "length <= limit && (strict || lenient)",
                 "strict || lenient",

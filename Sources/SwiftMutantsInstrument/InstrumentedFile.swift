@@ -58,6 +58,20 @@ public struct InstrumentedMutant: Sendable, Hashable {
     /// Where the edit is in the original file.
     public let span: SourceSpan
 
+    /// Where this mutant's own copy of the expression sits in the instrumented file.
+    ///
+    /// The span a compiler diagnostic is joined against. `swiftc` reports every error in a
+    /// file rather than stopping at the first and points `line:col` at the operator inside
+    /// the branch that broke, so one typecheck names every mutant the compiler refuses -
+    /// bisection stays as a fallback rather than being the mechanism.
+    ///
+    /// These are disjoint across a file: a guard's mutated side holds a pristine flattened
+    /// copy of the expression with one edit in it and no nested guards, because only one
+    /// mutant is ever awake and a guard nested in there could never fire. So a diagnostic
+    /// inside one of these spans belongs to one mutant, and a diagnostic outside all of
+    /// them is a fact about the original program rather than about any mutant.
+    public let instrumentedSpan: SourceSpan
+
     /// Which rule produced it.
     public let rule: RuleIdentifier
 }
