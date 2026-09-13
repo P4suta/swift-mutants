@@ -20,12 +20,12 @@ struct PurityGateTests {
     ///
     /// The strictest tier, and the one the golden identity vectors rest on: a module that
     /// cannot reach a library cannot reach the world through one either.
-    static let selfContainedModules = ["SwiftMutantsCore"]
+    static let selfContainedModules = ["SwiftMutantsCore", "SwiftMutantsConfig"]
 
     /// Imports a self-contained module may declare.
     ///
     /// Everything else has to earn a place here, in a commit whose message says why.
-    static let permittedImports: Set<String> = ["Synchronization"]
+    static let permittedImports: Set<String> = ["Synchronization", "SwiftMutantsCore"]
 
     /// Modules that may import a library but must still reach no file, process or clock.
     ///
@@ -34,7 +34,7 @@ struct PurityGateTests {
     /// would own the byte-exact output, but a golden test pins those bytes for a fraction
     /// of the code and fails just as loudly if Foundation ever changes its mind.
     static let effectFreeModules = [
-        "SwiftMutantsCore", "SwiftMutantsTrace", "SwiftMutantsConsole",
+        "SwiftMutantsCore", "SwiftMutantsTrace", "SwiftMutantsConsole", "SwiftMutantsConfig",
     ]
 
     /// Names that mean "this code reached for the world".

@@ -49,6 +49,14 @@ let package = Package(
     targets: [
         .target(name: "SwiftMutantsCore", swiftSettings: strict),
 
+        // Reading a configuration, strictly. Pure: it turns text into values and says
+        // precisely where it stopped.
+        .target(
+            name: "SwiftMutantsConfig",
+            dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
         // The account a run keeps of itself. Pure: it decides what an event *is* and how
         // it is written down, while a sink that touches a disk lives outside.
         .target(
@@ -125,6 +133,11 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsConsoleTests",
             dependencies: ["SwiftMutantsConsole"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsConfigTests",
+            dependencies: ["SwiftMutantsConfig"],
             swiftSettings: strict
         ),
         .testTarget(
