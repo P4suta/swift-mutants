@@ -12,14 +12,28 @@ your package, then activates one mutant per test process through an environment 
 Your working tree is never modified, and the toolchain builds essentially once instead of
 once per mutant.
 
-## Status: nothing works yet
+## Status: the core exists, the engine does not
 
-This repository is being built from the ground up, gate first. What exists today is the
-development substrate: the strict build settings, the static-analysis gates, the
-repository invariants, and `SourceSpan` — the UTF-8 byte range every mutant identity will
-be anchored to.
+This repository is being built from the ground up, gate first, and every phase ships its
+own diagnostics in the same change that introduces it.
 
-Do not describe swift-mutants as usable. Nothing is published, tagged, or released.
+What exists today is the development substrate and the pure core: the strict build
+settings, the static-analysis gates, the repository invariants they enforce, and the
+values everything else will be built out of —
+
+| | |
+| --- | --- |
+| `SourceSpan` | a half-open range of UTF-8 byte offsets |
+| `SHA256`, `Digest`, `DigestBuilder` | content addressing, length-prefixed so fields cannot run together |
+| `WorkspaceRelativePath` | a path that refuses to be absolute |
+| `RuleIdentifier` | `add-to-sub@1`, with the version inside the identity |
+| `MutantIdentity`, `Mutant`, `Catalog` | what a mutant is called, and what a run found |
+| `Outcome`, `MutationScore` | what became of a mutant, and what that scores |
+| `Glob`, `GlobSet` | which files a run mutates |
+| `IntervalForest` | how a file's mutants nest before any is spliced |
+
+Nothing mutates anything yet. Do not describe swift-mutants as usable: nothing is
+published, tagged, or released.
 
 ## Requirements
 
