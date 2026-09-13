@@ -96,17 +96,25 @@ public struct FileDiscovery: Sendable, Hashable {
     /// What was passed over, and why.
     public let skips: [Skip]
 
+    /// Suppression comments naming something this build has never heard of.
+    ///
+    /// Reported rather than ignored. A comment that silences nothing is worse than no
+    /// comment: somebody wrote it, believed a mutant was dealt with, and it is still there.
+    public let unknownSuppressions: [UnknownSuppression]
+
     /// Records what was found in one file.
     public init(
         path: WorkspaceRelativePath,
         sourceDigest: Digest,
         candidates: [Candidate],
-        skips: [Skip]
+        skips: [Skip],
+        unknownSuppressions: [UnknownSuppression] = []
     ) {
         self.path = path
         self.sourceDigest = sourceDigest
         self.candidates = candidates
         self.skips = skips
+        self.unknownSuppressions = unknownSuppressions
     }
 
     /// The same discovery with only the candidates that pass `isKept`.
@@ -122,7 +130,24 @@ public struct FileDiscovery: Sendable, Hashable {
             path: path,
             sourceDigest: sourceDigest,
             candidates: candidates.filter(isKept),
-            skips: skips
+            skips: skips,
+            unknownSuppressions: unknownSuppressions
         )
+    }
+}
+
+/// A suppression comment naming a family this build does not have.
+public struct UnknownSuppression: Sendable, Hashable {
+
+    /// The line the comment is on, counting from one.
+    public let line: Int
+
+    /// What it named.
+    public let name: String
+
+    /// Records a comment that silences nothing.
+    public init(line: Int, name: String) {
+        self.line = line
+        self.name = name
     }
 }

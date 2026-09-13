@@ -38,7 +38,10 @@ public enum Discover {
             path: path,
             sourceDigest: Digest.of(source),
             candidates: walker.candidates.sorted { $0.span < $1.span },
-            skips: walker.skips.sorted { $0.span < $1.span }
+            skips: walker.skips.sorted { $0.span < $1.span },
+            unknownSuppressions: suppressions.unknownFamilies
+                .map { UnknownSuppression(line: $0.line, name: $0.name) }
+                .sorted { ($0.line, $0.name) < ($1.line, $1.name) }
         )
     }
 }

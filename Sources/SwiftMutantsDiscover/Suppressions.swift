@@ -33,6 +33,14 @@ struct Suppressions {
     /// Every line a suppression comment was written on, for the skip record.
     private(set) var commentLines: [Int] = []
 
+    /// Families named by a comment that this build has never heard of.
+    ///
+    /// Reported rather than ignored. A comment that silences nothing is worse than no
+    /// comment at all: somebody wrote it, believed a mutant was dealt with, and the mutant
+    /// is still there. A typo, a family renamed between releases, and a family from a
+    /// sibling project all look like this, and all of them deserve to be told about.
+    private(set) var unknownFamilies: [(line: Int, name: String)] = []
+
     init(source: String) {
         var open: [String: Int] = [:]
         for (number, text) in source.split(separator: "\n", omittingEmptySubsequences: false)
@@ -41,6 +49,10 @@ struct Suppressions {
             let line = number + 1
             guard let directive = Self.directive(in: String(text)) else { continue }
             commentLines.append(line)
+            for family in directive.families
+            where family != "all" && !Rules.families.contains(family) {
+                unknownFamilies.append((line: line, name: family))
+            }
             switch directive.action {
             case .disableNextLine:
                 byLine[line + 1, default: []].formUnion(directive.families)

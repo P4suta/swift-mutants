@@ -60,6 +60,16 @@ struct ListCommand: AsyncParsableCommand {
             }
         }
 
+        // Always, never behind a flag. A comment that silences nothing is somebody
+        // believing a mutant was dealt with when it was not, and the fix is one word.
+        for entry in listing.unknownSuppressions {
+            print(
+                "  \(entry.path):\(entry.suppression.line): "
+                    + "'\(entry.suppression.name)' is not an operator family, "
+                    + "so this comment silences nothing"
+            )
+        }
+
         let hidden = listing.skips.reduce(0) { $0 + $1.skip.candidatesHidden }
         print(
             "\(listing.catalog.mutants.count) mutants  \(listing.skips.count) skips"

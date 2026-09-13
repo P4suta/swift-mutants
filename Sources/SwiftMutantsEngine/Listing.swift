@@ -22,6 +22,13 @@ public struct Listing: Sendable {
     /// What was passed over, and why, by file.
     public let skips: [(path: WorkspaceRelativePath, skip: Skip)]
 
+    /// Suppression comments that silence nothing, by file.
+    ///
+    /// Surfaced rather than counted, because each one is somebody believing a mutant was
+    /// dealt with when it was not, and the fix is a one-word edit they can only make if
+    /// they are told where.
+    public let unknownSuppressions: [(path: WorkspaceRelativePath, suppression: UnknownSuppression)]
+
     /// Where each file's candidates were, for a listing that shows line and column.
     public let positions: [WorkspaceRelativePath: LineIndex]
 
@@ -59,6 +66,23 @@ public struct Lister: Sendable {
         self.executable = executable
     }
 
+    /// Turns one file's candidates into mutants, which is where an identity is fixed.
+    private static func mutants(
+        of discovery: FileDiscovery, at path: WorkspaceRelativePath
+    ) -> [Mutant] {
+        discovery.candidates.map { candidate in
+            Mutant(
+                path: path,
+                enclosingDeclaration: candidate.enclosingDeclaration,
+                rule: candidate.rule,
+                span: candidate.span,
+                sourceDigest: discovery.sourceDigest,
+                original: candidate.original,
+                replacement: candidate.replacement
+            )
+        }
+    }
+
     /// Reads the package, reads its sources, and says what could be mutated.
     ///
     /// The workspace is only ever read. `list` makes no copy because it changes nothing;
@@ -77,6 +101,7 @@ public struct Lister: Sendable {
 
         var mutants: [Mutant] = []
         var skips: [(path: WorkspaceRelativePath, skip: Skip)] = []
+        var unknown: [(path: WorkspaceRelativePath, suppression: UnknownSuppression)] = []
         var positions: [WorkspaceRelativePath: LineIndex] = [:]
         var filesRead = 0
 
@@ -93,25 +118,17 @@ public struct Lister: Sendable {
                 let discovery = Discover.candidates(in: source, at: path)
                 positions[path] = LineIndex(source)
                 for skip in discovery.skips { skips.append((path, skip)) }
-                for candidate in discovery.candidates {
-                    mutants.append(
-                        Mutant(
-                            path: path,
-                            enclosingDeclaration: candidate.enclosingDeclaration,
-                            rule: candidate.rule,
-                            span: candidate.span,
-                            sourceDigest: discovery.sourceDigest,
-                            original: candidate.original,
-                            replacement: candidate.replacement
-                        )
-                    )
+                for suppression in discovery.unknownSuppressions {
+                    unknown.append((path, suppression))
                 }
+                mutants += Self.mutants(of: discovery, at: path)
             }
         }
 
         return Listing(
             catalog: try Catalog(mutants),
             skips: skips,
+            unknownSuppressions: unknown,
             positions: positions,
             filesRead: filesRead
         )
