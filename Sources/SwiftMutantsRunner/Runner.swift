@@ -149,8 +149,22 @@ public struct Runner: Sendable {
         defer { deadline?.cancel() }
 
         // Started before the drains, because the child is already running and writing.
+        //
+        // The flag is set here, by the one thing that knows: the handler saying stop. It
+        // cannot be inferred from the reader having ended, because the reader also ends
+        // when the child goes - and a run that read that as a decision would mark a
+        // perfectly ordinary completion as "stopped", which downstream reads as a mutant
+        // nobody learned anything about.
         let watcher = supervision.pipe.map { pipe in
-            Task { await pipe.lines(supervision.onLine) }
+            Task {
+                await pipe.lines { line in
+                    guard supervision.onLine(line) else {
+                        supervision.stopped.markExceeded()
+                        return false
+                    }
+                    return true
+                }
+            }
         }
 
         async let output = Self.drain(execution.standardOutput, limit: supervision.limit)
@@ -165,8 +179,7 @@ public struct Runner: Sendable {
         // what makes this a stream rather than a report.
         let ending = Task {
             await watcher.value
-            guard !Task.isCancelled else { return }
-            supervision.stopped.markExceeded()
+            guard supervision.stopped.wasExceeded else { return }
             await Self.killTree(identifier)
         }
         defer { ending.cancel() }

@@ -130,6 +130,30 @@ struct WatchedRunTests {
         #expect(!FileManager.default.fileExists(atPath: marker), "a grandchild outlived the kill")
     }
 
+    /// The reader ends for two different reasons and only one of them is a decision: the
+    /// handler saying stop, and the child going away. Reading the second as the first marks
+    /// an ordinary completion as "stopped", which downstream is a mutant nobody learned
+    /// anything about - a survivor quietly reclassified as a harness failure.
+    ///
+    /// Slow on purpose: the handler is still working when the process exits, so the reader
+    /// certainly outlives the child rather than only usually.
+    @Test("does not mistake the child going away for an answer")
+    func childEndingIsNotAnAnswer() async throws {
+        let pipe = try #require(EventPipe(path: Self.pipePath()))
+        defer { pipe.discard() }
+
+        let outcome = await Runner(recorder: TraceRecorder()).run(
+            Self.spec("printf 'a\\nb\\nc\\n' > '\(pipe.path)'"),
+            watching: pipe
+        ) { _ in
+            Thread.sleep(forTimeInterval: 0.05)
+            return true
+        }
+
+        #expect(outcome.exitCode == 0)
+        #expect(!outcome.stoppedEarly)
+    }
+
     /// Watching is optional, and a run without it behaves exactly as it did before.
     @Test("runs unwatched when there is nothing to watch")
     func unwatched() async throws {

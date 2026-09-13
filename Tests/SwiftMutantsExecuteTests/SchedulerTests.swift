@@ -1,0 +1,237 @@
+// SPDX-FileCopyrightText: 2026 swift-mutants contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+import Foundation
+import SwiftMutantsBuild
+import SwiftMutantsCore
+import SwiftMutantsDiscover
+import SwiftMutantsInstrument
+import SwiftMutantsRunner
+import SwiftMutantsTrace
+import Synchronization
+import Testing
+
+@testable import SwiftMutantsExecute
+
+/// Running every mutant, a few at a time, and coming back with an answer that does not
+/// depend on which worker was quickest.
+@Suite("Scheduler")
+struct SchedulerTests {
+
+    struct Fake {
+        let plan: TestPlan
+        let scratch: URL
+        func cleanUp() { try? FileManager.default.removeItem(at: scratch) }
+    }
+
+    /// A scripted test bundle that fails for some mutants and passes for the rest.
+    ///
+    /// It also records that it ran, so a test can ask how many were in flight at once
+    /// rather than trusting the scheduler's own account of itself.
+    static func fake(failingFor failing: Set<UInt32>) throws -> Fake {
+        let scratch = FileManager.default.temporaryDirectory
+            .appending(path: "swift-mutants-sched-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let script = scratch.appending(path: "bundle.sh")
+        try Data(Self.script(failingFor: failing, in: scratch).utf8).write(to: script)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o755)], ofItemAtPath: script.path)
+
+        return Fake(
+            plan: TestPlan(
+                executable: "/bin/sh",
+                arguments: [script.path],
+                environment: [:],
+                directory: scratch.path
+            ),
+            scratch: scratch
+        )
+    }
+
+    static func script(failingFor failing: Set<UInt32>, in scratch: URL) -> String {
+        let failures = failing.map(String.init).sorted().joined(separator: " ")
+        return """
+            #!/bin/sh
+            STREAM=""
+            while [ $# -gt 0 ]; do
+              case "$1" in
+                --event-stream-output-path) STREAM="$2"; shift 2 ;;
+                *) shift ;;
+              esac
+            done
+            MUTANT="${SWIFT_MUTANTS_ACTIVE:-base}"
+            LIVE='\(scratch.path)/live'
+            mkdir -p "$LIVE"
+            touch "$LIVE/$MUTANT"
+            ls "$LIVE" | wc -l >> '\(scratch.path)/inflight.txt'
+            printf '%s\\n' \\
+              '{"kind":"event","payload":{"kind":"runStarted"}}' \\
+              '{"kind":"event","payload":{"kind":"testStarted","testID":"P.S/f()"}}' > "$STREAM"
+            for bad in \(failures); do
+              if [ "$MUTANT" = "$bad" ]; then
+                printf '%s\\n' \\
+                  '{"kind":"event","payload":{"kind":"issueRecorded","testID":"P.S/f()",\
+            "issue":{"isFailure":true}}}' > "$STREAM"
+                rm -f "$LIVE/$MUTANT"
+                exit 1
+              fi
+            done
+            sleep 0.2
+            printf '%s\\n' \\
+              '{"kind":"event","payload":{"kind":"testEnded","testID":"P.S/f()"}}' \\
+              '{"kind":"event","payload":{"kind":"runEnded"}}' > "$STREAM"
+            rm -f "$LIVE/$MUTANT"
+            exit 0
+            """
+    }
+
+    static func path() -> WorkspaceRelativePath {
+        guard let path = WorkspaceRelativePath("Sources/Subject.swift") else {
+            fatalError("malformed fixture path")
+        }
+        return path
+    }
+
+    /// Six mutants in one file, from the real instrumenter rather than made up.
+    static func mutants() throws -> [InstrumentedMutant] {
+        let source = """
+            func f(_ a: Int, _ b: Int, _ c: Int, _ d: Int) -> Bool {
+                let one = a < b
+                let two = c > d
+                return one && two
+            }
+            """
+        let discovery = Discover.candidates(in: source, at: Self.path())
+        return try Instrument.file(source, discovery: discovery).mutants
+            .sorted { $0.index < $1.index }
+    }
+
+    static func scheduler(_ fake: Fake, jobs: Int = 3) -> Scheduler {
+        Scheduler(
+            plan: fake.plan,
+            runner: Runner(recorder: TraceRecorder()),
+            scratch: fake.scratch,
+            timeout: .seconds(30),
+            jobs: jobs
+        )
+    }
+
+    @Test("reports every mutant it was given")
+    func reportsEveryMutant() async throws {
+        let mutants = try Self.mutants()
+        let fake = try Self.fake(failingFor: [])
+        defer { fake.cleanUp() }
+
+        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        #expect(results.count == mutants.count)
+        #expect(results.allSatisfy { $0.verdict.outcome == .survived })
+    }
+
+    /// Which worker finishes first is a fact about the machine. A report that changed
+    /// shape because a machine was busy could not be diffed against yesterday's.
+    @Test("reports them in the order it was given, not the order they finished")
+    func keepsTheOrder() async throws {
+        let mutants = try Self.mutants()
+        // The first fails immediately and the rest sleep, so completion order is certainly
+        // not the order they were given in.
+        let fake = try Self.fake(failingFor: [mutants[0].index])
+        defer { fake.cleanUp() }
+
+        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        #expect(results.map(\.identity) == mutants.map(\.identity))
+    }
+
+    @Test("says which mutants the tests caught")
+    func saysWhatWasCaught() async throws {
+        let mutants = try Self.mutants()
+        let caught = Set([mutants[1].index, mutants[3].index])
+        let fake = try Self.fake(failingFor: caught)
+        defer { fake.cleanUp() }
+
+        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        let killed = results.filter { $0.verdict.outcome == .killed }.map(\.identity)
+        #expect(Set(killed) == Set([mutants[1].identity, mutants[3].identity]))
+    }
+
+    /// Asked of the processes themselves rather than of the scheduler, because a scheduler
+    /// that miscounted its own workers would agree with itself.
+    @Test("runs no more at once than it was allowed")
+    func respectsTheLimit() async throws {
+        let mutants = try Self.mutants()
+        let fake = try Self.fake(failingFor: [])
+        defer { fake.cleanUp() }
+
+        _ = await Self.scheduler(fake, jobs: 2).run(mutants, in: Self.path())
+
+        let counts = try String(
+            contentsOf: fake.scratch.appending(path: "inflight.txt"), encoding: .utf8
+        )
+        .split(separator: "\n").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        #expect(!counts.isEmpty)
+        #expect(counts.max() ?? 0 <= 2, "saw \(counts.max() ?? 0) processes at once")
+    }
+
+    @Test("runs one at a time when told to")
+    func serial() async throws {
+        let mutants = try Self.mutants()
+        let fake = try Self.fake(failingFor: [])
+        defer { fake.cleanUp() }
+
+        _ = await Self.scheduler(fake, jobs: 1).run(mutants, in: Self.path())
+
+        let counts = try String(
+            contentsOf: fake.scratch.appending(path: "inflight.txt"), encoding: .utf8
+        )
+        .split(separator: "\n").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        #expect(counts.max() ?? 0 == 1)
+    }
+
+    /// Nothing to run is a valid answer and must not be a hang or a crash.
+    @Test("holds a catalogue with nothing in it")
+    func empty() async throws {
+        let fake = try Self.fake(failingFor: [])
+        defer { fake.cleanUp() }
+        #expect(await Self.scheduler(fake).run([], in: Self.path()).isEmpty)
+    }
+
+    /// The instrumented baseline wakes nothing. Its passing is what says the guards left
+    /// the program alone.
+    @Test("runs a baseline with nothing awake")
+    func baseline() async throws {
+        // Scripted to fail for mutant zero, which is what a baseline that woke *something*
+        // would have woken. Without that, a baseline that activated the first mutant would
+        // pass for the same reason the real baseline does, and say nothing.
+        let fake = try Self.fake(failingFor: [0])
+        defer { fake.cleanUp() }
+        #expect(await Self.scheduler(fake).baseline().outcome == .survived)
+    }
+
+    @Test("tells somebody about each answer as it arrives")
+    func reportsProgress() async throws {
+        let mutants = try Self.mutants()
+        let fake = try Self.fake(failingFor: [])
+        defer { fake.cleanUp() }
+
+        let seen = Mutex(0)
+        _ = await Self.scheduler(fake).run(mutants, in: Self.path()) { _ in
+            seen.withLock { $0 += 1 }
+        }
+        #expect(seen.withLock { $0 } == mutants.count)
+    }
+
+    /// A mutant the compiler refused never ran, so counting only what executed would drop
+    /// it out of the report entirely.
+    @Test("counts rejections it never ran")
+    func countsRejections() async throws {
+        let mutants = try Self.mutants()
+        let fake = try Self.fake(failingFor: [mutants[0].index])
+        defer { fake.cleanUp() }
+
+        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        let summary = try #require(RunSummary.of(results, rejected: 2))
+        #expect(summary.killed == 1)
+        #expect(summary.survived == mutants.count - 1)
+        #expect(summary.rejected == 2)
+        #expect(summary.total == mutants.count + 2)
+    }
+}
