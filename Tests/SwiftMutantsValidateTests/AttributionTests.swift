@@ -191,3 +191,98 @@ struct AttributionTests {
         #expect(attribution.unattributed.count == 1)
     }
 }
+
+/// The same file, named two ways.
+///
+/// On macOS `/var` is a symlink to `/private/var`, so a temporary directory is `/var/...`
+/// to the tool that made it and `/private/var/...` to the compiler that was handed a file
+/// inside it. Comparing the strings therefore matches nothing at all: every diagnostic is
+/// unattributed, every compile "explains nothing", and a run that should have named its
+/// rejections in one build instead halves its way through the catalogue and then blames an
+/// innocent file. That is exactly what happened the first time this was pointed at a real
+/// package.
+///
+/// Real paths, on a real filesystem, because the normalisation is the filesystem's: a
+/// fixture of made-up strings would pass against a rule that merely stripped a prefix.
+@Suite("Attribution across path spellings")
+struct AttributionPathTests {
+
+    static func instrument(_ source: String) throws -> InstrumentedFile {
+        guard let relative = WorkspaceRelativePath("Sources/Subject.swift") else {
+            fatalError("malformed fixture path")
+        }
+        return try Instrument.file(source, discovery: Discover.candidates(in: source, at: relative))
+    }
+
+    static func diagnostic(
+        at path: String, for rule: String, in file: InstrumentedFile
+    ) throws
+        -> String
+    {
+        let mutant = try #require(file.mutants.first { $0.rule.name == rule })
+        let place = try #require(LineIndex(file.source).position(of: mutant.instrumentedSpan.start))
+        return "\(path):\(place.line):\(place.column): error: no"
+    }
+
+    /// A real file under the temporary directory, named both ways.
+    struct Fixture {
+        let asMade: String
+        let asResolved: String
+        let directory: URL
+        func cleanUp() { try? FileManager.default.removeItem(at: directory) }
+    }
+
+    static func fixture() throws -> Fixture {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "swift-mutants-paths-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appending(path: "Subject.swift")
+        try Data("placeholder".utf8).write(to: file)
+        // How the tool names it, and how the compiler names it: on macOS `/var` is a
+        // symlink to `/private/var`, and a compiler handed a file under a temporary
+        // directory reports the second spelling.
+        return Fixture(
+            asMade: file.path,
+            asResolved: "/private" + file.path,
+            directory: directory
+        )
+    }
+
+    @Test("finds the mutant however the compiler spelled the path")
+    func matchesAcrossSpellings() throws {
+        let paths = try Self.fixture()
+        defer { paths.cleanUp() }
+        // The premise: the two spellings differ, or this test proves nothing.
+        #expect(paths.asMade != paths.asResolved, "the two spellings must actually differ")
+
+        let file = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
+        for (recorded, reported) in [
+            (paths.asMade, paths.asResolved), (paths.asResolved, paths.asMade),
+        ] {
+            let attribution = Attribute.diagnostics(
+                CompilerDiagnostic.parse(
+                    try Self.diagnostic(at: reported, for: "lt-to-le", in: file)),
+                to: [recorded: file]
+            )
+            #expect(attribution.rejected.map(\.rule.name) == ["lt-to-le"])
+            #expect(attribution.unattributed.isEmpty)
+        }
+    }
+
+    /// Two genuinely different files must still be told apart. Seeing through a link is
+    /// not licence to match anything that ends the same way.
+    @Test("still refuses a different file that ends the same way")
+    func differentFile() throws {
+        let paths = try Self.fixture()
+        defer { paths.cleanUp() }
+        let file = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
+
+        let attribution = Attribute.diagnostics(
+            CompilerDiagnostic.parse(
+                try Self.diagnostic(at: "/elsewhere/Subject.swift", for: "lt-to-le", in: file)),
+            to: [paths.asMade: file]
+        )
+        #expect(attribution.rejected.isEmpty)
+        #expect(attribution.unattributed.count == 1)
+    }
+}

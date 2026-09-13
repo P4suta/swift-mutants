@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import Foundation
+
 public import SwiftMutantsCore
 public import SwiftMutantsInstrument
 
@@ -62,7 +64,16 @@ public enum Attribute {
     ) -> Attribution {
         // One lookup, not two. Indexing a file and finding it are the same question, and
         // asking it twice leaves a branch no test can reach on its own.
-        let known = files.mapValues { (file: $0, index: LineIndex($0.source)) }
+        //
+        // Keyed by the path with its links resolved, because the compiler resolves them
+        // and this tool does not: on macOS `/var` is a symlink to `/private/var`, so a
+        // temporary directory is `/var/...` to whoever made it and `/private/var/...` to
+        // whoever was handed a file inside it. Comparing the strings matches nothing, and
+        // nothing matching reads exactly like a compiler that explained nothing.
+        var known: [String: (file: InstrumentedFile, index: LineIndex)] = [:]
+        for (path, file) in files {
+            known[Self.resolved(path)] = (file, LineIndex(file.source))
+        }
 
         var found: [MutantIdentity: [CompilerDiagnostic]] = [:]
         var placed: [MutantIdentity: InstrumentedMutant] = [:]
@@ -71,7 +82,7 @@ public enum Attribute {
         for diagnostic in diagnostics {
             guard diagnostic.severity == .error else { continue }
             guard
-                let entry = known[diagnostic.file],
+                let entry = known[Self.resolved(diagnostic.file)],
                 let offset = entry.index.offset(of: diagnostic.position),
                 let mutant = entry.file.mutants.first(where: {
                     $0.instrumentedSpan.contains(offset: offset)
@@ -98,5 +109,15 @@ public enum Attribute {
                 )
             }
         return Attribution(rejected: rejected, unattributed: unattributed)
+    }
+
+    /// A path with its symbolic links followed, so two spellings of one file agree.
+    ///
+    /// The filesystem does the normalising rather than a rule about prefixes, so two
+    /// genuinely different files are still told apart - and so this keeps working on a
+    /// platform whose links are somewhere else entirely. It relies on the file existing,
+    /// which it does: validation wrote it a moment ago and the compiler has just read it.
+    private static func resolved(_ path: String) -> String {
+        URL(filePath: path).resolvingSymlinksInPath().path
     }
 }

@@ -170,7 +170,15 @@ public struct Validator: Sendable {
 
     // MARK: - Bisection
 
-    /// Halves the catalogue until the refusals are cornered.
+    /// Halves the whole catalogue until the refusals are cornered.
+    ///
+    /// Over every file at once, not one file at a time. Narrowing a single file while the
+    /// others keep all their mutants asks a question nobody wanted the answer to: "does
+    /// this file compile while every other file is still full of possibly-refused
+    /// mutants". The answer is no whenever *any* file has a bad mutant, and the innocent
+    /// file being narrowed is what gets blamed. Measured on this repository the first time
+    /// it ran: five refused mutants in four other files, and the accusation landed on a
+    /// fifth that was fine.
     ///
     /// Costs a compile per halving rather than one per mutant, which is the only thing
     /// that makes it an acceptable fallback. It assumes mutants are independent - that a
@@ -182,71 +190,66 @@ public struct Validator: Sendable {
         var rounds = 0
     }
 
+    /// One candidate, and which file it came from.
+    private struct Located: Hashable {
+        let file: Int
+        let key: Key
+    }
+
     private func bisect(
         _ files: [FileUnderValidation], discoveries: [FileDiscovery]
     ) async throws(ValidationError) -> Bisection {
-        var found = Bisection(discoveries: discoveries)
-
-        // One file at a time: a diagnostic that would not say where it was does not say
-        // which file either, and narrowing one file while the others stay whole is what
-        // keeps each answer about one file.
-        for position in discoveries.indices {
-            let candidates = discoveries[position].candidates
-            guard !candidates.isEmpty else { continue }
-            let search = try await narrow(
-                candidates, at: position, files: files, discoveries: found.discoveries)
-            found.rounds += search.rounds
-            guard !search.refused.isEmpty else { continue }
-
-            let refused = Set(search.refused.map { Key($0.span, $0.rule) })
-            found.discoveries[position] = discoveries[position].keeping {
-                !refused.contains(Key($0.span, $0.rule))
-            }
-            found.rejected += try Self.rejections(
-                for: search.refused, in: files[position], discovery: discoveries[position])
-        }
-        return found
-    }
-
-    /// Finds the refused candidates of one file by halving.
-    private func narrow(
-        _ candidates: [Candidate],
-        at position: Int,
-        files: [FileUnderValidation],
-        discoveries: [FileDiscovery]
-    ) async throws(ValidationError) -> (refused: [Candidate], rounds: Int) {
-        // Nothing left to blame means the file does not compile on its own, which is a
-        // fact about the package rather than about any mutant this tool produced.
-        let bare = try await compiles([], at: position, files: files, discoveries: discoveries)
+        // Nothing at all in, anywhere. If that does not build, the package does not build,
+        // and none of the errors are about anything this tool did.
+        let bare = try await compiles([], files: files, discoveries: discoveries)
         guard bare.compiles else {
             throw ValidationError(
                 """
-                \(files[position].name) does not compile with no mutants in it at all, so the \
-                errors the compiler reported are not about anything this tool did.
+                the package does not build with no mutants in it at all, so the errors the \
+                compiler reported are not about anything swift-mutants did.
                 """,
                 diagnostics: bare.diagnostics
             )
         }
-        let found = try await search(
-            candidates, at: position, files: files, discoveries: discoveries)
-        return (found.refused, found.rounds + bare.rounds)
+
+        let everything = discoveries.enumerated().flatMap { position, discovery in
+            discovery.candidates.map { Located(file: position, key: Key($0.span, $0.rule)) }
+        }
+        let found = try await search(everything, files: files, discoveries: discoveries)
+
+        var result = Bisection(discoveries: discoveries, rounds: bare.rounds + found.rounds)
+        let refused = Set(found.refused)
+        for position in discoveries.indices {
+            let here = refused.filter { $0.file == position }.map(\.key)
+            guard !here.isEmpty else { continue }
+            let keys = Set(here)
+            result.discoveries[position] = discoveries[position].keeping {
+                !keys.contains(Key($0.span, $0.rule))
+            }
+            result.rejected += try Self.rejections(
+                matching: keys, in: files[position], discovery: discoveries[position])
+        }
+        return result
     }
 
-    /// Whether the file compiles with only these candidates in it.
+    /// Whether the tree compiles with only these candidates in it, anywhere.
     ///
     /// A method rather than a closure over the search's state. Local functions that capture
     /// and mutate a `var` across an `await` are a shape this code had once and does not
-    /// have now: the count comes back as a value, so there is nothing shared to get wrong.
+    /// have now: the count comes back as a value, so there is nothing shared to get wrong -
+    /// and an optimised build no longer dies in `swift_retain` part way through.
     private func compiles(
-        _ subset: [Candidate],
-        at position: Int,
+        _ subset: [Located],
         files: [FileUnderValidation],
         discoveries: [FileDiscovery]
     ) async throws(ValidationError) -> Attempt {
-        var trial = discoveries
-        let keys = Set(subset.map { Key($0.span, $0.rule) })
-        trial[position] = discoveries[position].keeping { keys.contains(Key($0.span, $0.rule)) }
+        var byFile: [Int: Set<Key>] = [:]
+        for located in subset { byFile[located.file, default: []].insert(located.key) }
 
+        let trial = discoveries.enumerated().map { position, discovery in
+            let keep = byFile[position] ?? []
+            return discovery.keeping { keep.contains(Key($0.span, $0.rule)) }
+        }
         let instrumented = try Self.instrument(files, as: trial)
         let paths = try write(instrumented, for: files)
         let output = await compiler.typecheck(paths)
@@ -266,21 +269,19 @@ public struct Validator: Sendable {
 
     /// Halves a subset until the refusals are cornered.
     private func search(
-        _ subset: [Candidate],
-        at position: Int,
+        _ subset: [Located],
         files: [FileUnderValidation],
         discoveries: [FileDiscovery]
-    ) async throws(ValidationError) -> (refused: [Candidate], rounds: Int) {
-        let attempt = try await compiles(
-            subset, at: position, files: files, discoveries: discoveries)
+    ) async throws(ValidationError) -> (refused: [Located], rounds: Int) {
+        let attempt = try await compiles(subset, files: files, discoveries: discoveries)
         guard !attempt.compiles else { return ([], attempt.rounds) }
         guard subset.count > 1 else { return (subset, attempt.rounds) }
 
         let middle = subset.count / 2
         let left = try await search(
-            Array(subset[..<middle]), at: position, files: files, discoveries: discoveries)
+            Array(subset[..<middle]), files: files, discoveries: discoveries)
         let right = try await search(
-            Array(subset[middle...]), at: position, files: files, discoveries: discoveries)
+            Array(subset[middle...]), files: files, discoveries: discoveries)
         return (left.refused + right.refused, attempt.rounds + left.rounds + right.rounds)
     }
 
@@ -290,9 +291,8 @@ public struct Validator: Sendable {
     /// it - the compile that refused it said nothing placeable. The rejection is recorded
     /// with an empty diagnostic list rather than with a sentence this tool made up.
     private static func rejections(
-        for candidates: [Candidate], in file: FileUnderValidation, discovery: FileDiscovery
+        matching keys: Set<Key>, in file: FileUnderValidation, discovery: FileDiscovery
     ) throws(ValidationError) -> [Rejection] {
-        let keys = Set(candidates.map { Key($0.span, $0.rule) })
         let onlyThese = discovery.keeping { keys.contains(Key($0.span, $0.rule)) }
         let instrumented = try Self.instrument(
             [file], as: [onlyThese]
