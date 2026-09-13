@@ -32,12 +32,24 @@ let strict: [SwiftSetting] =
 
 let package = Package(
     name: "swift-mutants",
-    platforms: [.macOS(.v14)],
+    // macOS 15 for Synchronization.Mutex, which is what lets the trace recorder be a
+    // Sendable value with a cheap synchronous `record` rather than an actor whose every
+    // call site would have to be async. Nothing is lost: Swift 6.3 means Xcode 26, which
+    // does not run on macOS 14.
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "SwiftMutantsCore", targets: ["SwiftMutantsCore"])
     ],
     targets: [
         .target(name: "SwiftMutantsCore", swiftSettings: strict),
+
+        // The account a run keeps of itself. Pure: it decides what an event *is* and how
+        // it is written down, while a sink that touches a disk lives outside.
+        .target(
+            name: "SwiftMutantsTrace",
+            dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
 
         // Test support, and test support only. It lives under Sources/ because a
         // .testTarget cannot be a dependency of another .testTarget, not because it ships.
@@ -46,6 +58,12 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsCoreTests",
             dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
+        .testTarget(
+            name: "SwiftMutantsTraceTests",
+            dependencies: ["SwiftMutantsTrace"],
             swiftSettings: strict
         ),
 

@@ -38,7 +38,7 @@ published, tagged, or released.
 ## Requirements
 
 - Swift 6.3 or newer
-- macOS 14 or newer
+- macOS 15 or newer
 - [mise](https://mise.jdx.dev), which pins every tool the gates depend on
 
 ## Working on this repository

@@ -16,12 +16,24 @@ import Testing
 @Suite("Purity gate")
 struct PurityGateTests {
 
-    /// Modules that must stay free of ambient effects.
-    static let pureModules = ["SwiftMutantsCore"]
+    /// Modules that may import nothing outside ``permittedImports``.
+    ///
+    /// The strictest tier, and the one the golden identity vectors rest on: a module that
+    /// cannot reach a library cannot reach the world through one either.
+    static let selfContainedModules = ["SwiftMutantsCore"]
 
-    /// Imports a pure module may declare. Everything else has to earn a place here, in a
-    /// commit whose message says why.
+    /// Imports a self-contained module may declare.
+    ///
+    /// Everything else has to earn a place here, in a commit whose message says why.
     static let permittedImports: Set<String> = ["Synchronization"]
+
+    /// Modules that may import a library but must still reach no file, process or clock.
+    ///
+    /// `SwiftMutantsTrace` is here rather than in the strict tier because writing a JSON
+    /// line needs Foundation's encoder. That is a deliberate trade: a hand-written encoder
+    /// would own the byte-exact output, but a golden test pins those bytes for a fraction
+    /// of the code and fails just as loudly if Foundation ever changes its mind.
+    static let effectFreeModules = ["SwiftMutantsCore", "SwiftMutantsTrace"]
 
     /// Names that mean "this code reached for the world".
     ///
@@ -34,7 +46,9 @@ struct PurityGateTests {
         "Date()", "Date.now", "DispatchQueue", "ProcessInfo", "getenv",
     ]
 
-    @Test("pure modules import nothing outside the permitted set", arguments: pureModules)
+    @Test(
+        "self-contained modules import nothing outside the permitted set",
+        arguments: selfContainedModules)
     func importsAreConfined(module: String) throws {
         var offences: [String] = []
         for file in try RepositoryGate.swiftFiles(under: "Sources/\(module)") {
@@ -57,7 +71,7 @@ struct PurityGateTests {
         )
     }
 
-    @Test("pure modules name no effectful symbol", arguments: pureModules)
+    @Test("effect-free modules name no effectful symbol", arguments: effectFreeModules)
     func effectfulSymbolsAreAbsent(module: String) throws {
         var offences: [String] = []
         for file in try RepositoryGate.swiftFiles(under: "Sources/\(module)") {
