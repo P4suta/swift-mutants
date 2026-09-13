@@ -15,9 +15,9 @@ public import SwiftMutantsRunner
 /// and a score quietly dragged down by them.
 public struct SwiftPackageManager: Sendable {
 
-    private let root: URL
-    private let runner: Runner
-    private let executable: String
+    let root: URL
+    let runner: Runner
+    let executable: String
 
     /// Asks about the package at `root`.
     ///

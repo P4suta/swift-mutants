@@ -3,6 +3,7 @@
 
 import Foundation
 import SwiftMutantsCore
+import SwiftMutantsBuild
 import SwiftMutantsRunner
 import SwiftMutantsTrace
 import Testing
