@@ -12,28 +12,28 @@ your package, then activates one mutant per test process through an environment 
 Your working tree is never modified, and the toolchain builds essentially once instead of
 once per mutant.
 
-## Status: the core exists, the engine does not
+## Status: it instruments and switches; it does not yet run your tests
 
-This repository is being built from the ground up, gate first, and every phase ships its
-own diagnostics in the same change that introduces it.
-
-What exists today is the development substrate and the pure core: the strict build
-settings, the static-analysis gates, the repository invariants they enforce, and the
-values everything else will be built out of —
+Built from the ground up, gate first, with every phase shipping its own diagnostics in the
+same change that introduces it. What works today, proven by tests that compile and run real
+code:
 
 | | |
 | --- | --- |
-| `SourceSpan` | a half-open range of UTF-8 byte offsets |
-| `SHA256`, `Digest`, `DigestBuilder` | content addressing, length-prefixed so fields cannot run together |
-| `WorkspaceRelativePath` | a path that refuses to be absolute |
-| `RuleIdentifier` | `add-to-sub@1`, with the version inside the identity |
-| `MutantIdentity`, `Mutant`, `Catalog` | what a mutant is called, and what a run found |
-| `Outcome`, `MutationScore` | what became of a mutant, and what that scores |
-| `Glob`, `GlobSet` | which files a run mutates |
-| `IntervalForest` | how a file's mutants nest before any is spliced |
+| **Pure core** | byte spans, SHA-256, content-addressed mutant identities, catalogue, score, glob, interval forest |
+| **Observability** | always-on trace with a bounded ring, one choke point that records every subprocess, deterministic console renderer, diagnostics bundle |
+| **A scripted toolchain** | a `swift` and an `xcodebuild` that hang, print garbage or leave a red baseline on demand, so the unit tier can test what happens when a real one misbehaves |
+| **Configuration** | a TOML reader that refuses an unknown key with the line it was written on |
+| **Snapshot** | a disposable copy that refuses links and special files, and a second digest that notices a test writing into the tree |
+| **Discovery** | comparisons, connectives and boolean literals, with precedence resolved, arid suppression, and comment pragmas |
+| **Instrumentation** | every mutant in one tree behind a runtime guard, the line count unchanged, and an activation proof |
 
-Nothing mutates anything yet. Do not describe swift-mutants as usable: nothing is
-published, tagged, or released.
+The instrumented file is known to compile, to behave exactly as the original when nothing
+is activated, to change exactly one thing when one mutant is woken, and to survive `-O`.
+
+What is missing is the part that runs your tests: building the package, executing one mutant
+per process, coverage, the report and the CLI. **swift-mutants cannot measure anything yet.**
+Nothing is published, tagged, or released.
 
 ## Requirements
 

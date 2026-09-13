@@ -18,6 +18,12 @@ public struct InstrumentedFile: Sendable, Hashable {
     /// What was put in, and what each one is called.
     public let mutants: [InstrumentedMutant]
 
+    /// The per-file suffix this file's runtime carries.
+    ///
+    /// It survives compilation into the symbol table, which is what lets a proof ask the
+    /// built product whether this file reached it at all.
+    public let runtimeToken: String
+
     /// How many lines the runtime added.
     ///
     /// The only lines a file gains. Everything above the runtime keeps its number, which is

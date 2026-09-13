@@ -34,7 +34,7 @@ public enum Instrument {
         discovery: FileDiscovery
     ) throws(InstrumentError) -> InstrumentedFile {
         guard !discovery.candidates.isEmpty else {
-            return InstrumentedFile(source: source, runtime: "", mutants: [])
+            return InstrumentedFile(source: source, runtime: "", mutants: [], runtimeToken: "")
         }
 
         let bytes = Array(source.utf8)
@@ -77,7 +77,8 @@ public enum Instrument {
         return InstrumentedFile(
             source: rewritten + runtime,
             runtime: runtime,
-            mutants: numbered.mutants
+            mutants: numbered.mutants,
+            runtimeToken: token
         )
     }
 

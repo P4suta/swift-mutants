@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format follows
 
 - The development substrate: strict build settings, the static-analysis gates, and the
   repository invariants they enforce.
+- Discovery over swift-syntax with precedence resolved, arid suppression and comment
+  pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
+  without changing the line count, with an activation proof over both the spliced source
+  and the built product.
+- A scripted toolchain, a recording process runner, a trace with a bounded always-on ring,
+  a diagnostics bundle, a strict TOML configuration reader, and a disposable snapshot.
 - The pure core: `SourceSpan`, `SHA256`, `Digest`, `DigestBuilder`,
   `WorkspaceRelativePath`, `RuleIdentifier`, `MutantIdentity`, `Mutant`, `Catalog`,
   `Outcome`, `MutationScore`, `Glob`, `GlobSet` and `IntervalForest` — none of which
