@@ -82,6 +82,13 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // Putting every compilable mutant into one tree, each dormant behind a guard.
+        .target(
+            name: "SwiftMutantsInstrument",
+            dependencies: ["SwiftMutantsCore", "SwiftMutantsDiscover"],
+            swiftSettings: strict
+        ),
+
         // A disposable copy of somebody's package, and the manifest that says what is
         // in it. The first invariant: the tree a run was pointed at is never written to.
         .target(
@@ -140,6 +147,16 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "InstrumentIntegrationTests",
+            dependencies: ["SwiftMutantsInstrument", "SwiftMutantsTestKit"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsInstrumentTests",
+            dependencies: ["SwiftMutantsInstrument"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsDiscoverTests",
             dependencies: ["SwiftMutantsDiscover"],
