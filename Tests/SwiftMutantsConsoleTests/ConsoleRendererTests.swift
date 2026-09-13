@@ -115,14 +115,18 @@ struct ConsoleRendererTests {
     /// Two streams share one output, so they are separated by shape rather than by
     /// interleaving: `grep '^  '` is the account, `grep -v '^  '` is the run.
     @Test("indents a recorded event by exactly two spaces, and a run line by none")
-    func accountAndRunAreSeparableByIndentation() {
+    func accountAndRunAreSeparableByIndentation() throws {
         let renderer = ConsoleRenderer(verbosity: .veryVerbose, color: false)
-        let recorded = renderer.trace(
-            TraceEvent(sequence: 4, kind: .phaseEnded(phase: "snapshot", durationMilliseconds: 231))
+        let line = try #require(
+            renderer.trace(
+                TraceEvent(
+                    sequence: 4,
+                    kind: .phaseEnded(phase: "snapshot", durationMilliseconds: 231)
+                )
+            )
         )
-        let line = try? #require(recorded)
-        #expect(line?.hasPrefix("  ") == true)
-        #expect(line?.hasPrefix("   ") == false)
+        #expect(line.hasPrefix("  "))
+        #expect(!line.hasPrefix("   "))
 
         let runLines = renderer.summary(
             Self.summary(),
