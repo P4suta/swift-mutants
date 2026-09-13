@@ -9,6 +9,7 @@ import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsRunner
 import SwiftMutantsTrace
+import Synchronization
 
 /// Measures what the tests catch.
 ///
@@ -64,38 +65,20 @@ struct RunCommand: AsyncParsableCommand {
         configuration.execution.jobs = jobs
         if let timeout { configuration.test.timeout = .seconds(timeout) }
 
+        let progress = RunProgress()
         let outcome = try await Run(
             root: root,
             configuration: configuration,
             runner: Runner(recorder: TraceRecorder()),
             workspace: workspace,
             testArguments: testArguments
-        ).run(environment: Ambient.environment) { Self.report($0) }
+        ).run(environment: Ambient.environment) { progress.report($0) }
 
         Self.summarise(outcome)
         // Exit 1 is reserved for a policy somebody asked for. A run that completed and
         // found survivors has not failed - it has answered - and a tool that exited
         // non-zero for answering would be a tool people stop running.
         if strict, outcome.summary.survived > 0 { throw ExitCode(1) }
-    }
-
-    /// One line per phase, and nothing per mutant except when one is caught.
-    ///
-    /// A run of any size produces thousands of results, and a line each would bury the
-    /// handful that a person can act on.
-    private static func report(_ stage: RunStage) {
-        switch stage {
-        case .snapshotting: print("copying the package")
-        case .discovering: print("reading the sources")
-        case .instrumenting(let files, let mutants):
-            print("instrumenting \(mutants) mutants across \(files) files")
-        case .validating: print("asking the compiler which ones it will accept")
-        case .proving: print("proving every mutant is in the tree")
-        case .building: print("building the tests, once")
-        case .baseline: print("running the tests with nothing awake")
-        case .running(let total): print("running \(total) mutants")
-        case .finished: break
-        }
     }
 
     private static func summarise(_ outcome: RunOutcome) {
@@ -122,5 +105,86 @@ struct RunCommand: AsyncParsableCommand {
         print(
             "score \(summary.score.rendered)  of covered code \(summary.score.renderedForCoveredCode)"
         )
+    }
+}
+
+/// Says what a run is doing while it does it.
+///
+/// A line per mutant would bury the handful a person can act on, and no line at all leaves
+/// somebody watching a silent terminal for half an hour wondering whether it has hung -
+/// which is what the first run of this tool against this repository felt like. So: counts,
+/// periodically, and the survivors at the end where they are sorted.
+///
+/// Counts rather than names, because results arrive from whichever worker finished first.
+/// A line naming mutants in that order would differ between two runs of the same package,
+/// and the one thing a report must not do is change shape because a machine was busy.
+private final class RunProgress: @unchecked Sendable {
+    /// One line per phase, and a counter while the mutants run.
+    ///
+    /// A line per mutant would bury the handful a person can act on, and no line at all
+    /// leaves somebody watching a silent terminal for half an hour wondering whether it
+    /// has hung - which is what the first run of this tool against this repository felt
+    /// like. So: counts, periodically, and the survivors at the end where they are sorted.
+    ///
+    /// Counts rather than names, because results arrive from whichever worker finished
+    /// first. A line naming mutants in that order would differ between two runs of the
+    /// same package, and the one thing a report must not do is change shape because a
+    /// machine was busy.
+
+    /// How often to say something, in mutants.
+    ///
+    /// Often enough to show movement on a small package, rare enough not to scroll a
+    /// large one away.
+    static let every = 25
+
+    private let lock = Mutex(RunCounts())
+
+    /// What has come back so far.
+    private struct RunCounts {
+        var done = 0
+        var killed = 0
+        var survived = 0
+        var total = 0
+    }
+
+    /// Says what phase a run has reached, and how far through the mutants it is.
+    func report(_ stage: RunStage) {
+        switch stage {
+        case .finished(let result): finished(result)
+        default: announce(stage)
+        }
+    }
+
+    /// One line for each phase a run passes through.
+    private func announce(_ stage: RunStage) {
+        switch stage {
+        case .snapshotting: print("copying the package")
+        case .discovering: print("reading the sources")
+        case .instrumenting(let files, let mutants):
+            print("instrumenting \(mutants) mutants across \(files) files")
+        case .validating: print("asking the compiler which ones it will accept")
+        case .proving: print("proving every mutant is in the tree")
+        case .building: print("building the tests, once")
+        case .baseline: print("running the tests with nothing awake")
+        case .running(let total):
+            lock.withLock { $0.total = total }
+            print("running \(total) mutants")
+        case .finished: break
+        }
+    }
+
+    /// Counts one answer, and says how it is going every so often.
+    private func finished(_ result: MutantResult) {
+        let line = lock.withLock { counts -> String? in
+            counts.done += 1
+            if result.verdict.outcome == .killed { counts.killed += 1 }
+            if result.verdict.outcome == .survived { counts.survived += 1 }
+            guard counts.done.isMultiple(of: Self.every) || counts.done == counts.total else {
+                return nil
+            }
+            return "  \(counts.done)/\(counts.total)  \(counts.killed) killed"
+                + "  \(counts.survived) survived"
+        }
+        if let line { print(line) }
     }
 }
