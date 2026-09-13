@@ -127,6 +127,17 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // Running one mutant, watching what the tests say about it, and stopping the
+        // moment the answer is known.
+        .target(
+            name: "SwiftMutantsExecute",
+            dependencies: [
+                "SwiftMutantsCore", "SwiftMutantsInstrument", "SwiftMutantsRunner",
+                "SwiftMutantsTrace",
+            ],
+            swiftSettings: strict
+        ),
+
         // Finding out which mutants the compiler refuses, and saying so in its words.
         .target(
             name: "SwiftMutantsValidate",
@@ -213,6 +224,11 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsInstrumentTests",
             dependencies: ["SwiftMutantsInstrument"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsExecuteTests",
+            dependencies: ["SwiftMutantsExecute"],
             swiftSettings: strict
         ),
         .testTarget(
