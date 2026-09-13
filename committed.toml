@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+style = "conventional"
+subject_capitalized = false
+subject_not_punctuated = true
+imperative_subject = true
+no_fixup = true
+no_wip = true
+subject_length = 72
+line_length = 88

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[files]
+extend-exclude = [".build/", "Fixtures/", "vendor/", "*.profdata", "*.profraw"]
+
+[default.extend-words]
+# Domain vocabulary that is not a misspelling.
+mutants = "mutants"
+mutant = "mutant"
+schemata = "schemata"
+arid = "arid"

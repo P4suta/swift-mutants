@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+id: no-process-info-environment
+language: swift
+severity: error
+message: Read the environment through the injected Environment, not ProcessInfo.
+note: |
+  Two separate reasons, and both are load-bearing.
+
+  In the generated runtime, ProcessInfo.processInfo.environment materialises a whole
+  [String: String] from environ on every access. Muter emits exactly that inside each
+  guard, so a guard in a hot loop pays a dictionary build per evaluation. The runtime
+  reads getenv once into a lazily-initialised global instead.
+
+  Everywhere else, an engine that reaches for the ambient environment cannot be tested
+  hermetically and cannot record what a child process actually received.
+files:
+  - "Sources/**/*.swift"
+rule:
+  pattern: ProcessInfo.processInfo.environment

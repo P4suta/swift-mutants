@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+.build/
+.swiftpm/
+DerivedData/
+*.xcresult
+reports/
+dist/
+test-results/
+.DS_Store
+.rumdl_cache

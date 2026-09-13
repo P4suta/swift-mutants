@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[global]
+exclude = [".build", "Fixtures", "vendor", "LICENSES"]
+disable = ["MD013"]                                    # line length: prose wraps at 88, tables do not

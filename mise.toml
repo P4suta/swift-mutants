@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Every tool a gate depends on is pinned here, so `mise run check` means the same thing
+# on a laptop and on a runner. The Swift toolchain itself is not pinned by mise: on macOS
+# it belongs to Xcode, so `mise run doctor` asserts the version instead.
+
+[tools]
+swiftlint = "0.65.1"
+periphery = "3.8.0"
+typos = "1.48.0"
+rumdl = "0.2.43"
+taplo = "0.10.0"
+yamllint = "1.38.0"
+actionlint = "1.7.12"
+zizmor = "1.30.1"
+shellcheck = "0.11.0"
+gitleaks = "8.30.1"
+"osv-scanner" = "2.5.1"
+syft = "1.51.1"
+committed = "1.1.11"
+lefthook = "2.1.12"
+"ast-grep" = "0.45.3"
+hyperfine = "1.20.0"
+watchexec = "2.7.2"
+
+[env]
+# The toolchain this package is developed and gated against.
+SWIFT_MUTANTS_REQUIRED_SWIFT = "6.3"
+# Warnings are errors in every gated build. It lives here rather than in Package.swift,
+# where `unsafeFlags` would make this package unusable as a versioned dependency.
+SWIFT_MUTANTS_STRICT_BUILD_FLAGS = "-Xswiftc -warnings-as-errors"
+
+[tasks.check]
+description = "Every gate: static analysis over the whole tree, then the unit tier"
+depends = [
+  "lint:swift-format",
+  "lint:swiftlint",
+  "lint:ast-grep",
+  "lint:typos",
+  "lint:markdown",
+  "lint:toml",
+  "lint:yaml",
+  "lint:actions",
+  "lint:shell",
+  "lint:licenses",
+  "lint:secrets",
+  "test:unit",
+]
+
+[tasks."lint:swift-format"]
+description = "Apple's formatter, in lint mode"
+run = "swift format lint --strict --recursive --parallel Sources Tests Package.swift"
+
+[tasks."lint:swiftlint"]
+description = "SwiftLint, with every violation fatal"
+run = "swiftlint lint --strict --quiet"
+
+[tasks."lint:ast-grep"]
+description = "This project's own structural invariants"
+run = "ast-grep scan"
+
+[tasks."lint:typos"]
+description = "Spelling, across every file"
+run = "typos"
+
+[tasks."lint:markdown"]
+run = "rumdl check ."
+
+[tasks."lint:toml"]
+run = "taplo lint && taplo fmt --check"
+
+[tasks."lint:yaml"]
+run = "yamllint --strict ."
+
+[tasks."lint:actions"]
+description = "Workflow correctness, then workflow security"
+run = ["actionlint", "zizmor --min-severity medium .github/workflows"]
+
+[tasks."lint:shell"]
+run = "git ls-files -z --cached --others --exclude-standard '*.sh' | xargs -0 -r shellcheck --severity=style"
+
+[tasks."lint:licenses"]
+description = "SPDX headers and LICENSES/ agree (REUSE)"
+run = "uvx --quiet --from 'reuse[charset-normalizer]==5.0.2' reuse lint"
+
+[tasks."lint:secrets"]
+run = "gitleaks detect --no-banner --redact"
+
+[tasks."test:unit"]
+description = "No toolchain, no network, no clock. Seconds."
+run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip IntegrationTests --skip ToolchainTests"
+
+[tasks."test:integration"]
+description = "Drives a real Swift toolchain against the fixture corpus"
+run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS"
+
+[tasks.analyze]
+description = "Whole-module analysis: needs a compiler log, so it is not in `check`"
+run = ["swiftlint analyze --strict --quiet", "periphery scan --strict"]
+
+[tasks.watch]
+description = "The TDD inner loop"
+run = "watchexec --clear --exts swift --restart -- swift test --skip IntegrationTests --skip ToolchainTests"
+
+[tasks.doctor]
+description = "Is this machine set up to develop swift-mutants?"
+run = "./scripts/doctor.sh"

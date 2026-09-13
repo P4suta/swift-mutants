@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+exclude = [".build/**", "Fixtures/**"]
+
+[formatting]
+align_entries = false
+indent_string = "  "
+reorder_keys = false

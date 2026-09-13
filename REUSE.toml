@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+version = 1
+SPDX-PackageName = "swift-mutants"
+SPDX-PackageSupplier = "swift-mutants contributors <https://github.com/P4suta/swift-mutants>"
+SPDX-PackageDownloadLocation = "https://github.com/P4suta/swift-mutants"
+
+# Files that cannot carry a comment, and files whose content is not ours to annotate.
+[[annotations]]
+path = [
+  ".swift-format",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  "Package.resolved",
+  "VERSION",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 swift-mutants contributors"
+SPDX-License-Identifier = "MIT OR Apache-2.0"

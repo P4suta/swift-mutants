@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+id: no-source-location-converter-in-loop
+language: swift
+severity: error
+message: Build one SourceLocationConverter per file, outside the walk.
+note: |
+  Constructing a SourceLocationConverter builds the file's whole line table, so it is
+  O(file). Muter constructs one inside startLocation(for:), which every visited node
+  calls, making discovery quadratic in file size. Build it once when the file is parsed
+  and carry it alongside the tree.
+files:
+  - "Sources/**/*.swift"
+rule:
+  pattern: SourceLocationConverter($$$)
+  inside:
+    any:
+      - kind: for_statement
+      - kind: while_statement
+      - kind: repeat_while_statement
+    stopBy: end

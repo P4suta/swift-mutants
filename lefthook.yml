@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# The same gates CI runs, run here first, so that a red build is something you saw
+# before anybody else did. Nothing here is a different check from `mise run check`;
+# pre-commit is the subset that is fast enough to sit in front of every commit.
+
+pre-commit:
+  parallel: true
+  commands:
+    swift-format:
+      glob: "*.swift"
+      run: swift format lint --strict {staged_files}
+    swiftlint:
+      glob: "*.swift"
+      run: swiftlint lint --strict --quiet {staged_files}
+    ast-grep:
+      glob: "*.swift"
+      run: ast-grep scan {staged_files}
+    typos:
+      run: typos {staged_files}
+    toml:
+      glob: "*.toml"
+      run: taplo lint {staged_files}
+    yaml:
+      glob: "*.{yml,yaml}"
+      run: yamllint --strict {staged_files}
+    shell:
+      glob: "*.sh"
+      run: shellcheck --severity=style {staged_files}
+    secrets:
+      run: gitleaks protect --staged --no-banner --redact
+
+commit-msg:
+  commands:
+    conventional:
+      run: committed --commit-file {1}
+
+pre-push:
+  commands:
+    check:
+      run: mise run check

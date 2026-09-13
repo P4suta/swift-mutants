@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+id: no-foundation-process
+language: swift
+severity: error
+message: Start processes through Runner, which is built on swift-subprocess.
+note: |
+  Foundation.Process has no structured-concurrency cancellation and deadlocks when a
+  child fills a pipe buffer that nobody is draining. Muter is built on it and carries
+  open issues for hangs and timeouts because of it.
+
+  swift-subprocess gives us awaitable runs, teardown sequences on cancellation, and Unix
+  process-group control - which is what a mutant deadline actually needs. And every
+  spawn must go through Runner.run, because that is the one place a subprocess is
+  recorded: a call site can forget to label a command, but it cannot forget to record one.
+files:
+  - "Sources/**/*.swift"
+ignores:
+  # The one place allowed to start a process directly; see ToolchainGate.
+  - "Sources/SwiftMutantsTestKit/**"
+rule:
+  any:
+    - pattern: Foundation.Process
+    - pattern: Process()
