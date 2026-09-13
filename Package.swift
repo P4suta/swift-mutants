@@ -57,6 +57,14 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // Where an account goes when it leaves memory: the recording a traced run
+        // writes, and the bundle a failed run leaves behind.
+        .target(
+            name: "SwiftMutantsDiagnostics",
+            dependencies: ["SwiftMutantsCore", "SwiftMutantsTrace"],
+            swiftSettings: strict
+        ),
+
         // The one place a subprocess is started, and therefore the one place one is
         // recorded. A call site can forget to record; it cannot forget to go through here.
         .target(
@@ -99,6 +107,11 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        .testTarget(
+            name: "SwiftMutantsDiagnosticsTests",
+            dependencies: ["SwiftMutantsDiagnostics"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "FakeToolchainTests",
             dependencies: ["SwiftMutantsTestKit", "SwiftMutantsRunner"],
