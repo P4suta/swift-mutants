@@ -73,9 +73,20 @@ enum Runtime {
         // The environment is read once here rather than inside each guard, so a guard in a
         // loop is an integer compare rather than a dictionary build.
         private let __sm_active_\(token): UInt32 = {
-            guard let raw = getenv("\(activationVariable)"),
-                let value = UInt32(String(cString: raw))
-            else { return .max }
+            // Spelled both ways, chosen at compile time. `getenv` returns a pointer, so a
+            // package built with -strict-memory-safety warns unless the call is marked -
+            // and one built without it warns about a mark that was not needed. Generated
+            // code has no business producing a warning either way, and a package that
+            // turns warnings into errors would not build at all.
+            #if hasFeature(StrictMemorySafety)
+                guard let raw = unsafe getenv("\(activationVariable)"),
+                    let value = UInt32(unsafe String(cString: raw))
+                else { return .max }
+            #else
+                guard let raw = getenv("\(activationVariable)"),
+                    let value = UInt32(String(cString: raw))
+                else { return .max }
+            #endif
             return value
         }()
         @inline(__always) private func __sm_\(token)(_ index: UInt32) -> Bool {

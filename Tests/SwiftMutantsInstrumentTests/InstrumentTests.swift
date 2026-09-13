@@ -93,11 +93,18 @@ struct InstrumentTests {
         let instrumented = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
         #expect(instrumented.runtime.contains("getenv"))
         #expect(!instrumented.source.contains("ProcessInfo"))
-        // One *call*, in the lazily-initialised global; a guard is an integer compare.
-        // The name also appears in the selective import beside it, which is the point of
-        // asserting on the call rather than on the word.
+
+        // The call lives in the runtime and nowhere else: a guard is an integer compare
+        // against a global that was initialised once.
         let call = "getenv(\"" + "SWIFT_MUTANTS_ACTIVE" + "\")"
-        #expect(instrumented.source.components(separatedBy: call).count == 2)
+        let body = instrumented.source.dropLast(instrumented.runtime.count)
+        #expect(!body.contains(call))
+
+        // Twice in the runtime, because it is spelled twice: a package built with
+        // -strict-memory-safety needs the call marked `unsafe` and one built without it
+        // warns about a mark that was not needed. Only one branch is ever compiled.
+        #expect(instrumented.runtime.contains("#if hasFeature(StrictMemorySafety)"))
+        #expect(instrumented.runtime.components(separatedBy: call).count == 3)
     }
 
     @Test("wraps the expression rather than the statement")

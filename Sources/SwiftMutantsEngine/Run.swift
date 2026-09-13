@@ -68,20 +68,29 @@ public struct Run: Sendable {
     private let runner: Runner
     private let executable: String
     private let workspace: URL
+    private let testArguments: [String]
 
     /// Prepares a run of the package at `root`, working inside `workspace`.
+    ///
+    /// `testArguments` are handed to the test bundle verbatim, before the ones this tool
+    /// adds to watch it. They are never parsed: a tool that interpreted them would be
+    /// guessing at somebody's test runner, and guessing wrong is a mutant reported as
+    /// surviving tests that were never run. They are also a scope - narrowing the suite
+    /// narrows what a score is about, and the report says what was passed.
     public init(
         root: URL,
         configuration: Configuration,
         runner: Runner,
         workspace: URL,
-        executable: String = "/usr/bin/swift"
+        executable: String = "/usr/bin/swift",
+        testArguments: [String] = []
     ) {
         self.root = root
         self.configuration = configuration
         self.runner = runner
         self.executable = executable
         self.workspace = workspace
+        self.testArguments = testArguments
     }
 
     /// Carries out the run.
@@ -241,12 +250,16 @@ public struct Run: Sendable {
     private func validate(
         _ subjects: [FileUnderValidation], in tree: URL, environment: [String: String]
     ) async throws(RunError) -> Validation {
+        // SwiftPM rather than a bare `swiftc`, because a package is not a pile of files:
+        // each target compiles on its own, against its own dependencies and search paths.
+        // The same scratch directory the tests are built into, so the build that proves
+        // the mutants compile *is* the build that produces them.
         let validator = Validator(
-            compiler: SwiftcDriver(
+            compiler: SwiftBuildDriver(
                 runner: runner,
-                executable: executable.hasSuffix("swiftc") ? executable : "/usr/bin/swiftc",
-                extraArguments: ["-swift-version", "6"],
-                directory: tree.path,
+                executable: executable,
+                root: tree.path,
+                scratch: workspace.appending(path: "build").path,
                 environment: environment
             ),
             directory: tree
@@ -283,12 +296,20 @@ public struct Run: Sendable {
         in tree: URL, environment: [String: String]
     ) async throws(RunError) -> TestPlan {
         do {
-            return try await SwiftPackageManager(
+            let plan = try await SwiftPackageManager(
                 root: tree, runner: runner, executable: executable
             ).buildForTesting(
                 scratch: workspace.appending(path: "build").path,
                 environment: environment,
                 timeout: .seconds(1800)
+            )
+            guard !testArguments.isEmpty else { return plan }
+            return TestPlan(
+                executable: plan.executable,
+                arguments: plan.arguments + testArguments,
+                environment: plan.environment,
+                directory: plan.directory,
+                eventStreamVersion: plan.eventStreamVersion
             )
         } catch {
             throw RunError("the instrumented copy could not be built: \(error)")

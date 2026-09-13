@@ -12,11 +12,33 @@ your package, then activates one mutant per test process through an environment 
 Your working tree is never modified, and the toolchain builds essentially once instead of
 once per mutant.
 
-## Status: it instruments and switches; it does not yet run your tests
+## Status: it measures a package; it does not yet report one
 
 Built from the ground up, gate first, with every phase shipping its own diagnostics in the
-same change that introduces it. What works today, proven by tests that compile and run real
-code:
+same change that introduces it. `swift-mutants run` works end to end on a real package:
+
+```console
+$ swift-mutants run
+copying the package
+reading the sources
+instrumenting 5 mutants across 1 files
+asking the compiler which ones it will accept
+proving every mutant is in the tree
+building the tests, once
+running the tests with nothing awake
+running 5 mutants
+
+survived:
+  Sources/Cart/Cart.swift  4b4874975176fe2463e9  and-keep-lhs
+
+4 killed  1 survived  0 rejected  0 timed out  0 errored
+score 80.00%  of covered code 80.00%
+```
+
+That survivor is `total >= threshold && isMember` with `&& isMember` dropped. It survives
+because no test passes a non-member — a real hole, found by reading nothing.
+
+What works today, proven by tests that compile and run real code:
 
 | | |
 | --- | --- |
@@ -25,15 +47,30 @@ code:
 | **A scripted toolchain** | a `swift` and an `xcodebuild` that hang, print garbage or leave a red baseline on demand, so the unit tier can test what happens when a real one misbehaves |
 | **Configuration** | a TOML reader that refuses an unknown key with the line it was written on |
 | **Snapshot** | a disposable copy that refuses links and special files, and a second digest that notices a test writing into the tree |
-| **Discovery** | comparisons, connectives and boolean literals, with precedence resolved, arid suppression, and comment pragmas |
+| **Discovery** | comparisons, connectives and their operand prunes, boolean literals, arithmetic, compound assignment and bitwise — with precedence resolved, arid suppression, and comment pragmas |
 | **Instrumentation** | every mutant in one tree behind a runtime guard, the line count unchanged, and an activation proof |
+| **Validation** | one typecheck names every mutant the compiler refuses, in its own words; halving is the fallback, not the mechanism |
+| **Execution** | one build, one process per mutant, the event stream watched live so a mutant costs the time until a test notices rather than the time the suite takes |
 
 The instrumented file is known to compile, to behave exactly as the original when nothing
 is activated, to change exactly one thing when one mutant is woken, and to survive `-O`.
 
-What is missing is the part that runs your tests: building the package, executing one mutant
-per process, coverage, the report and the CLI. **swift-mutants cannot measure anything yet.**
-Nothing is published, tagged, or released.
+What is missing is the report: `run --json`, the Stryker projection, the offline HTML,
+SARIF, coverage-driven test selection, the outcome cache, and the Xcode path. **Nothing is
+published, tagged, or released, and the command tree will change.**
+
+## Trying it
+
+```sh
+swift build -c release
+.build/release/swift-mutants doctor        # can this machine run it
+.build/release/swift-mutants list          # what would it measure, without measuring
+.build/release/swift-mutants run           # measure it
+.build/release/swift-mutants run -- --skip SlowTests   # your arguments, verbatim
+```
+
+Arguments after `--` go to your tests exactly as written and are never interpreted. They
+are a scope as well as a setting: narrowing the suite narrows what the score is about.
 
 ## Requirements
 

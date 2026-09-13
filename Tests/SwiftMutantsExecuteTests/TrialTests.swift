@@ -183,6 +183,33 @@ struct TrialTests {
         #expect(argv.contains("--event-stream-version 6.3"))
     }
 
+    /// Arguments somebody gave for their own tests are passed through exactly as written
+    /// and never interpreted: a tool that parsed them would be guessing at somebody's test
+    /// runner, and guessing wrong is a mutant reported as surviving tests that never ran.
+    @Test("hands the tests the arguments they were given, verbatim")
+    func passesThroughTestArguments() async throws {
+        let fake = try Self.fake(Self.passing())
+        defer { fake.cleanUp() }
+        let plan = TestPlan(
+            executable: fake.plan.executable,
+            arguments: fake.plan.arguments + ["--skip", "Slow", "--filter", "a b"],
+            environment: fake.plan.environment,
+            directory: fake.plan.directory
+        )
+        _ = await Trial(
+            plan: plan,
+            runner: Runner(recorder: TraceRecorder()),
+            scratch: fake.scratch,
+            timeout: .seconds(30)
+        ).run(activating: 1)
+
+        let argv = try String(contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8)
+        #expect(argv.contains("--skip Slow"))
+        #expect(argv.contains("--filter a b"))
+        // Still followed by what this tool needs to watch the run.
+        #expect(argv.contains("--no-parallel"))
+    }
+
     /// A mutant that traps takes the process with it, and that is the mutant being caught.
     @Test("calls a bundle that died mid-suite killed")
     func crashed() async throws {

@@ -41,6 +41,18 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit non-zero if any mutant survived.")
     var strict = false
 
+    @Argument(
+        parsing: .postTerminator,
+        help: ArgumentHelp(
+            "Arguments for your tests, after `--`.",
+            discussion: """
+                Passed to the test bundle exactly as written and never interpreted. \
+                They are a scope as well as a setting: narrowing the suite narrows what \
+                the score is about.
+                """
+        ))
+    var testArguments: [String] = []
+
     func run() async throws {
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
         let workspace = FileManager.default.temporaryDirectory
@@ -56,7 +68,8 @@ struct RunCommand: AsyncParsableCommand {
             root: root,
             configuration: configuration,
             runner: Runner(recorder: TraceRecorder()),
-            workspace: workspace
+            workspace: workspace,
+            testArguments: testArguments
         ).run(environment: Ambient.environment) { Self.report($0) }
 
         Self.summarise(outcome)

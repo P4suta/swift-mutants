@@ -4,111 +4,8 @@
 public import Foundation
 
 import SwiftMutantsCore
-public import SwiftMutantsDiscover
-public import SwiftMutantsInstrument
-
-/// What a compiler said, and whether it was happy.
-public struct CompilerOutput: Sendable, Hashable {
-
-    /// What the compiler exited with. Zero means it accepted the tree.
-    public let exitCode: Int32
-
-    /// Everything it wrote, standard output and standard error together.
-    ///
-    /// Together because a diagnostic is a diagnostic whichever stream it came out of, and
-    /// interleaving order is not something to build a parser on.
-    public let text: String
-
-    /// Records what a compiler said.
-    public init(exitCode: Int32, text: String) {
-        self.exitCode = exitCode
-        self.text = text
-    }
-}
-
-/// Asks a compiler whether a tree is well-typed, without generating code.
-///
-/// Narrow on purpose. Validation needs exactly one thing from a build system - "would this
-/// compile, and if not, what did you say" - and everything else about how a package is
-/// built belongs to the build system rather than here.
-public protocol TypecheckDriver: Sendable {
-
-    /// Typechecks these files, returning everything the compiler said about them.
-    ///
-    /// Never throws: a compiler that refuses a tree is the ordinary case and its exit code
-    /// is data. A compiler that could not be started at all is reported the same way, with
-    /// whatever went wrong in the text, because a caller that has to distinguish those two
-    /// from a thrown error would get it wrong exactly when a machine is misconfigured.
-    func typecheck(_ paths: [String]) async -> CompilerOutput
-}
-
-/// One file on its way through validation.
-public struct FileUnderValidation: Sendable {
-
-    /// What the file is called inside the directory it is written to.
-    public let name: String
-
-    /// The file the user wrote.
-    public let source: String
-
-    /// What was found in it.
-    public let discovery: FileDiscovery
-
-    /// Describes a file to validate.
-    public init(name: String, source: String, discovery: FileDiscovery) {
-        self.name = name
-        self.source = source
-        self.discovery = discovery
-    }
-}
-
-/// One file that the compiler agreed to.
-public struct ValidatedFile: Sendable {
-
-    /// Where it was written.
-    public let path: String
-
-    /// The instrumented file, holding only the mutants the compiler accepted.
-    public let instrumented: InstrumentedFile
-}
-
-/// What validation established.
-public struct Validation: Sendable {
-
-    /// The files, holding only what the compiler accepted.
-    public let files: [ValidatedFile]
-
-    /// What it refused, in its own words.
-    public let rejected: [Rejection]
-
-    /// How many compiles it took.
-    ///
-    /// Recorded because it is the cost, and because a run that needed many rounds is
-    /// saying something about the catalogue that a reader should see.
-    public let rounds: Int
-
-    /// Whether the loop had to fall back to halving.
-    ///
-    /// A compile that will not say what it is complaining about is worth knowing about:
-    /// it usually means a diagnostic arrived from a macro buffer or a synthesised
-    /// declaration, and it costs a compile per halving instead of one for the lot.
-    public let bisected: Bool
-}
-
-/// Validation could not finish.
-public struct ValidationError: Error, Hashable, CustomStringConvertible {
-
-    /// What went wrong, in the words a fix needs.
-    public let description: String
-
-    /// Everything the compiler said, when it was the compiler that refused.
-    public let diagnostics: [CompilerDiagnostic]
-
-    init(_ description: String, diagnostics: [CompilerDiagnostic] = []) {
-        self.description = description
-        self.diagnostics = diagnostics
-    }
-}
+import SwiftMutantsDiscover
+import SwiftMutantsInstrument
 
 /// Works out which mutants the compiler will accept.
 ///
@@ -318,40 +215,73 @@ public struct Validator: Sendable {
         files: [FileUnderValidation],
         discoveries: [FileDiscovery]
     ) async throws(ValidationError) -> (refused: [Candidate], rounds: Int) {
-        var rounds = 0
-
-        func compiles(_ subset: [Candidate]) async throws(ValidationError) -> Bool {
-            var trial = discoveries
-            let keys = Set(subset.map { Key($0.span, $0.rule) })
-            trial[position] = discoveries[position].keeping {
-                keys.contains(Key($0.span, $0.rule))
-            }
-            let instrumented = try Self.instrument(files, as: trial)
-            let paths = try write(instrumented, for: files)
-            rounds += 1
-            return await compiler.typecheck(paths).exitCode == 0
-        }
-
-        func search(_ subset: [Candidate]) async throws(ValidationError) -> [Candidate] {
-            guard try await !compiles(subset) else { return [] }
-            guard subset.count > 1 else { return subset }
-            let middle = subset.count / 2
-            let left = try await search(Array(subset[..<middle]))
-            let right = try await search(Array(subset[middle...]))
-            return left + right
-        }
-
         // Nothing left to blame means the file does not compile on its own, which is a
         // fact about the package rather than about any mutant this tool produced.
-        guard try await !compiles([]) else {
-            return (try await search(candidates), rounds)
+        let bare = try await compiles([], at: position, files: files, discoveries: discoveries)
+        guard bare.compiles else {
+            throw ValidationError(
+                """
+                \(files[position].name) does not compile with no mutants in it at all, so the \
+                errors the compiler reported are not about anything this tool did.
+                """,
+                diagnostics: bare.diagnostics
+            )
         }
-        throw ValidationError(
-            """
-            \(files[position].name) does not compile with no mutants in it at all, so the \
-            errors the compiler reported are not about anything this tool did.
-            """
+        let found = try await search(
+            candidates, at: position, files: files, discoveries: discoveries)
+        return (found.refused, found.rounds + bare.rounds)
+    }
+
+    /// Whether the file compiles with only these candidates in it.
+    ///
+    /// A method rather than a closure over the search's state. Local functions that capture
+    /// and mutate a `var` across an `await` are a shape this code had once and does not
+    /// have now: the count comes back as a value, so there is nothing shared to get wrong.
+    private func compiles(
+        _ subset: [Candidate],
+        at position: Int,
+        files: [FileUnderValidation],
+        discoveries: [FileDiscovery]
+    ) async throws(ValidationError) -> Attempt {
+        var trial = discoveries
+        let keys = Set(subset.map { Key($0.span, $0.rule) })
+        trial[position] = discoveries[position].keeping { keys.contains(Key($0.span, $0.rule)) }
+
+        let instrumented = try Self.instrument(files, as: trial)
+        let paths = try write(instrumented, for: files)
+        let output = await compiler.typecheck(paths)
+        return Attempt(
+            compiles: output.exitCode == 0,
+            rounds: 1,
+            diagnostics: output.exitCode == 0 ? [] : CompilerDiagnostic.parse(output.text)
         )
+    }
+
+    /// One compile of one subset, and what it cost.
+    private struct Attempt {
+        let compiles: Bool
+        let rounds: Int
+        let diagnostics: [CompilerDiagnostic]
+    }
+
+    /// Halves a subset until the refusals are cornered.
+    private func search(
+        _ subset: [Candidate],
+        at position: Int,
+        files: [FileUnderValidation],
+        discoveries: [FileDiscovery]
+    ) async throws(ValidationError) -> (refused: [Candidate], rounds: Int) {
+        let attempt = try await compiles(
+            subset, at: position, files: files, discoveries: discoveries)
+        guard !attempt.compiles else { return ([], attempt.rounds) }
+        guard subset.count > 1 else { return (subset, attempt.rounds) }
+
+        let middle = subset.count / 2
+        let left = try await search(
+            Array(subset[..<middle]), at: position, files: files, discoveries: discoveries)
+        let right = try await search(
+            Array(subset[middle...]), at: position, files: files, discoveries: discoveries)
+        return (left.refused + right.refused, attempt.rounds + left.rounds + right.rounds)
     }
 
     /// Turns refused candidates back into rejections, with no compiler words to attach.

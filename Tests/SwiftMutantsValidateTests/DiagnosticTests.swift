@@ -112,3 +112,67 @@ struct DiagnosticTests {
         #expect(found.first?.message == "cannot find 'b.swift:2:2: error: x' in scope")
     }
 }
+
+/// What a failure says to the person reading it.
+///
+/// "It did not compile" without the sentence saying why is the least useful thing a tool
+/// can produce, and this is the string that reaches a terminal.
+@Suite("Validation errors")
+struct ValidationErrorTests {
+
+    static func diagnostic(
+        _ severity: CompilerDiagnostic.Severity, _ message: String
+    )
+        -> CompilerDiagnostic
+    {
+        CompilerDiagnostic(
+            file: "S.swift",
+            position: SourcePosition(line: 1, column: 1),
+            severity: severity,
+            message: message
+        )
+    }
+
+    /// A failed build reports hundreds of diagnostics, and the first few are usually
+    /// warnings from somewhere unrelated. A reader given those is looking in the wrong file.
+    @Test("shows the errors, not the warnings that came first")
+    func errorsBeforeWarnings() {
+        let error = ValidationError(
+            "it did not build",
+            diagnostics: [
+                Self.diagnostic(.warning, "unrelated"),
+                Self.diagnostic(.warning, "also unrelated"),
+                Self.diagnostic(.error, "this is the one"),
+            ]
+        )
+        #expect(error.description.contains("this is the one"))
+        #expect(!error.description.contains("unrelated"))
+    }
+
+    /// A build can fail with no error of its own - a linker, a plugin, a toolchain that
+    /// exited oddly - and saying nothing then would be worse than saying what there was.
+    @Test("falls back to whatever there was when there are no errors")
+    func warningsWhenThatIsAll() {
+        let error = ValidationError(
+            "it did not build",
+            diagnostics: [Self.diagnostic(.warning, "only this")]
+        )
+        #expect(error.description.contains("only this"))
+    }
+
+    @Test("says how many more it is not showing")
+    func boundsWhatItPrints() {
+        let error = ValidationError(
+            "it did not build",
+            diagnostics: (1...9).map { Self.diagnostic(.error, "problem \($0)") }
+        )
+        #expect(error.description.contains("problem 1"))
+        #expect(!error.description.contains("problem 9"))
+        #expect(error.description.contains("and 4 more"))
+    }
+
+    @Test("says only the reason when the compiler said nothing")
+    func noDiagnostics() {
+        #expect(ValidationError("it did not build").description == "it did not build")
+    }
+}

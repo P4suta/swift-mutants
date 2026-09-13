@@ -177,7 +177,11 @@ struct ValidateIntegrationTests {
         let failure = await #expect(throws: ValidationError.self) {
             try await Self.validator(in: scratch.directory).validate([Self.subjectFile(broken)])
         }
-        #expect(failure?.description.contains("does not compile") == true)
+        #expect(failure?.reason.contains("does not compile") == true)
+        // The compiler's own sentence reaches the person reading the error, not only the
+        // fact that there was one. "It did not compile" without the why is the least
+        // useful thing a tool can say.
+        #expect(failure?.description.contains("error:") == true, "\(failure as Any)")
     }
 
     /// Nothing to do is a valid answer, and it costs one compile.
