@@ -15,6 +15,16 @@ public struct SourcePosition: Sendable, Hashable, Comparable, CustomStringConver
     /// the right byte.
     public let column: Int
 
+    /// Creates a position.
+    ///
+    /// Unvalidated on purpose: a position arrives from a compiler diagnostic as often as
+    /// from this tool's own arithmetic, and what makes a line or column usable is whether
+    /// the file has one, which ``LineIndex`` is the thing that knows.
+    public init(line: Int, column: Int) {
+        self.line = line
+        self.column = column
+    }
+
     /// `line:column`, the way a compiler writes it and an editor reads it.
     public var description: String { "\(line):\(column)" }
 

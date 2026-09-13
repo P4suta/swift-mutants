@@ -127,6 +127,16 @@ let package = Package(
             swiftSettings: strict
         ),
 
+        // Finding out which mutants the compiler refuses, and saying so in its words.
+        .target(
+            name: "SwiftMutantsValidate",
+            dependencies: [
+                "SwiftMutantsCore", "SwiftMutantsInstrument", "SwiftMutantsRunner",
+                "SwiftMutantsTrace",
+            ],
+            swiftSettings: strict
+        ),
+
         // A disposable copy of somebody's package, and the manifest that says what is
         // in it. The first invariant: the tree a run was pointed at is never written to.
         .target(
@@ -203,6 +213,19 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsInstrumentTests",
             dependencies: ["SwiftMutantsInstrument"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsValidateTests",
+            dependencies: ["SwiftMutantsValidate", "SwiftMutantsDiscover"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "ValidateIntegrationTests",
+            dependencies: [
+                "SwiftMutantsValidate", "SwiftMutantsDiscover", "SwiftMutantsInstrument",
+                "SwiftMutantsTestKit",
+            ],
             swiftSettings: strict
         ),
         .testTarget(

@@ -95,4 +95,34 @@ public struct FileDiscovery: Sendable, Hashable {
 
     /// What was passed over, and why.
     public let skips: [Skip]
+
+    /// Records what was found in one file.
+    public init(
+        path: WorkspaceRelativePath,
+        sourceDigest: Digest,
+        candidates: [Candidate],
+        skips: [Skip]
+    ) {
+        self.path = path
+        self.sourceDigest = sourceDigest
+        self.candidates = candidates
+        self.skips = skips
+    }
+
+    /// The same discovery with only the candidates that pass `isKept`.
+    ///
+    /// Validation is a loop: instrument everything, ask the compiler, drop what it
+    /// refused, ask again. Narrowing the discovery rather than the instrumented output is
+    /// what keeps the second pass identical to a first pass over a smaller catalogue -
+    /// same numbering rules, same guard shapes, same identities for the survivors.
+    ///
+    /// The digest does not change, because the file did not.
+    public func keeping(_ isKept: (Candidate) -> Bool) -> Self {
+        Self(
+            path: path,
+            sourceDigest: sourceDigest,
+            candidates: candidates.filter(isKept),
+            skips: skips
+        )
+    }
 }
