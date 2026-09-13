@@ -33,30 +33,36 @@ So the decision turned on a number nobody had measured for *this* shape.
 
 ## Decision
 
-Measured on Swift 6.3.3, chaining ternary guards whose two branches differ by one operator:
-
-| Guards in one expression | 5 | 10 | 20 | 40 |
-| --- | ---: | ---: | ---: | ---: |
-| `swiftc -typecheck` | 0.10s | 0.11s | 0.11s | 0.18s |
-
-Nested worst-case shapes measured the same. The solver stays linear because **both
-branches have the same type**, which pins the constraint rather than opening it — the
-SR-1577 case is literals under overload ambiguity, which is a different shape.
-
-Expression-level guards are therefore the default:
+Expression-level guards are the default:
 
 ```swift
 (__sm(1234) ? (a != b) : (a == b))
 ```
 
+The type-checking objection does not apply to this shape, and the reason is structural
+rather than empirical. A ternary's two branches must unify to one type. Here they are the
+same expression differing by one operator, so the branches already have that type: the
+guard **adds a constraint that is immediately satisfied** rather than an unknown for the
+solver to explore. Chaining `n` guards at one site therefore grows the constraint system by
+`n` already-determined equalities — linear in the number of guards — rather than opening
+`n` independent choices whose combinations the solver would have to search. The SR-1577
+case is the opposite shape: numeric *literals* under operator overloading, where each
+branch genuinely is an unknown and the search space is what explodes.
+
+That argument, not a stopwatch, is what makes the form affordable. (A run on one machine
+chaining forty such guards type-checked in 0.18s, and forty nested ones in the same range,
+which is consistent with linear growth — but the timing is corroboration, not the reason:
+elapsed time is a property of a machine on a day, while the shape of the constraint system
+is a property of the program.)
+
 Statement-level guards (`Form S`) are used only where the mutation *is* a statement —
 statement deletion, `defer` and `catch` body removal — and a body guard (`Form B`) prepends
 one line on the same physical line as the opening brace for whole-body replacement, so the
-original body is not moved by even one line.
+original body does not move by even one line.
 
-A per-expression guard budget stays in the design, and compile validation records
-per-file type-check time, so a regression in a future toolchain shows up as a number
-rather than as a mysteriously slow run.
+A per-expression guard budget stays in the design as a bound rather than as a tuning knob,
+and compile validation records per-file type-check time so that a *regression* between two
+runs of the same tree is visible. Neither decides anything on its own.
 
 ## Consequences
 
