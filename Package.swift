@@ -284,6 +284,11 @@ let package = Package(
             swiftSettings: strict
         ),
         .testTarget(
+            name: "SwiftMutantsCLITests",
+            dependencies: ["SwiftMutantsCLI"],
+            swiftSettings: strict
+        ),
+        .testTarget(
             name: "SwiftMutantsConsoleTests",
             dependencies: ["SwiftMutantsConsole"],
             swiftSettings: strict
