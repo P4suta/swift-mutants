@@ -52,6 +52,7 @@ public struct Trial: Sendable {
     /// something about the source files rather than about the program.
     public func run(
         activating index: UInt32?,
+        onlyTests: [String]? = nil,
         stoppingAtFirstFailure: Bool = true
     ) async -> Verdict {
         let stream = scratch.appending(path: "events-\(worker)-\(index.map(String.init) ?? "base")")
@@ -63,7 +64,11 @@ public struct Trial: Sendable {
         // and a run that quietly produced no answer would be far worse than that.
         let pipe = EventPipe(path: stream.path)
         let outcome = await runner.run(
-            spec(writingEventsTo: pipe?.path ?? stream.path, activating: index),
+            spec(
+                writingEventsTo: pipe?.path ?? stream.path,
+                activating: index,
+                onlyTests: onlyTests
+            ),
             watching: pipe
         ) { line in
             guard let event = TestEvent(line: line) else { return true }
@@ -97,11 +102,18 @@ public struct Trial: Sendable {
     /// - `--no-parallel`, because swift-testing runs tests concurrently by default and
     ///   "which test killed this mutant" is then a race. Measured on the pinned toolchain:
     ///   four tests, three overlapping pairs by default and none with the flag.
-    private func spec(writingEventsTo path: String, activating index: UInt32?) -> ProcessSpec {
+    private func spec(
+        writingEventsTo path: String, activating index: UInt32?, onlyTests: [String]?
+    ) -> ProcessSpec {
         var environment = plan.environment
         environment["SWIFT_MUTANTS"] = "1"
         environment["SWIFT_MUTANTS_TEST_TOKEN"] = "\(worker)"
         if let index { environment["SWIFT_MUTANTS_ACTIVE"] = "\(index)" }
+
+        // One `--filter` per test rather than one alternation, so no identifier has to
+        // survive being spliced into a bigger pattern. Absent means the whole suite, which
+        // is what a run without coverage has to do.
+        let selection = (onlyTests ?? []).flatMap { ["--filter", Prober.exactly($0)] }
 
         return ProcessSpec(
             kind: index == nil ? .baseline : .mutant,
@@ -110,7 +122,7 @@ public struct Trial: Sendable {
                 "--event-stream-output-path", path,
                 "--event-stream-version", plan.eventStreamVersion,
                 "--no-parallel",
-            ],
+            ] + selection,
             directory: plan.directory,
             environment: environment,
             timeout: timeout

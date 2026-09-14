@@ -100,7 +100,7 @@ enum ScriptedBundle {
             while [ $# -gt 0 ]; do
               case "$1" in
                 --event-stream-output-path) STREAM="$2"; shift 2 ;;
-                *) shift ;;
+                *) ARGS="$ARGS $1"; shift ;;
               esac
             done
             MUTANT="${SWIFT_MUTANTS_ACTIVE:-base}"
@@ -112,6 +112,7 @@ enum ScriptedBundle {
             LIVE='\(scratch.path)/live'
             mkdir -p "$LIVE"
             touch "$LIVE/$MUTANT"
+            echo "$ARGS" >> '\(scratch.path)/argv.txt'
             ls "$LIVE" | wc -l >> '\(scratch.path)/inflight.txt'
             if [ "$MUTANT" = "base" ]; then
               echo "$SWIFT_MUTANTS_TEST_TOKEN" >> '\(scratch.path)/tokens.txt'

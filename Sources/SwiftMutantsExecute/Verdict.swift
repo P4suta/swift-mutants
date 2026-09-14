@@ -38,7 +38,15 @@ public struct Verdict: Sendable, Hashable {
     /// How many tests were seen to start.
     ///
     /// A run that started none is a run that proves nothing, whatever it exited with.
-    public let testsStarted: Int
+    public var testsStarted: Int { startedTests.count }
+
+    /// Which tests were seen to start, in the order they did.
+    ///
+    /// The baseline's list is the suite, and the suite is what a probe asks one test at a
+    /// time. Taken from the stream rather than from a separate listing command, because
+    /// the tests that ran are the tests there are - a listing could disagree with reality
+    /// and the disagreement would be silent.
+    public let startedTests: [String]
 
     /// How long the test process ran, in milliseconds.
     ///
@@ -61,14 +69,14 @@ public struct Verdict: Sendable, Hashable {
         outcome: Outcome,
         killedBy: [String],
         firstFailure: String?,
-        testsStarted: Int,
+        startedTests: [String],
         durationMilliseconds: Int,
         termination: Termination
     ) {
         self.outcome = outcome
         self.killedBy = killedBy
         self.firstFailure = firstFailure
-        self.testsStarted = testsStarted
+        self.startedTests = startedTests
         self.durationMilliseconds = durationMilliseconds
         self.termination = termination
     }
@@ -95,8 +103,8 @@ public struct StreamWatcher: Sendable {
     /// Whether the bundle said it had finished.
     public private(set) var finished = false
 
-    /// How many tests began.
-    public private(set) var testsStarted = 0
+    /// Which tests began, in order.
+    public private(set) var startedTests: [String] = []
 
     /// Whether anything is still worth waiting for.
     public var isDecided: Bool { !killers.isEmpty }
@@ -115,7 +123,10 @@ public struct StreamWatcher: Sendable {
         switch event.kind {
         case .runStarted: started = true
         case .runEnded: finished = true
-        case .testStarted: testsStarted += 1
+        case .testStarted:
+            // Only a test function has an identifier worth filtering on; a suite's
+            // `testStarted` names the suite, and filtering by it would run its children.
+            if let id = event.testID, id.contains("(") { startedTests.append(id) }
         case .issueRecorded:
             guard event.isFailure else { break }
             killers.append(event.testID ?? "<unnamed test>")
@@ -145,7 +156,7 @@ public struct StreamWatcher: Sendable {
             outcome: outcome(after: termination),
             killedBy: killers,
             firstFailure: firstFailure,
-            testsStarted: testsStarted,
+            startedTests: startedTests,
             durationMilliseconds: milliseconds,
             termination: termination
         )
@@ -159,11 +170,11 @@ public struct StreamWatcher: Sendable {
             // caller stopped it for a reason this type does not know about.
             return .errored
         case .timedOut:
-            return testsStarted > 0 ? .timedOut : .errored
+            return startedTests.isEmpty ? .errored : .timedOut
         case .couldNotStart:
             return .errored
         case .exited(let status):
-            guard testsStarted > 0 else { return .errored }
+            guard !startedTests.isEmpty else { return .errored }
             if status == 0 { return finished ? .survived : .errored }
             return .killed
         }

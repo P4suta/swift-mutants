@@ -34,6 +34,8 @@ struct SchedulerTests {
         )
     }
 
+    static func runner() -> Runner { Runner(recorder: TraceRecorder()) }
+
     static func path() -> WorkspaceRelativePath {
         guard let path = WorkspaceRelativePath("Sources/Subject.swift") else {
             fatalError("malformed fixture path")

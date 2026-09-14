@@ -51,20 +51,39 @@ public struct Scheduler: Sendable {
     private let scratch: URL
     private let timeout: Duration?
     private let jobs: Int
+    private let coverage: Coverage?
 
     /// Prepares to run mutants `jobs` at a time.
+    ///
+    /// With `coverage`, a mutant is offered only the tests that reach it, and a mutant no
+    /// test reaches is answered without starting anything. Without it, every mutant is
+    /// offered the whole suite, because any test might be the one that notices.
     public init(
         plan: TestPlan,
         runner: Runner,
         scratch: URL,
         timeout: Duration? = .seconds(120),
-        jobs: Int = 4
+        jobs: Int = 4,
+        coverage: Coverage? = nil
     ) {
         self.plan = plan
         self.runner = runner
         self.scratch = scratch
         self.timeout = timeout
         self.jobs = max(1, jobs)
+        self.coverage = coverage
+    }
+
+    /// The same scheduler, now knowing which tests reach which mutants.
+    public func offering(_ coverage: Coverage?) -> Self {
+        Self(
+            plan: plan,
+            runner: runner,
+            scratch: scratch,
+            timeout: timeout,
+            jobs: jobs,
+            coverage: coverage
+        )
     }
 
     /// Runs the instrumented baseline: the same tree, nothing awake.
@@ -218,13 +237,49 @@ public struct Scheduler: Sendable {
     private func result(
         of mutant: InstrumentedMutant, in path: WorkspaceRelativePath, worker: Int
     ) async -> MutantResult {
+        // A mutant nothing reaches cannot be caught, and running the suite to find that
+        // out would be spending the most expensive thing this tool does on a question
+        // already answered. It is reported as surviving, which it does, and as uncovered,
+        // which is the part somebody can act on - usually more cheaply than by writing an
+        // assertion.
+        var covering: [String]?
+        if let coverage {
+            guard let reached = coverage.tests(reaching: mutant.index), !reached.isEmpty else {
+                return Self.unreached(mutant, in: path)
+            }
+            covering = reached
+        }
+
+        return MutantResult(
+            identity: mutant.identity,
+            path: path,
+            rule: mutant.rule,
+            span: mutant.span,
+            verdict: await trial(worker: worker)
+                .run(activating: mutant.index, onlyTests: covering),
+            attempts: 1
+        )
+    }
+
+    /// The answer for a mutant no test reaches, arrived at without starting a process.
+    private static func unreached(
+        _ mutant: InstrumentedMutant, in path: WorkspaceRelativePath
+    ) -> MutantResult {
         MutantResult(
             identity: mutant.identity,
             path: path,
             rule: mutant.rule,
             span: mutant.span,
-            verdict: await trial(worker: worker).run(activating: mutant.index),
-            attempts: 1
+            verdict: Verdict(
+                outcome: .survived,
+                killedBy: [],
+                firstFailure: nil,
+                startedTests: [],
+                durationMilliseconds: 0,
+                termination: .exited(0)
+            ),
+            // Nothing was attempted, and the count says so rather than claiming a run.
+            attempts: 0
         )
     }
 
@@ -243,6 +298,14 @@ extension RunSummary {
     public static func of(_ results: [MutantResult], rejected: Int = 0) -> RunSummary? {
         var counts: [Outcome: Int] = [:]
         for result in results { counts[result.verdict.outcome, default: 0] += 1 }
+
+        // A survivor no test reaches is a different piece of news from a survivor the
+        // tests looked at and did not notice. The first is usually the cheaper thing to
+        // fix - often by deleting the code rather than by writing an assertion - and it is
+        // the one a reader should see first.
+        let uncovered = results.count {
+            $0.verdict.outcome == .survived && $0.verdict.startedTests.isEmpty
+        }
         return RunSummary(
             killed: counts[.killed] ?? 0,
             survived: counts[.survived] ?? 0,
@@ -252,7 +315,7 @@ extension RunSummary {
             notRun: counts[.notRun] ?? 0,
             rejected: rejected,
             equivalent: counts[.equivalent] ?? 0,
-            uncovered: 0,
+            uncovered: uncovered,
             cached: 0,
             expectedSurvivors: 0
         )
