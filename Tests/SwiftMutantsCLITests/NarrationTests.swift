@@ -142,11 +142,14 @@ struct NarrationNumberTests {
 @Suite("Narrating validation")
 struct NarrationValidationTests {
 
+    /// "Asking", not "building". A round is every module of the package lowered at once,
+    /// separately - not a build - except when the plan cannot be read and it falls back to
+    /// one. A word true of only one of those would be a lie half the time.
     @Test("says the first round is about every mutant")
     func firstRound() {
         #expect(
             Narration.validating(.compiling(round: 1, mutants: 646))
-                == "building with all 646 mutants in, to see which compile"
+                == "asking the compiler about all 646 mutants at once"
         )
     }
 
@@ -156,7 +159,7 @@ struct NarrationValidationTests {
     func laterRound() {
         #expect(
             Narration.validating(.compiling(round: 2, mutants: 611))
-                == "  building again, 611 left"
+                == "  asking again, 611 left"
         )
     }
 

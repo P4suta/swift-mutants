@@ -37,15 +37,19 @@ enum Narration {
 
     /// One line for each step of validation.
     ///
-    /// Each round is a build of somebody's package, which is the slowest thing this tool
-    /// does. A person watching twenty silent minutes cannot tell a second round from a
-    /// hang, and the difference matters: one is progress and the other is a bug.
+    /// A person watching twenty silent minutes cannot tell a second round from a hang, and
+    /// the difference matters: one is progress and the other is a bug.
+    ///
+    /// "Asking" rather than "building", because a round is usually not a build any more: it
+    /// is every module of the package lowered at once, separately, against the interfaces
+    /// the first build produced. It falls back to a build when the plan cannot be read, and
+    /// a word that was true of only one of those would be a lie half the time.
     static func validating(_ step: Validator.Progress) -> String {
         switch step {
         case .compiling(let round, let mutants):
             round == 1
-                ? "building with all \(mutants) mutants in, to see which compile"
-                : "  building again, \(mutants) left"
+                ? "asking the compiler about all \(mutants) mutants at once"
+                : "  asking again, \(mutants) left"
         case .refused(_, let count):
             "  the compiler refused \(count)"
         case .halving(let mutants, let unplaceable):
