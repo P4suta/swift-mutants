@@ -87,6 +87,24 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     /// catalogue for a mutant that could never have compiled.
     case defaultArgument = "default-argument"
 
+    /// Arithmetic where an operand is visibly not a number.
+    ///
+    /// `+` is the one arithmetic operator Swift also gives to strings and collections, and
+    /// the only one it gives them - `["a"] - ["b"]` is not a program. So every arithmetic
+    /// mutant at such a site is a rejection decided in advance: the compiler will refuse
+    /// it, and the run pays a whole build of somebody's package to be told so.
+    ///
+    /// It costs more than the build. A guard whose branches differ by an operator adds an
+    /// overload choice to the expression around it, and `+` over array literals is already
+    /// the shape the Swift type checker struggles with. When it gives up, its complaint is
+    /// about the expression rather than about any mutant in it, so nothing can be placed
+    /// and the run halves its way through the catalogue instead - the most expensive path
+    /// there is, entered for a mutant that could never have compiled.
+    ///
+    /// Only what syntax can see. `a + b` could be two integers, and the compiler remains
+    /// the judge of everything this cannot decide.
+    case nonNumericOperand = "non-numeric-operand"
+
     /// A configuration pattern removed the file.
     case excluded
 }

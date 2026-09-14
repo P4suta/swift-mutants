@@ -109,9 +109,47 @@ final class CandidateWalker: SyntaxVisitor {
             note(.userDefinedOperator, over: Syntax(token), hiding: 0)
             return .visitChildren
         }
+        if Rules.isArithmetic(swap), Self.isVisiblyNotANumber(node) {
+            note(.nonNumericOperand, over: Syntax(token), hiding: 1)
+            return .visitChildren
+        }
         record(swap, replacing: Syntax(token), within: Syntax(node))
         recordPrunes(of: node, spelled: token.operator.text)
         return .visitChildren
+    }
+
+    /// Whether an expression is one syntax alone can tell is not arithmetic.
+    ///
+    /// True only for what can be read off the tree: a string, array or dictionary literal,
+    /// or a `+` chain that reaches one. `a + b` could be two integers, so it is false -
+    /// the compiler stays the judge of everything this cannot see, which is most of it.
+    ///
+    /// The recursion is over the folded tree, where `x + y + z` is `(x + y) + z`. A literal
+    /// buried on the left of a chain is still what the whole chain produces, and the outer
+    /// operator is the one that costs the most: it carries the largest expression.
+    static func isVisiblyNotANumber(_ node: some ExprSyntaxProtocol) -> Bool {
+        let expression = Self.unwrapped(ExprSyntax(node))
+        if expression.is(StringLiteralExprSyntax.self) { return true }
+        if expression.is(ArrayExprSyntax.self) { return true }
+        if expression.is(DictionaryExprSyntax.self) { return true }
+        if let infix = expression.as(InfixOperatorExprSyntax.self) {
+            return isVisiblyNotANumber(infix.leftOperand)
+                || isVisiblyNotANumber(infix.rightOperand)
+        }
+        if let assignment = expression.as(SequenceExprSyntax.self) {
+            return assignment.elements.contains { isVisiblyNotANumber($0) }
+        }
+        return false
+    }
+
+    /// The expression inside however many layers of parentheses surround it.
+    private static func unwrapped(_ expression: ExprSyntax) -> ExprSyntax {
+        guard let tuple = expression.as(TupleExprSyntax.self), tuple.elements.count == 1,
+            let only = tuple.elements.first, only.label == nil
+        else {
+            return expression
+        }
+        return unwrapped(only.expression)
     }
 
     /// Offers each operand of a connective as a replacement for the whole expression.

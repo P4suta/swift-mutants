@@ -203,3 +203,85 @@ struct UnknownSuppressionTests {
         #expect(found.map(\.name) == ["arithmetics"])
     }
 }
+
+/// Arithmetic on things that are visibly not numbers.
+///
+/// `+` is the one arithmetic operator Swift also gives to strings and collections, and it
+/// is the only one it gives them: `["a"] - ["b"]` is not a program. So every arithmetic
+/// mutant at such a site is a rejection decided in advance - the compiler will refuse it,
+/// the run pays a whole build to be told so, and the mutant is worth nothing either way.
+///
+/// Worse than worthless, in fact. A guard whose two branches differ by an operator adds an
+/// overload choice to the expression around it, and `+` over array literals is already the
+/// shape the Swift type checker struggles with (SR-1577): it gave up on two such sites in
+/// this package's own sources with "unable to type-check this expression in reasonable
+/// time". A compile that ends that way says nothing about any particular mutant, so the
+/// run falls back to halving its way through the catalogue - the most expensive path there
+/// is, entered for a mutant that could never have compiled.
+///
+/// Syntax cannot tell what `a + b` is. It can tell what `a + ["b"]` is, and that is where
+/// the cost is.
+@Suite("Arithmetic on what is visibly not a number")
+struct NonNumericArithmeticTests {
+
+    static func found(_ expression: String) -> FileDiscovery {
+        Discover.candidates(
+            in: "func f(_ a: [String], _ b: [String]) -> [String] { \(expression) }",
+            at: ArithmeticTests.path()
+        )
+    }
+
+    static func names(_ expression: String) -> [String] {
+        Self.found(expression).candidates.map(\.rule.name)
+    }
+
+    @Test(
+        "passes over an operand that is a literal of the wrong kind",
+        arguments: [
+            #"a + ["x"]"#,
+            #"["x"] + a"#,
+            #""x" + "y""#,
+            #"a + [1: "x"]"#,
+        ]
+    )
+    func passesOverLiteralOperands(_ expression: String) {
+        #expect(Self.names(expression).isEmpty)
+    }
+
+    /// Folding turns `x + y + z` into `(x + y) + z`, so a literal buried on the left of a
+    /// chain is still what the whole chain produces. `SwiftcDriver.typecheck` is written
+    /// exactly this way, and its outer `+` is one of the two the compiler gave up on.
+    @Test("follows a chain to the literal at the end of it")
+    func followsAChain() {
+        #expect(Self.names(#"["x"] + a + b"#).isEmpty)
+        #expect(Self.names(#"(["x"] + a) + b"#).isEmpty)
+    }
+
+    /// Skips are counted and named, never dropped. A reader who wonders why a `+` they can
+    /// see has no mutant gets an answer rather than a silence.
+    @Test("says so, and says how many it hid")
+    func saysSo() {
+        let discovery = Self.found(#"a + ["x"]"#)
+        #expect(discovery.skips.map(\.reason) == [.nonNumericOperand])
+        #expect(discovery.skips.first?.candidatesHidden == 1)
+    }
+
+    /// The compiler is the right judge of everything syntax cannot see. Two names could be
+    /// two integers, and refusing to mutate them would lose real mutants to a guess.
+    @Test("leaves arithmetic between names alone")
+    func leavesNamesAlone() {
+        #expect(Self.names("a + b") == ["add-to-sub"])
+        #expect(Self.names("a + 1") == ["add-to-sub"])
+    }
+
+    /// `xs += [x]` is real Swift and `xs -= [x]` is not, so the compound form is a decided
+    /// rejection for the same reason.
+    @Test("passes over the compound form too")
+    func compoundForm() {
+        #expect(
+            Discover.candidates(
+                in: #"func f(_ a: inout [String]) { a += ["x"] }"#, at: ArithmeticTests.path()
+            ).candidates.isEmpty
+        )
+    }
+}

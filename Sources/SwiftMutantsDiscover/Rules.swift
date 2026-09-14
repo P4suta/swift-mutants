@@ -138,6 +138,15 @@ enum Rules {
     ///
     /// An operator that is not here is left alone. Swift lets a package define its own, and
     /// swapping one for another would be swapping something for something else at random.
+    /// Whether a swap is one that only makes sense between numbers.
+    ///
+    /// Arithmetic and its compound forms. Comparison is not here - `<` really does work on
+    /// strings and arrays, so `"a" <= "b"` is a mutant worth having. Neither are the
+    /// connectives or the bitwise operators, which have no literal forms to recognise.
+    static func isArithmetic(_ swap: Swap) -> Bool {
+        swap.family == "integer-arithmetic" || swap.family == "arithmetic-assignment"
+    }
+
     static let binaryOperators: [String: Swap] = {
         var table = comparisons
         for family in [connectives, arithmetic, compoundAssignments, bitwise] {
