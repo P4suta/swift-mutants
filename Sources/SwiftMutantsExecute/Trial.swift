@@ -11,7 +11,7 @@ public import SwiftMutantsRunner
 /// The unit the whole run is made of. A trial starts the built tests with one mutant
 /// activated, watches what they say, and stops them the moment one of them notices - so a
 /// mutant costs the time until something catches it rather than the time the suite takes.
-public struct Trial: Sendable {
+public struct Trial: MutantHost {
 
     private let plan: TestPlan
     private let runner: Runner
@@ -50,14 +50,6 @@ public struct Trial: Sendable {
     /// than a verdict: knowing that *a* test failed with nothing awake leaves somebody
     /// nowhere, and knowing which ones usually points straight at a test that asserts
     /// something about the source files rather than about the program.
-    public func run(
-        activating index: UInt32?,
-        onlyTests: [String]? = nil,
-        settling: StreamWatcher.Settlement = .oneMutant
-    ) async -> Verdict {
-        await run(waking: index.map { [$0] } ?? [], onlyTests: onlyTests, settling: settling)
-    }
-
     /// Runs the tests with a set of mutants awake.
     ///
     /// Several at once only when no test reaches more than one of them, which is the
@@ -66,8 +58,8 @@ public struct Trial: Sendable {
     /// processes - and a batch is how that bill is divided.
     public func run(
         waking indices: [UInt32],
-        onlyTests: [String]? = nil,
-        settling: StreamWatcher.Settlement = .oneMutant
+        onlyTests: [String]?,
+        settling: StreamWatcher.Settlement
     ) async -> Verdict {
         let name = indices.isEmpty ? "base" : indices.map(String.init).joined(separator: "-")
         let stream = scratch.appending(path: "events-\(worker)-\(name)")

@@ -131,7 +131,10 @@ let package = Package(
         ),
         .target(
             name: "SwiftMutantsXcode",
-            dependencies: ["SwiftMutantsBuild", "SwiftMutantsCore", "SwiftMutantsRunner"],
+            dependencies: [
+                "SwiftMutantsBuild", "SwiftMutantsCore", "SwiftMutantsExecute",
+                "SwiftMutantsRunner",
+            ],
             swiftSettings: strict
         ),
         .target(
@@ -254,7 +257,10 @@ let package = Package(
         // Needs Xcode itself, and a real project to drive it over. Toolchain tier.
         .testTarget(
             name: "XcodeIntegrationTests",
-            dependencies: ["SwiftMutantsRunner", "SwiftMutantsTrace", "SwiftMutantsXcode"],
+            dependencies: [
+                "SwiftMutantsCore", "SwiftMutantsExecute", "SwiftMutantsRunner",
+                "SwiftMutantsTrace", "SwiftMutantsXcode",
+            ],
             swiftSettings: strict
         ),
         .testTarget(

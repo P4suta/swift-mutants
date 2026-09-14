@@ -20,18 +20,35 @@ public import SwiftMutantsRunner
 /// token to tell a non-hermetic suite which copy it is.
 public struct Scheduler: Sendable {
 
-    private let plan: TestPlan
-    private let runner: Runner
-    private let scratch: URL
-    private let timeout: Duration?
+    /// What runs the tests, one per worker.
+    ///
+    /// A function rather than a value, because a worker's host is a worker's: the token a
+    /// non-hermetic suite keys on, and on the Xcode path a derived-data directory, are per
+    /// worker and two workers sharing either would be two workers treading on each other.
+    private let host: @Sendable (Int) -> any MutantHost
     private let jobs: Int
     let coverage: Coverage?
 
-    /// Prepares to run mutants `jobs` at a time.
+    /// Prepares to run mutants `jobs` at a time, through whatever starts the tests.
     ///
     /// With `coverage`, a mutant is offered only the tests that reach it, and a mutant no
     /// test reaches is answered without starting anything. Without it, every mutant is
     /// offered the whole suite, because any test might be the one that notices.
+    public init(
+        host: @escaping @Sendable (Int) -> any MutantHost,
+        jobs: Int = 4,
+        coverage: Coverage? = nil
+    ) {
+        self.host = host
+        self.jobs = max(1, jobs)
+        self.coverage = coverage
+    }
+
+    /// The same, for the SwiftPM path: one ``Trial`` per worker, from one built plan.
+    ///
+    /// Kept as an initialiser of its own because it is what almost every caller wants, and
+    /// because a caller writing the closure out would be a caller who could get the worker
+    /// token wrong.
     public init(
         plan: TestPlan,
         runner: Runner,
@@ -40,24 +57,24 @@ public struct Scheduler: Sendable {
         jobs: Int = 4,
         coverage: Coverage? = nil
     ) {
-        self.plan = plan
-        self.runner = runner
-        self.scratch = scratch
-        self.timeout = timeout
-        self.jobs = max(1, jobs)
-        self.coverage = coverage
+        self.init(
+            host: { worker in
+                Trial(
+                    plan: plan,
+                    runner: runner,
+                    scratch: scratch,
+                    timeout: timeout,
+                    worker: worker
+                )
+            },
+            jobs: jobs,
+            coverage: coverage
+        )
     }
 
     /// The same scheduler, now knowing which tests reach which mutants.
     public func offering(_ coverage: Coverage?) -> Self {
-        Self(
-            plan: plan,
-            runner: runner,
-            scratch: scratch,
-            timeout: timeout,
-            jobs: jobs,
-            coverage: coverage
-        )
+        Self(host: host, jobs: jobs, coverage: coverage)
     }
 
     /// How many processes a catalogue will take, before any of them start.
@@ -289,9 +306,7 @@ public struct Scheduler: Sendable {
         )
     }
 
-    func trial(worker: Int) -> Trial {
-        Trial(plan: plan, runner: runner, scratch: scratch, timeout: timeout, worker: worker)
-    }
+    func trial(worker: Int) -> any MutantHost { host(worker) }
 }
 
 extension RunSummary {

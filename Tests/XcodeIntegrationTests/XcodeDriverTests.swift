@@ -4,6 +4,8 @@
 import Foundation
 import SwiftMutantsRunner
 import SwiftMutantsTrace
+import SwiftMutantsCore
+import SwiftMutantsExecute
 import SwiftMutantsXcode
 import Testing
 
@@ -186,4 +188,105 @@ struct XcodeDriverTests {
 extension Tag {
     /// Needs Xcode, not only a Swift toolchain.
     @Tag static var toolchain: Self
+}
+
+/// Deciding a mutant through Xcode, the way the scheduler will.
+///
+/// The driver tests prove that xcodebuild does what this expects. This proves the shape the
+/// scheduler sees: the same `Verdict` the SwiftPM path produces, from a run that has no
+/// event stream to watch.
+///
+/// Both directions every time. A host that woke nothing and one that woke everything both
+/// look right from one side: with nothing awake the suite passes, which is also what a
+/// mutant nothing catches looks like. Only the pair says the variable did anything.
+@Suite("Deciding a mutant through Xcode")
+struct XcodeHostTests {
+
+    static func host(_ fixture: XcodeDriverTests.Fixture, document: URL) throws -> XcodeHost {
+        XcodeHost(
+            driver: XcodeDriverTests.driver(fixture),
+            document: try Xctestrun(contentsOf: document),
+            destination: XcodeDriverTests.destination,
+            scratch: fixture.scratch,
+            worker: 3
+        )
+    }
+
+    /// Builds the fixture once and hands back a host over it.
+    static func built() async throws -> (fixture: XcodeDriverTests.Fixture, host: XcodeHost) {
+        let fixture = try XcodeDriverTests.fixture()
+        let document = try await XcodeDriverTests.driver(fixture).buildForTesting(
+            scheme: "Subject-Package",
+            destination: XcodeDriverTests.destination,
+            derivedData: fixture.derivedData
+        )
+        return (fixture, try Self.host(fixture, document: document))
+    }
+
+    @Test(
+        "says a mutant nothing catches survived, and one something catches killed",
+        .tags(.toolchain))
+    func bothDirections() async throws {
+        let (fixture, host) = try await Self.built()
+        defer { fixture.cleanUp() }
+
+        let asleep = await host.run(activating: nil)
+        #expect(asleep.outcome == .survived)
+        #expect(asleep.startedTests.count == 1)
+        #expect(asleep.killedBy.isEmpty)
+
+        // Mutant 7 is the one the fixture's guard switches on, and the fixture's test
+        // asserts the behaviour it changes.
+        let awake = await host.run(activating: 7)
+        #expect(awake.outcome == .killed)
+        #expect(awake.killedBy.count == 1)
+        #expect(awake.firstFailure != nil)
+    }
+
+    /// A mutant nothing is awake for is not the same as a mutant nothing reaches, and a
+    /// mutant whose index no guard switches on is the second: the suite passes, and that is
+    /// a real survival rather than a run that did nothing.
+    @Test("says a mutant no guard answers to survived", .tags(.toolchain))
+    func anIndexNothingAnswersTo() async throws {
+        let (fixture, host) = try await Self.built()
+        defer { fixture.cleanUp() }
+
+        let verdict = await host.run(activating: 9999)
+        #expect(verdict.outcome == .survived)
+        #expect(verdict.startedTests.count == 1)
+    }
+
+    /// A filter that matches nothing starts no tests, and a run that started none
+    /// established nothing. Reading it as a survivor is how a mutant nothing ran against
+    /// goes into a report as a gap somebody should write a test for.
+    @Test("says nothing was established when no test ran", .tags(.toolchain))
+    func noTestsIsNotSurvival() async throws {
+        let (fixture, host) = try await Self.built()
+        defer { fixture.cleanUp() }
+
+        let verdict = await host.run(
+            activating: 7, onlyTests: ["SubjectTests/NoSuchTest/doesNotExist()"])
+        #expect(verdict.outcome == .errored)
+        #expect(verdict.startedTests.isEmpty)
+    }
+
+    /// Two workers must not write one document, or each would wake the other's mutant -
+    /// and the run would still finish, with a score about a program nobody ran.
+    @Test("calls one worker's document something else than another's", .tags(.toolchain))
+    func documentsArePerWorker() async throws {
+        let (fixture, host) = try await Self.built()
+        defer { fixture.cleanUp() }
+        let other = XcodeHost(
+            driver: XcodeDriverTests.driver(fixture),
+            document: try Xctestrun(
+                contentsOf: XcodeProject.xctestrun(
+                    in: fixture.derivedData.appending(path: "Build/Products"))),
+            destination: XcodeDriverTests.destination,
+            scratch: fixture.scratch,
+            worker: 4
+        )
+        #expect(host.documentName != other.documentName)
+        #expect(host.documentName.contains("3"))
+        #expect(other.documentName.contains("4"))
+    }
 }
