@@ -4,6 +4,9 @@
 
 import PackageDescription
 
+// A manifest is as long as the package has targets.
+// swiftlint:disable file_length
+
 // Upcoming features that Swift 6 language mode does NOT already enable.
 //
 // Enabling a feature that the language mode already implies emits
@@ -123,6 +126,11 @@ let package = Package(
         // The canonical account of a run: what it measured, what became of each mutant,
         // and the counts every other artefact is a projection of.
         .target(
+            name: "SwiftMutantsXcode",
+            dependencies: ["SwiftMutantsBuild", "SwiftMutantsCore", "SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
+        .target(
             name: "SwiftMutantsSchemas",
             swiftSettings: strict
         ),
@@ -237,6 +245,12 @@ let package = Package(
         // `TestKitIsolationGateTests` is what keeps production from importing it.
         .target(
             name: "SwiftMutantsTestKit",
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsXcodeTests",
+            dependencies: ["SwiftMutantsTestKit", "SwiftMutantsXcode"],
+            resources: [.copy("Corpus")],
             swiftSettings: strict
         ),
         .testTarget(
