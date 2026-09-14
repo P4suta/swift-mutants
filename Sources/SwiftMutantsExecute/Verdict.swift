@@ -40,6 +40,14 @@ public struct Verdict: Sendable, Hashable {
     /// A run that started none is a run that proves nothing, whatever it exited with.
     public let testsStarted: Int
 
+    /// How long the test process ran, in milliseconds.
+    ///
+    /// What a deadline is derived from. A budget picked out of the air is either so tight
+    /// that a loaded machine reports a suite as a hang, or so loose that a mutant which
+    /// really does hang costs the whole budget - and the only number that tells the two
+    /// apart is how long this suite takes when nothing is wrong with it.
+    public let durationMilliseconds: Int
+
     /// How the process ended.
     ///
     /// Kept beside the outcome rather than folded into it, because two mutants that are
@@ -47,6 +55,23 @@ public struct Verdict: Sendable, Hashable {
     /// suite was stopped there, the other ran to the end and failed at the last. `explain`
     /// prints this, and a reader deciding whether their suite is slow needs it.
     public let termination: Termination
+
+    /// Records what a run of the tests amounted to.
+    public init(
+        outcome: Outcome,
+        killedBy: [String],
+        firstFailure: String?,
+        testsStarted: Int,
+        durationMilliseconds: Int,
+        termination: Termination
+    ) {
+        self.outcome = outcome
+        self.killedBy = killedBy
+        self.firstFailure = firstFailure
+        self.testsStarted = testsStarted
+        self.durationMilliseconds = durationMilliseconds
+        self.termination = termination
+    }
 }
 
 /// Watches an event stream and says when the answer is known.
@@ -115,12 +140,13 @@ public struct StreamWatcher: Sendable {
     ///   it read as a suite that passed.
     /// - Only a clean finish with no failures is `survived`, which is the answer that
     ///   costs somebody work, and so the one held to the strictest evidence.
-    public func verdict(after termination: Termination) -> Verdict {
+    public func verdict(after termination: Termination, taking milliseconds: Int = 0) -> Verdict {
         Verdict(
             outcome: outcome(after: termination),
             killedBy: killers,
             firstFailure: firstFailure,
             testsStarted: testsStarted,
+            durationMilliseconds: milliseconds,
             termination: termination
         )
     }

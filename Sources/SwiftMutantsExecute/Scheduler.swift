@@ -24,6 +24,13 @@ public struct MutantResult: Sendable, Hashable {
 
     /// What the tests said about it.
     public let verdict: Verdict
+
+    /// How many times it had to be run.
+    ///
+    /// More than once means the first attempt ran out of time and was tried again on a
+    /// quiet machine. That is worth seeing: a deadline met under load says nothing about
+    /// a mutant, and a report that hid the retry would look like an answer it is not.
+    public let attempts: Int
 }
 
 /// Runs every mutant, a bounded number at a time.
@@ -86,6 +93,61 @@ public struct Scheduler: Sendable {
         in path: WorkspaceRelativePath,
         progress: @Sendable (MutantResult) -> Void = { _ in }
     ) async -> [MutantResult] {
+        let first = await attempt(mutants, in: path, progress: progress)
+        return await retryingTimeouts(first, of: mutants, in: path, progress: progress)
+    }
+
+    /// Runs the mutants that ran out of time again, one at a time, on a quiet machine.
+    ///
+    /// The reason this exists is not hypothetical. A killed mutant stops at the first test
+    /// that notices it; a surviving mutant runs the whole suite. So the mutants that meet
+    /// a deadline are, overwhelmingly, the survivors - and counting a deadline as a
+    /// detection turns every one of them into a kill. Measured on this repository: 592
+    /// mutants, 82 deadlines, 0 survivors reported, and a score of 100%, which was not
+    /// true of anything.
+    ///
+    /// Serially, because the deadline was met while eight test processes shared a machine
+    /// and the retry is the observation that is actually about the mutant. A mutant that
+    /// runs out of time twice, the second time alone, has earned the verdict.
+    private func retryingTimeouts(
+        _ results: [MutantResult],
+        of mutants: [InstrumentedMutant],
+        in path: WorkspaceRelativePath,
+        progress: @Sendable (MutantResult) -> Void
+    ) async -> [MutantResult] {
+        let byIdentity = Dictionary(
+            mutants.map { ($0.identity, $0) }, uniquingKeysWith: { first, _ in first })
+        var settled: [MutantResult] = []
+        settled.reserveCapacity(results.count)
+
+        for result in results {
+            guard result.verdict.outcome == .timedOut,
+                let mutant = byIdentity[result.identity]
+            else {
+                settled.append(result)
+                continue
+            }
+            var again = await self.result(of: mutant, in: path, worker: 0)
+            again = MutantResult(
+                identity: again.identity,
+                path: again.path,
+                rule: again.rule,
+                span: again.span,
+                verdict: again.verdict,
+                attempts: result.attempts + again.attempts
+            )
+            settled.append(again)
+            progress(again)
+        }
+        return settled
+    }
+
+    /// One pass over the mutants, `jobs` at a time.
+    private func attempt(
+        _ mutants: [InstrumentedMutant],
+        in path: WorkspaceRelativePath,
+        progress: @Sendable (MutantResult) -> Void
+    ) async -> [MutantResult] {
         guard !mutants.isEmpty else { return [] }
         var finished = [MutantResult?](repeating: nil, count: mutants.count)
 
@@ -130,7 +192,8 @@ public struct Scheduler: Sendable {
             path: path,
             rule: mutant.rule,
             span: mutant.span,
-            verdict: await trial(worker: worker).run(activating: mutant.index)
+            verdict: await trial(worker: worker).run(activating: mutant.index),
+            attempts: 1
         )
     }
 

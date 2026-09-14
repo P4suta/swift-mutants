@@ -198,6 +198,8 @@ private final class RunProgress: @unchecked Sendable {
         case .proving: print("proving every mutant is in the tree")
         case .building: print("building the tests, once")
         case .baseline: print("running the tests with nothing awake")
+        case .calibrated(let budget):
+            print("  giving each mutant \(budget.seconds) seconds, from how long that took")
         case .running(let total):
             lock.withLock { $0.total = total }
             print("running \(total) mutants")
@@ -219,4 +221,9 @@ private final class RunProgress: @unchecked Sendable {
         }
         if let line { print(line) }
     }
+}
+
+extension Duration {
+    /// Whole seconds, for a line somebody reads rather than a number anything computes.
+    var seconds: Int { Int(components.seconds) }
 }

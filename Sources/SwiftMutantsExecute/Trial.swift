@@ -79,7 +79,12 @@ public struct Trial: Sendable {
             }
             try? FileManager.default.removeItem(at: stream)
         }
-        return watcher.withLock { $0.verdict(after: Self.termination(of: outcome)) }
+        return watcher.withLock {
+            $0.verdict(
+                after: Self.termination(of: outcome),
+                taking: outcome.durationMilliseconds
+            )
+        }
     }
 
     /// What to start, and what to tell it.

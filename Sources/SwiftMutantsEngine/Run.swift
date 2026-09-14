@@ -51,6 +51,10 @@ public enum RunStage: Sendable, Hashable {
     case building
     case proving
     case baseline
+
+    /// How long each mutant will be given, and where that came from.
+    case calibrated(Duration)
+
     case running(total: Int)
     case finished(MutantResult)
 }
@@ -230,6 +234,32 @@ public struct Run: Sendable {
             ) { progress(.finished($0)) }
         }
         return results
+    }
+
+    /// How long the baseline itself is given, before anything is known about the suite.
+    ///
+    /// Generous, because it is spent once and the alternative is a run that gives up on a
+    /// package whose tests are simply long.
+    static let calibrationBudget: Duration = .seconds(1800)
+
+    /// How long one mutant gets, derived from how long the suite takes when nothing is
+    /// wrong with it.
+    ///
+    /// Five times the baseline, and never less than thirty seconds. A number picked out
+    /// of the air is either so tight that a loaded machine reports a working suite as a
+    /// hang, or so loose that a mutant which really does hang costs the whole budget - and
+    /// the only thing that tells the two apart is how long this suite takes.
+    ///
+    /// Multiplied by the number of workers, because they share a machine. Running eight
+    /// suites at once does not make each one eight times slower, but it certainly does not
+    /// leave them at their solitary speed either, and the cost of being too generous is
+    /// one slow mutant while the cost of being too tight is a survivor reported as a kill.
+    /// Measured on this repository before any of this existed: 592 mutants, 82 deadlines,
+    /// 0 survivors, and a score of 100% that was not true of anything.
+    static func budget(from baseline: Verdict, jobs: Int) -> Duration {
+        let solitary = max(baseline.durationMilliseconds, 1)
+        let allowed = solitary * 5 * max(1, jobs)
+        return max(.seconds(30), .milliseconds(allowed))
     }
 
     /// Where the instrumented copy is built.

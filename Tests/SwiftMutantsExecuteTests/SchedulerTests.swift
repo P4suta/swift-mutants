@@ -30,13 +30,22 @@ struct SchedulerTests {
     /// rather than trusting the scheduler's own account of itself.
     static func fake(
         failingFor failing: Set<UInt32>,
-        failingBaselineTests: [String] = []
+        failingBaselineTests: [String] = [],
+        slowUntilRetried: Set<UInt32> = [],
+        alwaysSlow: Set<UInt32> = []
     ) throws -> Fake {
         let scratch = FileManager.default.temporaryDirectory
             .appending(path: "swift-mutants-sched-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         let script = scratch.appending(path: "bundle.sh")
-        try Data(Self.script(failingFor: failing, in: scratch).utf8).write(to: script)
+        try Data(
+            Self.script(
+                failingFor: failing,
+                slowUntilRetried: slowUntilRetried,
+                alwaysSlow: alwaysSlow,
+                in: scratch
+            ).utf8
+        ).write(to: script)
 
         // The baseline's events, written out rather than escaped into the script: a shell
         // heredoc holding JSON inside Swift string interpolation is a thing nobody should
@@ -81,8 +90,15 @@ struct SchedulerTests {
         )
     }
 
-    static func script(failingFor failing: Set<UInt32>, in scratch: URL) -> String {
+    static func script(
+        failingFor failing: Set<UInt32>,
+        slowUntilRetried: Set<UInt32> = [],
+        alwaysSlow: Set<UInt32> = [],
+        in scratch: URL
+    ) -> String {
         let failures = failing.map(String.init).sorted().joined(separator: " ")
+        let slowness = Self.slowness(
+            once: slowUntilRetried, always: alwaysSlow, in: scratch)
         return """
             #!/bin/sh
             STREAM=""
@@ -105,6 +121,7 @@ struct SchedulerTests {
             printf '%s\\n' \\
               '{"kind":"event","payload":{"kind":"runStarted"}}' \\
               '{"kind":"event","payload":{"kind":"testStarted","testID":"P.S/f()"}}' > "$STREAM"
+            \(slowness)
             for bad in \(failures); do
               if [ "$MUTANT" = "$bad" ]; then
                 printf '%s\\n' \\
@@ -120,6 +137,26 @@ struct SchedulerTests {
               '{"kind":"event","payload":{"kind":"runEnded"}}' > "$STREAM"
             rm -f "$LIVE/$MUTANT"
             exit 0
+            """
+    }
+
+    /// Shell that makes some mutants slow: once, or every time.
+    ///
+    /// Once is the shape a suite has when eight copies of it share a machine - the mark it
+    /// leaves survives, so the retry runs at full speed.
+    static func slowness(once: Set<UInt32>, always: Set<UInt32>, in scratch: URL) -> String {
+        let first = once.map(String.init).sorted().joined(separator: " ")
+        let every = always.map(String.init).sorted().joined(separator: " ")
+        return """
+            for slow in \(first); do
+              if [ "$MUTANT" = "$slow" ] && [ ! -f '\(scratch.path)/seen-'"$slow" ]; then
+                touch '\(scratch.path)/seen-'"$slow"
+                sleep 30
+              fi
+            done
+            for slow in \(every); do
+              if [ "$MUTANT" = "$slow" ]; then sleep 30; fi
+            done
             """
     }
 
@@ -144,12 +181,14 @@ struct SchedulerTests {
             .sorted { $0.index < $1.index }
     }
 
-    static func scheduler(_ fake: Fake, jobs: Int = 3) -> Scheduler {
+    static func scheduler(
+        _ fake: Fake, jobs: Int = 3, timeout: Duration = .seconds(30)
+    ) -> Scheduler {
         Scheduler(
             plan: fake.plan,
             runner: Runner(recorder: TraceRecorder()),
             scratch: fake.scratch,
-            timeout: .seconds(30),
+            timeout: timeout,
             jobs: jobs
         )
     }
@@ -284,5 +323,58 @@ struct SchedulerTests {
         #expect(summary.survived == mutants.count - 1)
         #expect(summary.rejected == 2)
         #expect(summary.total == mutants.count + 2)
+    }
+}
+
+/// Running a mutant again when the first answer was a deadline.
+///
+/// A killed mutant stops at the first test that notices it; a surviving mutant runs the
+/// whole suite. So the mutants that meet a deadline are, overwhelmingly, the survivors -
+/// and a deadline counts as a detection. Measured on this repository before any of this
+/// existed: 592 mutants, 82 deadlines, 0 survivors reported, and a score of 100% that was
+/// not true of anything.
+@Suite("Retrying deadlines")
+struct RetryTests {
+
+    typealias Fake = SchedulerTests.Fake
+
+    static func mutants() throws -> [InstrumentedMutant] { try SchedulerTests.mutants() }
+
+    /// The reason retries exist, and it is not hypothetical.
+    ///
+    /// A killed mutant stops at the first test that notices it; a surviving mutant runs
+    /// the whole suite. So the mutants that meet a deadline are, overwhelmingly, the
+    /// survivors - and counting a deadline as a detection turns every one of them into a
+    /// kill. Measured on this repository: 592 mutants, 82 deadlines, 0 survivors reported,
+    /// and a score of 100%, which was not true of anything.
+    @Test("runs a mutant that ran out of time again, and takes the second answer")
+    func retriesTimeouts() async throws {
+        let mutants = try Self.mutants()
+        let fake = try SchedulerTests.fake(failingFor: [], slowUntilRetried: [mutants[2].index])
+        defer { fake.cleanUp() }
+
+        // A deadline the slow pass certainly misses and the quick one certainly meets.
+        let results = await SchedulerTests.scheduler(fake, timeout: .milliseconds(700))
+            .run(mutants, in: SchedulerTests.path())
+        let retried = try #require(results.first { $0.identity == mutants[2].identity })
+        #expect(retried.verdict.outcome == .survived)
+        #expect(retried.attempts == 2)
+
+        // Everything else was answered the first time.
+        #expect(results.filter { $0.attempts > 1 }.count == 1)
+    }
+
+    /// A mutant that runs out of time twice, the second time alone, has earned it.
+    @Test("keeps the verdict when a mutant runs out of time twice")
+    func confirmedTimeout() async throws {
+        let mutants = try Self.mutants()
+        let fake = try SchedulerTests.fake(failingFor: [], alwaysSlow: [mutants[1].index])
+        defer { fake.cleanUp() }
+
+        let results = await SchedulerTests.scheduler(fake, timeout: .milliseconds(700))
+            .run(mutants, in: SchedulerTests.path())
+        let stuck = try #require(results.first { $0.identity == mutants[1].identity })
+        #expect(stuck.verdict.outcome == .timedOut)
+        #expect(stuck.attempts == 2)
     }
 }
