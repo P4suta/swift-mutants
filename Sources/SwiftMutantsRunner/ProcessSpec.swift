@@ -74,6 +74,49 @@ public struct ProcessSpec: Sendable, Hashable {
         self.environment = environment
         self.timeout = timeout
     }
+
+    /// The variables this tool sets, as opposed to the ones it passes on.
+    ///
+    /// A line somebody reads carries these and not the rest. The whole environment would be
+    /// unreadable; worse, it would put whatever a developer has exported - tokens, keys -
+    /// into a terminal they are about to paste into a bug report.
+    public static let ours = "SWIFT_MUTANTS"
+
+    /// This command as a line a shell would run.
+    ///
+    /// For showing somebody what ran, never for running anything: every process this tool
+    /// starts is started from an argument vector, and a shell is not involved at any point.
+    /// That is what makes the quoting here a presentation detail rather than a place an
+    /// injection could hide.
+    /// `showing` names variables to carry besides this tool's own. A run works them out
+    /// rather than inheriting them - on a Mac a test bundle is a dylib that needs
+    /// `Testing.framework` on its search path - so a command without them fails to load and
+    /// looks like a bug in the package. Everything else the run inherited stays out: a line
+    /// carrying somebody's whole environment would be unreadable, and one carrying their
+    /// tokens would end up in a bug report.
+    public static func rendered(_ spec: Self, showing names: Set<String> = []) -> String {
+        let variables = spec.environment
+            .filter { $0.key.hasPrefix(Self.ours) || names.contains($0.key) }
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\(quoted($0.value))" }
+        return (variables + [quoted(spec.executable)] + spec.arguments.map(quoted))
+            .joined(separator: " ")
+    }
+
+    /// One word, quoted only when a shell would otherwise read it as more than one.
+    ///
+    /// Single quotes, because nothing inside them means anything to a shell, and a literal
+    /// single quote is spelled by leaving the quoting and coming back - which is the one
+    /// arrangement that is right for every byte.
+    private static func quoted(_ word: String) -> String {
+        let plain = word.allSatisfy {
+            $0.isLetter || $0.isNumber || "-_./=:,@+".contains($0)
+        }
+        guard !plain || word.isEmpty else { return word }
+        return "'"
+            + word.split(separator: "'", omittingEmptySubsequences: false)
+            .joined(separator: #"'\''"#) + "'"
+    }
 }
 
 /// What became of a command.

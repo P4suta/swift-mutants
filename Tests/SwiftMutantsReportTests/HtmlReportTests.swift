@@ -121,7 +121,8 @@ struct HtmlReportTests {
             ran: [],
             testsStarted: 0,
             attempts: 1,
-            durationMilliseconds: 1
+            durationMilliseconds: 1,
+            index: 1
         )
     }
 

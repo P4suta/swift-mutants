@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsBuild
 import SwiftMutantsCore
+import SwiftMutantsExecute
 import SwiftMutantsEngine
 import SwiftMutantsReport
+import SwiftMutantsRunner
 import SwiftMutantsTestKit
+import SwiftMutantsTrace
 
 @testable import SwiftMutantsCLI
 import Testing
@@ -133,5 +137,67 @@ struct ExplainIntegrationTests {
         let wanted = try #require(report.mutants.first)
 
         #expect(Explanation.find(String(wanted.id.prefix(20)), among: report.mutants) == wanted)
+    }
+}
+
+/// The command a report offers is a command that works.
+///
+/// Everything else about `explain` can be checked against a fixture. This cannot: the point
+/// of the line is that pasting it runs the mutant, and the only way to know is to paste it.
+@Suite("Reproducing a mutant from a real run")
+struct ReproductionIntegrationTests {
+
+    /// Run it, keep the tree, take a survivor, and run the line the report offers.
+    ///
+    /// The mutant survived, so the suite passes with it awake - which is what the command
+    /// has to reproduce. A line that woke the wrong mutant, or none, would run a suite that
+    /// also passes, so the test then wakes a mutant the run had killed and requires that
+    /// the same command fails. Two directions, because only the pair of them says the
+    /// variable is doing anything.
+    @Test("the command a report offers runs the mutant it names", .tags(.integration))
+    func theCommandRuns() async throws {
+        let fixture = try RunIntegrationTests.fixture()
+        let workspace = fixture.workspace
+        defer { fixture.cleanUp() }
+
+        let outcome = try await RunIntegrationTests.run(fixture)
+        let report = RunReport(of: outcome, kept: true)
+        #expect(report.invocation.isKnown)
+        #expect(report.invocation.kept)
+
+        let survivor = try #require(report.mutants.first { $0.outcome == "survived" })
+        let killed = try #require(report.mutants.first { $0.outcome == "killed" })
+
+        #expect(await Self.status(of: survivor, in: report) == 0)
+        #expect(await Self.status(of: killed, in: report) != 0)
+        _ = workspace
+    }
+
+    /// Runs the command the report offers for one mutant, and says what it exited with.
+    ///
+    /// Built from the report the way `explain` builds the line it prints, so what this runs
+    /// is what somebody would paste.
+    static func status(of mutant: RunReport.Mutant, in report: RunReport) async -> Int32 {
+        let tests = mutant.ran.compactMap {
+            report.tests.indices.contains($0) ? report.tests[$0] : nil
+        }
+        let spec = Launch(
+            plan: TestPlan(
+                executable: report.invocation.executable,
+                arguments: report.invocation.arguments,
+                environment: RunIntegrationTests.environment()
+                    .merging(report.invocation.environment) { _, worked in worked },
+                directory: report.invocation.directory,
+                eventStreamVersion: report.invocation.eventStreamVersion
+            ),
+            worker: 0,
+            timeout: .seconds(180)
+        ).specification(
+            writingEventsTo: "/dev/null",
+            waking: [UInt32(clamping: mutant.index)],
+            onlyTests: tests.isEmpty ? nil : tests
+        )
+        let outcome = await Runner(recorder: TraceRecorder()).run(spec)
+        return Int32(outcome.exitCode)
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 public import Foundation
+import SwiftMutantsBuild
 import SwiftMutantsConfig
 public import SwiftMutantsSchemas
 public import SwiftMutantsCore
@@ -17,10 +18,14 @@ extension RunReport {
     /// has nothing for still yields entries, with `null` for line and column: losing a
     /// finding because its position could not be worked out would be losing it to a
     /// formatting detail.
+    /// `kept` says whether the copy the run happened in is still there. A run works inside
+    /// a disposable snapshot, so it usually is not - and a command naming a directory that
+    /// no longer exists is a command somebody pastes and then has to work out why it failed.
     public init(
         of outcome: RunOutcome,
         positions override: [WorkspaceRelativePath: LineIndex]? = nil,
-        version: String = Version.current
+        version: String = Version.current,
+        kept: Bool = false
     ) {
         let positions = override ?? outcome.positions
         self.schemaVersion = 2
@@ -37,42 +42,54 @@ extension RunReport {
         let seen = named.positions
         self.tests = named.names
 
-        self.mutants = outcome.results.map { result in
-            let place = positions[result.path]?.position(of: result.span.start)
-            return Mutant(
-                id: result.identity.digest.hexadecimal,
-                path: result.path.rendered,
-                line: Reported(place?.line),
-                column: Reported(place?.column),
-                span: Span(start: result.span.start, end: result.span.end),
-                rule: result.rule.rendered,
-                original: result.original,
-                replacement: result.replacement,
-                outcome: result.verdict.outcome.rawValue,
-                killedBy: result.verdict.killedBy,
-                ran: result.verdict.startedTests.compactMap { seen[$0] },
-                testsStarted: result.verdict.testsStarted,
-                attempts: result.attempts,
-                durationMilliseconds: result.verdict.durationMilliseconds
-            )
-        }
-        self.rejected = outcome.rejected.map { refusal in
-            Refusal(
-                id: refusal.identity.digest.hexadecimal,
-                rule: refusal.rule.rendered,
-                span: Span(start: refusal.span.start, end: refusal.span.end),
-                diagnostics: refusal.diagnostics.map {
-                    Diagnostic(
-                        file: $0.file,
-                        line: $0.position.line,
-                        column: $0.position.column,
-                        severity: $0.severity.rawValue,
-                        message: $0.message
-                    )
-                }
-            )
-        }
+        self.mutants = outcome.results.map { Self.row(of: $0, at: positions, naming: seen) }
+        self.rejected = outcome.rejected.map(Self.refusal)
         self.expectations = Expectations(of: outcome.expectations)
+        self.invocation = Invocation(of: outcome.plan, kept: kept)
+    }
+
+    /// One mutant's row, with where it is in the file a person reads.
+    private static func row(
+        of result: MutantResult,
+        at positions: [WorkspaceRelativePath: LineIndex],
+        naming seen: [String: Int]
+    ) -> Mutant {
+        let place = positions[result.path]?.position(of: result.span.start)
+        return Mutant(
+            id: result.identity.digest.hexadecimal,
+            path: result.path.rendered,
+            line: Reported(place?.line),
+            column: Reported(place?.column),
+            span: Span(start: result.span.start, end: result.span.end),
+            rule: result.rule.rendered,
+            original: result.original,
+            replacement: result.replacement,
+            outcome: result.verdict.outcome.rawValue,
+            killedBy: result.verdict.killedBy,
+            ran: result.verdict.startedTests.compactMap { seen[$0] },
+            testsStarted: result.verdict.testsStarted,
+            attempts: result.attempts,
+            durationMilliseconds: result.verdict.durationMilliseconds,
+            index: Int(result.index)
+        )
+    }
+
+    /// One refusal's row, with the compiler's own words in it.
+    private static func refusal(_ refusal: Rejection) -> Refusal {
+        Refusal(
+            id: refusal.identity.digest.hexadecimal,
+            rule: refusal.rule.rendered,
+            span: Span(start: refusal.span.start, end: refusal.span.end),
+            diagnostics: refusal.diagnostics.map {
+                Diagnostic(
+                    file: $0.file,
+                    line: $0.position.line,
+                    column: $0.position.column,
+                    severity: $0.severity.rawValue,
+                    message: $0.message
+                )
+            }
+        )
     }
 
     /// Every test any mutant started, written once, with where each one is.
@@ -155,6 +172,25 @@ extension RunReport.Summary {
             expectedSurvivors: summary.expectedSurvivors,
             score: .init(summary.score.value),
             scoreOfCoveredCode: .init(summary.score.ofCoveredCode)
+        )
+    }
+}
+
+extension RunReport.Invocation {
+
+    /// What the run's own plan says, with nothing of the environment in it.
+    ///
+    /// A run that never got as far as building has no plan, and the empty strings say so
+    /// rather than naming a bundle nobody built. `explain` prints nothing in that case,
+    /// which is the truth: there is no command that would reproduce it.
+    init(of plan: TestPlan?, kept: Bool) {
+        self.init(
+            executable: plan?.executable ?? "",
+            arguments: plan?.arguments ?? [],
+            directory: plan?.directory ?? "",
+            eventStreamVersion: plan?.eventStreamVersion ?? "",
+            environment: plan?.derived ?? [:],
+            kept: kept
         )
     }
 }

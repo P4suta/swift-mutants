@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsBuild
+import SwiftMutantsExecute
 import SwiftMutantsReport
+import SwiftMutantsRunner
 
 /// One mutant's whole story, for somebody deciding what to do about it.
 ///
@@ -18,7 +21,15 @@ enum Explanation {
     static let namedTests = 20
 
     /// One mutant, in the words a fix needs.
-    static func of(_ mutant: RunReport.Mutant, reachedBy tests: [String]) -> [String] {
+    ///
+    /// `invocation` is how the run started a mutant, which turns into the command somebody
+    /// pastes to watch this one happen. Absent for a caller that has no report to hand -
+    /// and then the story is told without the last chapter rather than with an invented one.
+    static func of(
+        _ mutant: RunReport.Mutant,
+        reachedBy tests: [String],
+        with invocation: RunReport.Invocation? = nil
+    ) -> [String] {
         var lines = [
             "\(Self.place(of: mutant))  \(mutant.rule)",
             "  \(mutant.original)  ->  \(mutant.replacement)",
@@ -26,7 +37,60 @@ enum Explanation {
             "",
         ]
         lines += Self.verdict(of: mutant, reachedBy: tests)
+        if let invocation {
+            lines += Self.reproduction(of: mutant, reachedBy: tests, with: invocation)
+        }
         return lines
+    }
+
+    /// The command that ran one mutant, for somebody who wants to watch it happen.
+    ///
+    /// A summary says a hundred and eighty things survived. That is a number, not a task,
+    /// and the fastest way into one of them is to run it under a debugger. Working out how
+    /// by hand means knowing which bundle, which environment variable, which spelling of a
+    /// filter, and which of three flags the runner adds - an afternoon nobody should spend.
+    ///
+    /// The line comes from the same function the runner builds its own commands with, so
+    /// what somebody pastes is what ran. A command assembled here instead would be a
+    /// plausible-looking line that works until the day the runner adds a flag, and then it
+    /// silently runs a different program: the mutant behaves differently under the debugger
+    /// than it did in the report, and nobody can tell why.
+    static func reproduction(
+        of mutant: RunReport.Mutant,
+        reachedBy tests: [String],
+        with invocation: RunReport.Invocation
+    ) -> [String] {
+        // Nothing to reproduce for a mutant something caught: whoever reads this already
+        // has the test that caught it, which is a better place to start than a debugger.
+        guard invocation.isKnown, mutant.outcome != "killed" else { return [] }
+
+        let spec = Launch(
+            plan: TestPlan(
+                executable: invocation.executable,
+                arguments: invocation.arguments,
+                environment: invocation.environment,
+                directory: invocation.directory,
+                eventStreamVersion: invocation.eventStreamVersion
+            ),
+            worker: 0,
+            timeout: nil
+        ).specification(
+            writingEventsTo: "/dev/null",
+            // A mutant nothing reached was offered no test, and filtering to none of them
+            // would run nothing at all - so it runs the suite, which is what the run did.
+            waking: [UInt32(clamping: mutant.index)],
+            onlyTests: tests.isEmpty ? nil : tests
+        )
+        return [
+            "",
+            "to watch it happen:",
+            "  cd \(invocation.directory) && \\",
+            "    \(ProcessSpec.rendered(spec, showing: Set(invocation.environment.keys)))",
+            "  "
+                + (invocation.kept
+                    ? "that copy is still there, because this run was asked to keep it."
+                    : "that copy has been deleted. Run again with --keep-temp to keep it."),
+        ]
     }
 
     /// Where it is, in the words an editor takes - or in bytes, when the line is unknown.

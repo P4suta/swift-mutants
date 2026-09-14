@@ -49,7 +49,9 @@ struct ExplainCommand: AsyncParsableCommand {
         let ran = found.ran.compactMap {
             report.tests.indices.contains($0) ? report.tests[$0] : nil
         }
-        for line in Explanation.of(found, reachedBy: ran) { print(line) }
+        for line in Explanation.of(found, reachedBy: ran, with: report.invocation) {
+            print(line)
+        }
     }
 
     /// Why nothing came back, in terms of what was typed.

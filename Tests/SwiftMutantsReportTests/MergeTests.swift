@@ -36,7 +36,8 @@ struct MergeTests {
             ran: tests,
             testsStarted: tests.count,
             attempts: outcome == "not-run" ? 0 : 1,
-            durationMilliseconds: 1
+            durationMilliseconds: 1,
+            index: 1
         )
     }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+public import SwiftMutantsBuild
 public import SwiftMutantsCore
 public import SwiftMutantsExecute
 public import SwiftMutantsValidate
@@ -52,6 +53,13 @@ public struct RunOutcome: Sendable {
     /// about a different line of code would be worse than one that showed no code.
     public let digests: [WorkspaceRelativePath: Digest]
 
+    /// How this run started a mutant, so that somebody can start one themselves.
+    ///
+    /// The plan the trials were built from, kept rather than a finished command line: the
+    /// line is built by the same function the runner used, so what somebody pastes is what
+    /// ran rather than a plausible-looking reconstruction.
+    public let plan: TestPlan?
+
     /// What the project's `[[mutation.expect]]` rows amounted to.
     ///
     /// Carried rather than folded into the summary, because "three expectations were met"
@@ -79,6 +87,7 @@ public struct RunOutcome: Sendable {
         positions: [WorkspaceRelativePath: LineIndex] = [:],
         digests: [WorkspaceRelativePath: Digest] = [:],
         expectations: Expectations.Verdict = .unasked,
+        plan: TestPlan? = nil,
         shard: Shard? = nil
     ) {
         self.results = results
@@ -91,6 +100,7 @@ public struct RunOutcome: Sendable {
         self.positions = positions
         self.digests = digests
         self.expectations = expectations
+        self.plan = plan
         self.shard = shard
     }
 }

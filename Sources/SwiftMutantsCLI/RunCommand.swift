@@ -234,7 +234,10 @@ struct RunCommand: AsyncParsableCommand {
     /// scrolled past is still a run `explain` can answer about. Failing to keep it is a
     /// warning rather than a failure: the run answered the question it was asked.
     private func publish(_ outcome: RunOutcome, at root: URL) throws {
-        let account = RunReport(of: outcome)
+        // Whether the copy the run happened in survives this process, which is what decides
+        // whether `explain`'s command is one somebody can paste or one they would have to
+        // work out has already been deleted.
+        let account = RunReport(of: outcome, kept: keepTemp)
         try? ReportStore.write(account, to: ReportStore.location(for: root))
         let published = (try? Publishing.write(account, formats: Set(report), into: root)) ?? []
 

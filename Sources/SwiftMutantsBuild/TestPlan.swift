@@ -23,18 +23,30 @@ public struct TestPlan: Sendable, Hashable {
     /// Which spelling of the event stream to ask for.
     public let eventStreamVersion: String
 
+    /// The variables this plan worked out, as opposed to the ones it was handed.
+    ///
+    /// A subset of ``environment``, kept apart because these are the ones a command that
+    /// reproduces a run needs and the ones it is safe to write down. On a Mac a test bundle
+    /// is a dylib that needs `Testing.framework` on its search path; a command without that
+    /// fails with `Library not loaded` and reads as a bug in the package rather than a
+    /// missing variable. Everything else in the environment was inherited from whoever
+    /// started the run, and that is where their tokens are.
+    public let derived: [String: String]
+
     /// Describes how to start a built test bundle.
     public init(
         executable: String,
         arguments: [String],
         environment: [String: String],
         directory: String,
-        eventStreamVersion: String = "6.3"
+        eventStreamVersion: String = "6.3",
+        derived: [String: String] = [:]
     ) {
         self.executable = executable
         self.arguments = arguments
         self.environment = environment
         self.directory = directory
         self.eventStreamVersion = eventStreamVersion
+        self.derived = derived
     }
 }

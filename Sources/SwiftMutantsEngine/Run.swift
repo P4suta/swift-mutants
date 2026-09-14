@@ -110,6 +110,7 @@ public struct Run: Sendable {
             positions: listing.positions,
             digests: listing.digests,
             expectations: expectations,
+            plan: plan,
             shard: configuration.execution.shard
         )
     }

@@ -36,7 +36,8 @@ struct ExplanationTests {
             ran: Array(0..<testsStarted),
             testsStarted: testsStarted,
             attempts: 1,
-            durationMilliseconds: 231
+            durationMilliseconds: 231,
+            index: 7
         )
     }
 
@@ -141,7 +142,8 @@ struct ExplanationTests {
             ran: [],
             testsStarted: 0,
             attempts: 1,
-            durationMilliseconds: 231
+            durationMilliseconds: 231,
+            index: 7
         )
         let said = Self.lines(mutant).joined(separator: "\n")
         #expect(said.contains("Sources/Codec/Header.swift"))
@@ -188,5 +190,99 @@ struct MutantLookupTests {
     @Test("does not care how it was typed")
     func caseInsensitive() {
         #expect(Explanation.find("CD", among: Self.mutants())?.id.hasPrefix("cd") == true)
+    }
+}
+
+/// The command somebody pastes to watch one mutant run.
+///
+/// A summary says a hundred and eighty things survived. That is a number, not a task, and
+/// the fastest way into one of them is to run it under a debugger. Working out how by hand
+/// means knowing which bundle, which environment variable, which filter spelling and which
+/// of three flags the runner adds - which is an afternoon somebody should not have to spend.
+@Suite("Reproducing one mutant from a report")
+struct ReproduceLineTests {
+
+    static func invocation(
+        kept: Bool = true, executable: String = "/tmp/w/PTests"
+    )
+        -> RunReport.Invocation
+    {
+        RunReport.Invocation(
+            executable: executable,
+            arguments: ["--quiet"],
+            directory: "/tmp/w",
+            eventStreamVersion: "6.3",
+            environment: ["DYLD_FRAMEWORK_PATH": "/p/Developer/Library/Frameworks"],
+            kept: kept
+        )
+    }
+
+    static func lines(
+        _ invocation: RunReport.Invocation? = nil,
+        outcome: String = "survived",
+        tests: [String] = ["P.S/a()"]
+    ) -> [String] {
+        Explanation.reproduction(
+            of: ExplanationTests.mutant(outcome: outcome, testsStarted: tests.count),
+            reachedBy: tests,
+            with: invocation ?? Self.invocation()
+        )
+    }
+
+    /// The bundle, the variable that wakes this mutant, and the tests it was offered.
+    @Test("says the command that ran this mutant")
+    func saysTheCommand() throws {
+        let said = Self.lines().joined(separator: "\n")
+        #expect(said.contains("SWIFT_MUTANTS_ACTIVE=7"))
+        #expect(said.contains("/tmp/w/PTests"))
+        #expect(said.contains("--filter"))
+        #expect(said.contains("cd /tmp/w"))
+    }
+
+    /// It is the runner's own command, not a line assembled here. The flags the runner adds
+    /// to watch a run are in it because they were in what ran.
+    @Test("says the runner's command, watching flags and all")
+    func saysTheRunnersCommand() throws {
+        let said = Self.lines().joined(separator: "\n")
+        #expect(said.contains("--no-parallel"))
+        #expect(said.contains("--event-stream-version"))
+        #expect(said.contains("--quiet"))
+    }
+
+    /// A run works inside a disposable copy, so the directory is usually gone by the time
+    /// anybody reads this. Saying so is the difference between a line that helps and ten
+    /// minutes working out why a paste failed.
+    @Test("says when the tree it names is gone")
+    func saysWhenTheTreeIsGone() {
+        let gone = Self.lines(Self.invocation(kept: false)).joined(separator: "\n")
+        #expect(gone.contains("--keep-temp"))
+        let kept = Self.lines(Self.invocation(kept: true)).joined(separator: "\n")
+        #expect(!kept.contains("--keep-temp"))
+        #expect(kept.contains("still there"))
+    }
+
+    /// A run that never got as far as building has no command, and inventing one would be
+    /// inventing the whole thing.
+    @Test("says nothing when there was no command")
+    func saysNothingWithoutOne() {
+        #expect(Self.lines(Self.invocation(executable: "")).isEmpty)
+    }
+
+    /// A killed mutant is not a mystery somebody needs to reproduce - they have the test
+    /// that caught it. The line is for the ones nothing noticed.
+    @Test("says it for a survivor and not for a kill")
+    func onlyForSurvivors() {
+        #expect(!Self.lines(outcome: "survived").isEmpty)
+        #expect(Self.lines(outcome: "killed").isEmpty)
+        #expect(!Self.lines(outcome: "timed-out").isEmpty)
+    }
+
+    /// A survivor nothing reached was never offered a test, and a command filtering to none
+    /// of them would run nothing at all - so it runs the suite, which is what the run did.
+    @Test("runs the whole suite for a mutant nothing reached")
+    func wholeSuiteForTheUnreached() {
+        let said = Self.lines(tests: []).joined(separator: "\n")
+        #expect(!said.contains("--filter"))
+        #expect(said.contains("SWIFT_MUTANTS_ACTIVE=7"))
     }
 }

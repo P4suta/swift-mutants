@@ -103,7 +103,8 @@ public enum Merge {
             },
             testsStarted: mutant.testsStarted,
             attempts: mutant.attempts,
-            durationMilliseconds: mutant.durationMilliseconds
+            durationMilliseconds: mutant.durationMilliseconds,
+            index: mutant.index
         )
     }
 
@@ -168,7 +169,10 @@ extension RunReport {
             tests: tests,
             mutants: mutants,
             rejected: rejected,
-            expectations: expectations ?? self.expectations
+            expectations: expectations ?? self.expectations,
+            // One share's, because a merged report is about a package rather than about a
+            // machine, and the copy any of them ran in is gone by the time it is merged.
+            invocation: invocation
         )
     }
 }

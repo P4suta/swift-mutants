@@ -130,7 +130,8 @@ extension Run {
                 durationMilliseconds: 0,
                 termination: .stopped
             ),
-            attempts: 0
+            attempts: 0,
+            index: mutant.index
         )
     }
 
@@ -224,7 +225,8 @@ extension Run {
                     durationMilliseconds: result.verdict.durationMilliseconds,
                     termination: result.verdict.termination
                 ),
-                attempts: result.attempts
+                attempts: result.attempts,
+                index: result.index
             )
         }
     }

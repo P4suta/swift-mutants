@@ -38,7 +38,8 @@ public enum EmbeddedSchemas {
                 "tests",
                 "mutants",
                 "rejected",
-                "expectations"
+                "expectations",
+                "invocation"
               ],
               "properties": {
                 "schemaVersion": { "const": 2 },
@@ -129,7 +130,8 @@ public enum EmbeddedSchemas {
                       "ran",
                       "testsStarted",
                       "attempts",
-                      "durationMilliseconds"
+                      "durationMilliseconds",
+                      "index"
                     ],
                     "properties": {
                       "id": { "type": "string" },
@@ -160,7 +162,12 @@ public enum EmbeddedSchemas {
                       },
                       "testsStarted": { "$ref": "#/$defs/count" },
                       "attempts": { "$ref": "#/$defs/count" },
-                      "durationMilliseconds": { "$ref": "#/$defs/count" }
+                      "durationMilliseconds": { "$ref": "#/$defs/count" },
+                      "index": {
+                        "description": "Which guard in the instrumented tree it is - the number SWIFT_MUTANTS_ACTIVE takes.",
+                        "type": "integer",
+                        "minimum": 0
+                      }
                     }
                   }
                 },
@@ -190,6 +197,34 @@ public enum EmbeddedSchemas {
                           }
                         }
                       }
+                    }
+                  }
+                },
+                "invocation": {
+                  "description": "How the run started a mutant, in the pieces a command is built from. The environment is deliberately absent: what a reader needs is the two variables this tool sets, and carrying the rest would put whatever a developer has exported into a file that ends up in a bug report.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "executable",
+                    "arguments",
+                    "directory",
+                    "eventStreamVersion",
+                    "environment",
+                    "kept"
+                  ],
+                  "properties": {
+                    "executable": { "type": "string" },
+                    "arguments": { "type": "array", "items": { "type": "string" } },
+                    "directory": { "type": "string" },
+                    "eventStreamVersion": { "type": "string" },
+                    "environment": {
+                      "description": "Only the variables the run worked out, never the ones it inherited: on a Mac a test bundle needs Testing.framework on its search path, and a command without it fails to load. Everything else stays out, because that is where a developer's tokens are.",
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    },
+                    "kept": {
+                      "description": "Whether the disposable copy the run happened in is still there.",
+                      "type": "boolean"
                     }
                   }
                 },

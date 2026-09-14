@@ -79,7 +79,7 @@ public struct Trial: Sendable {
         // and a run that quietly produced no answer would be far worse than that.
         let pipe = EventPipe(path: stream.path)
         let outcome = await runner.run(
-            spec(
+            specification(
                 writingEventsTo: pipe?.path ?? stream.path,
                 waking: indices,
                 onlyTests: onlyTests
@@ -106,44 +106,13 @@ public struct Trial: Sendable {
         }
     }
 
-    /// What to start, and what to tell it.
-    ///
-    /// Three arguments are added here rather than left to whoever built the plan, because
-    /// all three are requirements of *watching* a run rather than of running one:
-    ///
-    /// - where to write its events, which only this knows, since the pipe is per trial;
-    /// - which spelling of the stream to use, pinned rather than left to a default;
-    /// - `--no-parallel`, because swift-testing runs tests concurrently by default and
-    ///   "which test killed this mutant" is then a race. Measured on the pinned toolchain:
-    ///   four tests, three overlapping pairs by default and none with the flag.
-    private func spec(
+    /// How this trial starts a mutant. ``Launch`` is where the command is decided.
+    var launch: Launch { Launch(plan: plan, worker: worker, timeout: timeout) }
+
+    func specification(
         writingEventsTo path: String, waking indices: [UInt32], onlyTests: [String]?
     ) -> ProcessSpec {
-        var environment = plan.environment
-        environment["SWIFT_MUTANTS"] = "1"
-        environment["SWIFT_MUTANTS_TEST_TOKEN"] = "\(worker)"
-        if !indices.isEmpty {
-            environment["SWIFT_MUTANTS_ACTIVE"] =
-                indices.map(String.init).joined(separator: ",")
-        }
-
-        // One `--filter` per test rather than one alternation, so no identifier has to
-        // survive being spliced into a bigger pattern. Absent means the whole suite, which
-        // is what a run without coverage has to do.
-        let selection = (onlyTests ?? []).flatMap { ["--filter", Prober.exactly($0)] }
-
-        return ProcessSpec(
-            kind: indices.isEmpty ? .baseline : .mutant,
-            executable: plan.executable,
-            arguments: plan.arguments + [
-                "--event-stream-output-path", path,
-                "--event-stream-version", plan.eventStreamVersion,
-                "--no-parallel",
-            ] + selection,
-            directory: plan.directory,
-            environment: environment,
-            timeout: timeout
-        )
+        launch.specification(writingEventsTo: path, waking: indices, onlyTests: onlyTests)
     }
 
     private static func termination(of outcome: ProcessOutcome) -> Termination {

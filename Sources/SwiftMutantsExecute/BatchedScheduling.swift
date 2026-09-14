@@ -57,7 +57,8 @@ extension Scheduler {
                     durationMilliseconds: verdict.durationMilliseconds,
                     termination: verdict.termination
                 ),
-                attempts: 1
+                attempts: 1,
+                index: mutant.index
             )
         }
     }

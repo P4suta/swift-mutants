@@ -48,7 +48,8 @@ extension Run {
                 durationMilliseconds: answer.durationMilliseconds,
                 termination: .stopped
             ),
-            attempts: 0
+            attempts: 0,
+            index: mutant.index
         )
     }
 

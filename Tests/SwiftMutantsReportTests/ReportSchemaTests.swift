@@ -176,7 +176,8 @@ struct ReportWriteGateTests {
             tests: report.tests,
             mutants: report.mutants,
             rejected: report.rejected,
-            expectations: report.expectations
+            expectations: report.expectations,
+            invocation: report.invocation
         )
         #expect(throws: Schemas.Invalid.self) { try RunReport.encoded(misdeclared) }
     }

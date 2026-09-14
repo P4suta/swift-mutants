@@ -62,6 +62,13 @@ public struct RunReport: Codable, Sendable, Hashable {
     /// What the compiler refused, in its own words.
     public let rejected: [Refusal]
 
+    /// How this run started a mutant, so somebody can start one themselves.
+    ///
+    /// A summary says a hundred and eighty things survived; the work is one at a time, and
+    /// the fastest way into one is to run it under a debugger. This is what `explain` turns
+    /// into that command.
+    public let invocation: Invocation
+
     /// What the project's `[[mutation.expect]]` rows amounted to.
     ///
     /// Here rather than only on stdout, because the report is what a build reads. A job
@@ -82,7 +89,8 @@ public struct RunReport: Codable, Sendable, Hashable {
         tests: [String],
         mutants: [Mutant],
         rejected: [Refusal],
-        expectations: Expectations
+        expectations: Expectations,
+        invocation: Invocation
     ) {
         self.schemaVersion = schemaVersion
         self.tool = tool
@@ -96,6 +104,7 @@ public struct RunReport: Codable, Sendable, Hashable {
         self.mutants = mutants
         self.rejected = rejected
         self.expectations = expectations
+        self.invocation = invocation
     }
 
     /// Which build made a report.
@@ -237,6 +246,14 @@ public struct RunReport: Codable, Sendable, Hashable {
         /// How long the run that decided it took.
         public let durationMilliseconds: Int
 
+        /// Which guard in the instrumented tree this mutant is.
+        ///
+        /// The number the runtime switches on, which is what `SWIFT_MUTANTS_ACTIVE` takes.
+        /// Nothing else uses it - a mutant's identity is its name everywhere a person or a
+        /// cache is concerned - but a command that wakes this mutant needs it, and working
+        /// it out afterwards would mean instrumenting the tree again.
+        public let index: Int
+
         /// Records what became of one mutant.
         public init(
             id: String,
@@ -252,7 +269,8 @@ public struct RunReport: Codable, Sendable, Hashable {
             ran: [Int],
             testsStarted: Int,
             attempts: Int,
-            durationMilliseconds: Int
+            durationMilliseconds: Int,
+            index: Int
         ) {
             self.id = id
             self.path = path
@@ -268,6 +286,7 @@ public struct RunReport: Codable, Sendable, Hashable {
             self.testsStarted = testsStarted
             self.attempts = attempts
             self.durationMilliseconds = durationMilliseconds
+            self.index = index
         }
     }
 

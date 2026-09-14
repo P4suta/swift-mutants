@@ -134,11 +134,14 @@ extension SwiftPackageManager {
             )
         }
         let helper = try await testingHelper(environment: environment)
-        var withFrameworks = environment
+        // Kept apart from the rest of the environment, because these are the two a command
+        // reproducing this run needs and the two it is safe to write down: the tool worked
+        // them out, rather than inheriting them from whoever started the run.
+        var derived: [String: String] = [:]
         if let platform = await platformPath(environment: environment) {
-            withFrameworks["DYLD_FRAMEWORK_PATH"] =
+            derived["DYLD_FRAMEWORK_PATH"] =
                 platform.appending(path: "Developer/Library/Frameworks").path
-            withFrameworks["DYLD_LIBRARY_PATH"] =
+            derived["DYLD_LIBRARY_PATH"] =
                 platform.appending(path: "Developer/usr/lib").path
         }
         return TestPlan(
@@ -148,8 +151,9 @@ extension SwiftPackageManager {
                 product.executable.path,
                 "--testing-library", "swift-testing",
             ],
-            environment: withFrameworks,
-            directory: root.path
+            environment: environment.merging(derived) { _, worked in worked },
+            directory: root.path,
+            derived: derived
         )
     }
 
