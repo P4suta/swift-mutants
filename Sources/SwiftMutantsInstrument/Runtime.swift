@@ -21,6 +21,14 @@ enum Runtime {
     /// The environment variable that says which mutant is awake.
     static let activationVariable = "SWIFT_MUTANTS_ACTIVE"
 
+    /// The environment variable that says where to record what was reached.
+    ///
+    /// Set for a probe run and unset for every other. A guard is the right place to record
+    /// from because a guard is evaluated exactly when its site is: no extra expression, no
+    /// change to what the compiler has to type-check, and nothing that can be reached
+    /// without the mutant having been reachable.
+    static let probeVariable = "SWIFT_MUTANTS_PROBE"
+
     /// A per-file suffix, so two instrumented files in one module cannot collide.
     ///
     /// Derived from the path and the file's digest rather than from a counter, so that
@@ -65,13 +73,29 @@ enum Runtime {
     /// not have asked for it, and a name the file already resolves one way could become
     /// ambiguous. `import func Darwin.getenv` brings in one function - and that function is
     /// already named by the guard above it, so nothing else in the file can be affected.
-    static func source(token: String, count: Int) -> String {
+    static func source(token: String, count: Int, base: UInt32 = 0) -> String {
         """
 
         // swift-mutants runtime, appended so that every line above keeps its number.
         // \(count) mutant\(count == 1 ? "" : "s") live in this file, one awake at a time.
-        // The environment is read once here rather than inside each guard, so a guard in a
-        // loop is an integer compare rather than a dictionary build.
+        \(activation(token: token))
+        \(probing(token: token, count: count, base: base))
+        @inline(__always) private func __sm_\(token)(_ index: UInt32) -> Bool {
+            if __sm_probe_\(token) >= 0 { __sm_record_\(token)(index) }
+            return __sm_active_\(token) == index
+        }
+        \(imports)
+        """
+    }
+
+    /// Which mutant is awake, read once.
+    ///
+    /// The environment is read in a global's initialiser rather than inside each guard, so
+    /// a guard in a loop is an integer compare. Muter evaluates
+    /// `ProcessInfo.processInfo.environment[...]` per guard, which materialises a
+    /// dictionary from `environ` every time round.
+    private static func activation(token: String) -> String {
+        """
         private let __sm_active_\(token): UInt32 = {
             // Spelled both ways, chosen at compile time. `getenv` returns a pointer, so a
             // package built with -strict-memory-safety warns unless the call is marked -
@@ -89,13 +113,66 @@ enum Runtime {
             #endif
             return value
         }()
-        @inline(__always) private func __sm_\(token)(_ index: UInt32) -> Bool {
-            __sm_active_\(token) == index
+        """
+    }
+
+    /// Writing down which mutants a run reached.
+    ///
+    /// The file is opened once, in append mode, and never closed: a line written is a line
+    /// on disk, so a process that crashes still proves what it got to. One slot per mutant
+    /// keeps a site inside a loop to a single line - a racing pair of threads can both
+    /// write the same index, which costs a duplicate and nothing else, because the reader
+    /// takes a set.
+    private static func probing(token: String, count: Int, base: UInt32) -> String {
+        """
+        private let __sm_probe_\(token): Int32 = {
+            #if hasFeature(StrictMemorySafety)
+                guard let raw = unsafe getenv("\(probeVariable)") else { return -1 }
+                return unsafe open(raw, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            #else
+                guard let raw = getenv("\(probeVariable)") else { return -1 }
+                return open(raw, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            #endif
+        }()
+        nonisolated(unsafe) private var __sm_seen_\(token) = [Bool](
+            repeating: false, count: \(count))
+        private func __sm_record_\(token)(_ index: UInt32) {
+            let slot = Int(index) - \(base)
+            guard slot >= 0, slot < __sm_seen_\(token).count, !__sm_seen_\(token)[slot] else {
+                return
+            }
+            __sm_seen_\(token)[slot] = true
+            let line = Array("\\(index)\\n".utf8)
+            #if hasFeature(StrictMemorySafety)
+                _ = unsafe line.withUnsafeBufferPointer {
+                    unsafe write(__sm_probe_\(token), $0.baseAddress, $0.count)
+                }
+            #else
+                _ = line.withUnsafeBufferPointer {
+                    write(__sm_probe_\(token), $0.baseAddress, $0.count)
+                }
+            #endif
         }
+        """
+    }
+
+    /// The names the runtime needs, brought in selectively and last.
+    private static var imports: String {
+        """
         #if canImport(Darwin)
             import func Darwin.getenv
+            import func Darwin.open
+            import func Darwin.write
+            import var Darwin.O_APPEND
+            import var Darwin.O_CREAT
+            import var Darwin.O_WRONLY
         #else
             import func Glibc.getenv
+            import func Glibc.open
+            import func Glibc.write
+            import var Glibc.O_APPEND
+            import var Glibc.O_CREAT
+            import var Glibc.O_WRONLY
         #endif
         """
     }

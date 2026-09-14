@@ -28,12 +28,23 @@ struct InstrumentIntegrationTests {
         func both(_ a: Bool, _ b: Bool) -> Bool {
             return a && b
         }
+
+        // A site inside a loop, so that a probe run has something to write down a
+        // hundred thousand times if it is going to.
+        func counted(_ limit: Int) -> Int {
+            var total = 0
+            for value in 0..<limit where value % 2 == 0 {
+                total += 1
+            }
+            return total
+        }
         """
 
     static let driver = """
         let arguments = CommandLine.arguments
         print(classify(Int(arguments[1]) ?? 0, Int(arguments[2]) ?? 0))
         print(both(arguments[3] == "y", arguments[4] == "y"))
+        print(counted(100_000))
         """
 
     /// A built subject, and the way to take it away again.
@@ -91,6 +102,75 @@ struct InstrumentIntegrationTests {
             .map(String.init)
     }
 
+    /// What the guards write down when they are asked to.
+    ///
+    /// This is the whole economy of a fast run. Without it a mutant costs the time the
+    /// suite takes, because every test has to be run in case one of them notices; with it
+    /// a mutant costs only the tests that reach it, and a mutant nothing reaches costs no
+    /// process at all.
+    ///
+    /// A guard is the right place to record from: it is evaluated exactly when its site
+    /// is, it adds no expression for the compiler to type-check, and nothing can reach it
+    /// without the mutant having been reachable.
+    @Test("writes down which mutants a run reached", .tags(.integration))
+    func probesRecordWhatWasReached() throws {
+        let built = try Self.build()
+        defer { built.cleanUp() }
+
+        let log = built.binary.deletingLastPathComponent().appending(path: "probe.log")
+        // `classify(2, 2)` takes the `a < b` site; `both` is never called, so the mutants
+        // in it are never reached.
+        let reached = try Self.probe(built.binary, writingTo: log, arguments: ["2", "2", "y", "n"])
+
+        let comparisons = built.mutants.filter { $0.rule.name == "lt-to-le" }.map(\.index)
+        #expect(!comparisons.isEmpty)
+        #expect(Set(comparisons).isSubset(of: reached), "\(reached)")
+    }
+
+    /// A site inside a loop is written down once, not once per turn. Otherwise a probe run
+    /// of a program that does any real work writes a log nobody can read.
+    @Test("writes each mutant down once however often it is reached", .tags(.integration))
+    func probesRecordOnce() throws {
+        let built = try Self.build()
+        defer { built.cleanUp() }
+
+        let log = built.binary.deletingLastPathComponent().appending(path: "once.log")
+        _ = try Self.probe(built.binary, writingTo: log, arguments: ["2", "2", "y", "n"])
+
+        let lines = try String(contentsOf: log, encoding: .utf8)
+            .split(separator: "\n").map(String.init)
+        #expect(!lines.isEmpty)
+        #expect(Set(lines).count == lines.count, "a mutant was written down twice: \(lines)")
+    }
+
+    /// And when nobody asks, nothing is written and nothing is opened.
+    @Test("writes nothing when no probe was asked for", .tags(.integration))
+    func probesAreOffByDefault() throws {
+        let built = try Self.build()
+        defer { built.cleanUp() }
+        let log = built.binary.deletingLastPathComponent().appending(path: "absent.log")
+
+        _ = try Self.run(built.binary, activating: nil)
+        #expect(!FileManager.default.fileExists(atPath: log.path))
+    }
+
+    /// Runs the subject with probing on and returns the indices it wrote down.
+    static func probe(_ binary: URL, writingTo log: URL, arguments: [String]) throws -> Set<UInt32>
+    {
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["SWIFT_MUTANTS_PROBE"] = log.path
+        process.environment = environment
+        process.standardOutput = Pipe()
+        try process.run()
+        process.waitUntilExit()
+
+        guard let text = try? String(contentsOf: log, encoding: .utf8) else { return [] }
+        return Set(text.split(separator: "\n").compactMap { UInt32($0) })
+    }
+
     /// The instrumented file has to be a program the compiler accepts. Everything else is
     /// theory until it is.
     @Test("compiles", .tags(.integration))
@@ -108,7 +188,7 @@ struct InstrumentIntegrationTests {
         let built = try Self.build()
         defer { built.cleanUp() }
         // 2 < 2 is false, and (true && false) is false.
-        #expect(try Self.run(built.binary, activating: nil) == ["not-less", "false"])
+        #expect(try Self.run(built.binary, activating: nil) == ["not-less", "false", "50000"])
     }
 
     /// The claim itself: one environment variable, one different program.
@@ -120,9 +200,13 @@ struct InstrumentIntegrationTests {
         let connective = try #require(built.mutants.first { $0.rule.name == "and-to-or" })
 
         // `<` becomes `<=`, so 2 <= 2 is now true. The connective is untouched.
-        #expect(try Self.run(built.binary, activating: comparison.index) == ["less", "false"])
+        #expect(
+            try Self.run(built.binary, activating: comparison.index) == ["less", "false", "50000"])
         // `&&` becomes `||`, so (true || false) is now true. The comparison is untouched.
-        #expect(try Self.run(built.binary, activating: connective.index) == ["not-less", "true"])
+        #expect(
+            try Self.run(built.binary, activating: connective.index) == [
+                "not-less", "true", "50000",
+            ])
     }
 
     /// A guard is an integer compare against a global the runtime read once, and `-O` must
@@ -144,7 +228,7 @@ struct InstrumentIntegrationTests {
     func unknownIndexWakesNothing() throws {
         let built = try Self.build()
         defer { built.cleanUp() }
-        #expect(try Self.run(built.binary, activating: 9999) == ["not-less", "false"])
+        #expect(try Self.run(built.binary, activating: 9999) == ["not-less", "false", "50000"])
     }
 }
 
