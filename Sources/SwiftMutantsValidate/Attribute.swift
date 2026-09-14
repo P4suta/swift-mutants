@@ -84,9 +84,7 @@ public enum Attribute {
             guard
                 let entry = known[Self.resolved(diagnostic.file)],
                 let offset = entry.index.offset(of: diagnostic.position),
-                let mutant = entry.file.mutants.first(where: {
-                    $0.instrumentedSpan.contains(offset: offset)
-                })
+                let mutant = Self.mutant(at: offset, in: entry.file)
             else {
                 unattributed.append(diagnostic)
                 continue
@@ -109,6 +107,26 @@ public enum Attribute {
                 )
             }
         return Attribution(rejected: rejected, unattributed: unattributed)
+    }
+
+    /// Which mutant an offset belongs to, if exactly one does.
+    ///
+    /// The copy it is in, first: that is the mutant the compiler is describing, and it is
+    /// unambiguous. Failing that, the guard it is in - because a ternary is one
+    /// type-checking problem, and a mutant that does not typecheck can be reported at a
+    /// position inside the *untouched* copy beside it. Measured on this repository:
+    /// `ContinuousClock.now - start` mutated to `+`, and the error landed on the original.
+    ///
+    /// Only when the guard holds one mutant. Where several share a site, a position
+    /// outside all their copies names none of them, and guessing would reject mutants
+    /// that compile perfectly well - which is the expensive mistake: a lost mutant is a
+    /// hole in somebody's tests nobody will ever be told about.
+    private static func mutant(at offset: Int, in file: InstrumentedFile) -> InstrumentedMutant? {
+        if let exact = file.mutants.first(where: { $0.instrumentedSpan.contains(offset: offset) }) {
+            return exact
+        }
+        let sharing = file.mutants.filter { $0.siteSpan.contains(offset: offset) }
+        return sharing.count == 1 ? sharing.first : nil
     }
 
     /// A path with its symbolic links followed, so two spellings of one file agree.

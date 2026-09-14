@@ -286,3 +286,97 @@ struct AttributionPathTests {
         #expect(attribution.unattributed.count == 1)
     }
 }
+
+/// When the compiler points at the wrong arm of the ternary.
+///
+/// A guard is one type-checking problem, so a mutant that does not typecheck can be
+/// reported at a position inside the *untouched* copy beside it. Measured on this
+/// repository: `ContinuousClock.now - start` mutated to `+`, and the error landed on the
+/// original. Nothing is wrong with that - the compiler is describing an overload it could
+/// not resolve and it picked one of the places involved - but exact-span attribution
+/// misses it, and a run then halves its way through six hundred mutants for one.
+///
+/// So a position anywhere inside a guard counts, when that guard holds one mutant. Where
+/// several share a site, a position outside all their copies names none of them, and
+/// guessing would reject a mutant that compiles perfectly well.
+@Suite("Attribution inside a guard")
+struct AttributionSiteTests {
+
+    static let path = "/tmp/pkg/Subject.swift"
+
+    static func instrument(_ source: String) throws -> InstrumentedFile {
+        guard let relative = WorkspaceRelativePath("Sources/Subject.swift") else {
+            fatalError("malformed fixture path")
+        }
+        return try Instrument.file(source, discovery: Discover.candidates(in: source, at: relative))
+    }
+
+    /// A diagnostic at a byte inside the guard but outside every mutated copy.
+    static func diagnosticInOriginal(of file: InstrumentedFile, rule: String) throws -> String {
+        let mutant = try #require(file.mutants.first { $0.rule.name == rule })
+        // The last byte of the site is the closing parenthesis of the whole guard, which
+        // is inside the site and outside every copy.
+        let offset = mutant.siteSpan.end - 1
+        #expect(!mutant.instrumentedSpan.contains(offset: offset))
+        let place = try #require(LineIndex(file.source).position(of: offset))
+        return "\(Self.path):\(place.line):\(place.column): error: no"
+    }
+
+    @Test("names the mutant when its guard holds only one")
+    func oneMutantAtTheSite() throws {
+        let file = try Self.instrument("func f(_ a: Int, _ b: Int) -> Int { a - b }")
+        #expect(file.mutants.count == 1)
+
+        let attribution = Attribute.diagnostics(
+            CompilerDiagnostic.parse(
+                try Self.diagnosticInOriginal(of: file, rule: "sub-to-add")),
+            to: [Self.path: file]
+        )
+        #expect(attribution.rejected.map(\.rule.name) == ["sub-to-add"])
+        #expect(attribution.unattributed.isEmpty)
+    }
+
+    /// Three mutants share the guard around `a && b`. A position in the original arm says
+    /// nothing about which of them the compiler refused, so it says so rather than
+    /// rejecting two mutants that compile.
+    @Test("refuses to choose when a guard holds several")
+    func severalMutantsAtTheSite() throws {
+        let file = try Self.instrument("func f(_ a: Bool, _ b: Bool) -> Bool { a && b }")
+        #expect(file.mutants.count == 3)
+
+        let attribution = Attribute.diagnostics(
+            CompilerDiagnostic.parse(
+                try Self.diagnosticInOriginal(of: file, rule: "and-to-or")),
+            to: [Self.path: file]
+        )
+        #expect(attribution.rejected.isEmpty)
+        #expect(attribution.unattributed.count == 1)
+    }
+
+    /// The exact span still wins. A diagnostic inside a mutant's own copy belongs to that
+    /// mutant even when the site holds others.
+    @Test("prefers the copy the error is actually in")
+    func exactSpanWins() throws {
+        let file = try Self.instrument("func f(_ a: Bool, _ b: Bool) -> Bool { a && b }")
+        let mutant = try #require(file.mutants.first { $0.rule.name == "and-to-or" })
+        let place = try #require(
+            LineIndex(file.source).position(of: mutant.instrumentedSpan.start))
+
+        let attribution = Attribute.diagnostics(
+            CompilerDiagnostic.parse("\(Self.path):\(place.line):\(place.column): error: no"),
+            to: [Self.path: file]
+        )
+        #expect(attribution.rejected.map(\.rule.name) == ["and-to-or"])
+    }
+
+    /// An error outside every guard is about the file rather than about a mutant, and
+    /// widening the search must not swallow that.
+    @Test("still says when an error belongs to no mutant")
+    func outsideEveryGuard() throws {
+        let file = try Self.instrument("func f(_ a: Int, _ b: Int) -> Int { a - b }")
+        let attribution = Attribute.diagnostics(
+            CompilerDiagnostic.parse("\(Self.path):1:1: error: no"), to: [Self.path: file])
+        #expect(attribution.rejected.isEmpty)
+        #expect(attribution.unattributed.count == 1)
+    }
+}

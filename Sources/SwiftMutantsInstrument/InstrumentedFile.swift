@@ -72,6 +72,20 @@ public struct InstrumentedMutant: Sendable, Hashable {
     /// them is a fact about the original program rather than about any mutant.
     public let instrumentedSpan: SourceSpan
 
+    /// The whole guard this mutant is one alternative of, in the instrumented file.
+    ///
+    /// Wider than ``instrumentedSpan`` on purpose. A ternary is one type-checking problem,
+    /// so a mutant that does not typecheck can be reported at a position in the *other*
+    /// arm - measured here: `ContinuousClock.now - start` mutated to `+`, and the error
+    /// landed on the untouched copy. Nothing is wrong with that; the compiler is
+    /// describing an overload it could not resolve, and it picked one of the places
+    /// involved.
+    ///
+    /// So attribution falls back to this when the exact span misses, and only when the
+    /// site holds one mutant - where several share a site, a position outside all their
+    /// copies names none of them, and guessing would reject a mutant that compiles.
+    public let siteSpan: SourceSpan
+
     /// Which rule produced it.
     public let rule: RuleIdentifier
 }

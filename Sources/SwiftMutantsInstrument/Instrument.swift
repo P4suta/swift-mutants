@@ -62,9 +62,32 @@ public enum Instrument {
 
         let numbered = Self.number(forest, token: token, discovery: discovery)
 
+        let spliced = try Self.splice(forest, bytes: bytes, token: token, numbered: numbered)
+        let runtime = Runtime.source(token: token, count: numbered.mutants.count)
+        return InstrumentedFile(
+            source: spliced.text + runtime,
+            runtime: runtime,
+            mutants: try Self.place(
+                numbered.mutants,
+                at: spliced.placements,
+                within: spliced.sites,
+                in: discovery
+            ),
+            runtimeToken: token
+        )
+    }
+
+    /// Walks the file once, putting each rendered site in place of the bytes it replaces.
+    private static func splice(
+        _ forest: IntervalForest<[Candidate]>,
+        bytes: [UInt8],
+        token: String,
+        numbered: Numbering
+    ) throws(InstrumentError) -> Rendered {
         var rewritten = ""
         var produced = 0
         var placements: [UInt32: SourceSpan] = [:]
+        var guards: [UInt32: SourceSpan] = [:]
         var cursor = 0
         for root in forest.roots {
             let span = root.span
@@ -78,18 +101,14 @@ public enum Instrument {
             for (index, relative) in rendered.placements {
                 placements[index] = relative.shifted(by: produced)
             }
+            for (index, relative) in rendered.sites {
+                guards[index] = relative.shifted(by: produced)
+            }
             produced += rendered.text.utf8.count
             cursor = span.end
         }
         rewritten += String(decoding: bytes[cursor...], as: UTF8.self)
-
-        let runtime = Runtime.source(token: token, count: numbered.mutants.count)
-        return InstrumentedFile(
-            source: rewritten + runtime,
-            runtime: runtime,
-            mutants: try Self.place(numbered.mutants, at: placements, in: discovery),
-            runtimeToken: token
-        )
+        return Rendered(text: rewritten, placements: placements, sites: guards)
     }
 
     /// Tells every numbered mutant where it landed.
@@ -103,12 +122,13 @@ public enum Instrument {
     private static func place(
         _ mutants: [Numbered],
         at placements: [UInt32: SourceSpan],
+        within sites: [UInt32: SourceSpan],
         in discovery: FileDiscovery
     ) throws(InstrumentError) -> [InstrumentedMutant] {
         var placed: [InstrumentedMutant] = []
         placed.reserveCapacity(mutants.count)
         for mutant in mutants {
-            guard let span = placements[mutant.index] else {
+            guard let span = placements[mutant.index], let site = sites[mutant.index] else {
                 throw InstrumentError(
                     """
                     \(discovery.path): mutant \(mutant.index) (\(mutant.rule.rendered)) was \
@@ -124,6 +144,7 @@ public enum Instrument {
                     marker: mutant.marker,
                     span: mutant.span,
                     instrumentedSpan: span,
+                    siteSpan: site,
                     rule: mutant.rule
                 )
             )
@@ -202,6 +223,7 @@ public enum Instrument {
         var original = ""
         var produced = 0
         var placements: [UInt32: SourceSpan] = [:]
+        var sites: [UInt32: SourceSpan] = [:]
         var cursor = node.span.start
         for child in node.children {
             let lead = String(decoding: bytes[cursor..<child.span.start], as: UTF8.self)
@@ -213,6 +235,9 @@ public enum Instrument {
             for (index, relative) in rendered.placements {
                 placements[index] = relative.shifted(by: produced)
             }
+            for (index, relative) in rendered.sites {
+                sites[index] = relative.shifted(by: produced)
+            }
             produced += rendered.text.utf8.count
             cursor = child.span.end
         }
@@ -223,6 +248,7 @@ public enum Instrument {
         var rendered = "(\(original))"
         // The children just placed sit one byte in, past the opening parenthesis.
         placements = placements.compactMapValues { $0.shifted(by: 1) }
+        sites = sites.compactMapValues { $0.shifted(by: 1) }
 
         // Zipped rather than looked up: numbering walked this same list in this same
         // order, so position is the join. A length mismatch drops a mutant here, and the
@@ -237,17 +263,25 @@ public enum Instrument {
             // copy, and the `) : ` that separates the two sides.
             let shift = head.utf8.count + mutated.utf8.count + 4
             placements = placements.compactMapValues { $0.shifted(by: shift) }
+            sites = sites.compactMapValues { $0.shifted(by: shift) }
             placements[index] = SourceSpan(
                 start: head.utf8.count, end: head.utf8.count + mutated.utf8.count)
         }
-        return Rendered(text: rendered, placements: placements)
+
+        // Every mutant at this node belongs to the whole of what was just rendered.
+        for (_, index) in alternatives {
+            sites[index] = SourceSpan(start: 0, end: rendered.utf8.count)
+        }
+        return Rendered(text: rendered, placements: placements, sites: sites)
     }
 
     /// One site's text, and where inside it each mutant's copy of the expression landed.
     private struct Rendered {
         var text: String
-        /// Byte spans relative to the start of ``text``.
+        /// Byte spans of each mutant's own copy, relative to the start of ``text``.
         var placements: [UInt32: SourceSpan]
+        /// Byte spans of the whole guard each mutant belongs to, relative the same way.
+        var sites: [UInt32: SourceSpan]
     }
 
     /// The site's bytes with one candidate's edit applied, flattened onto one line.
