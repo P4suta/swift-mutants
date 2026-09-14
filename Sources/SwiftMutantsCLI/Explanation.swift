@@ -97,7 +97,7 @@ enum Explanation {
     ///
     /// A position that was never worked out is said plainly rather than printed as `:0:0`,
     /// which an editor would take somewhere wrong and a reader would believe.
-    private static func place(of mutant: RunReport.Mutant) -> String {
+    static func place(of mutant: RunReport.Mutant) -> String {
         guard let line = mutant.line.value, let column = mutant.column.value else {
             return "\(mutant.path) (bytes \(mutant.span.start)..<\(mutant.span.end))"
         }

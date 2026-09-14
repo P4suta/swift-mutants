@@ -18,6 +18,16 @@ blanket_disable_command:
     - file_length
     - type_body_length
 
+# A key on a keyboard is called what it is called. `up` and `q` are the names a person uses
+# for them, and `upwards`/`quit` in a switch over keypresses would be a rule winning an
+# argument about English.
+identifier_name:
+  min_length:
+    warning: 2
+    error: 2
+  excluded:
+    - up
+
 # Formatting is swift-format's job. SwiftLint is here for the rules swift-format has no
 # opinion about, so anything purely cosmetic is disabled rather than fought over.
 disabled_rules:
