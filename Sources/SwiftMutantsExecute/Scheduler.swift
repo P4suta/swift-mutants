@@ -79,6 +79,37 @@ public struct Scheduler: Sendable {
         await trial(worker: 0).run(activating: nil, stoppingAtFirstFailure: false)
     }
 
+    /// Runs the baseline the way the mutants will be run: all workers at once.
+    ///
+    /// Two questions at once, and a run depends on both answers.
+    ///
+    /// Can this suite run beside itself? A mutation run starts `jobs` copies of it against
+    /// one machine, and a suite that shares a port, a fixture directory or a temporary
+    /// file with itself fails for reasons that have nothing to do with any mutant. Better
+    /// to find that out here, where the tool can say so, than to have it appear as a
+    /// scattering of unexplained kills.
+    ///
+    /// And how long does it take *like this*? A deadline derived from one suite on an idle
+    /// machine is the wrong number: measured on this repository, a solitary run took
+    /// thirty-five seconds and eight concurrent ones took more than five times that, so a
+    /// budget of five times the solitary figure timed out most of the run. The contended
+    /// figure is the one the mutants will live under, so it is the one to measure.
+    ///
+    /// Returns the slowest of them, which is the one a deadline has to cover.
+    public func contendedBaseline() async -> [Verdict] {
+        await withTaskGroup(of: Verdict.self) { group in
+            for worker in 0..<jobs {
+                group.addTask { [self] in
+                    await trial(worker: worker)
+                        .run(activating: nil, stoppingAtFirstFailure: false)
+                }
+            }
+            var verdicts: [Verdict] = []
+            for await verdict in group { verdicts.append(verdict) }
+            return verdicts
+        }
+    }
+
     /// Runs every mutant, reporting them in the order they were given.
     ///
     /// Order is restored rather than observed: which worker finishes first is a fact about

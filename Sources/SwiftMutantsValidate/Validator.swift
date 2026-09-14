@@ -227,13 +227,24 @@ public struct Validator: Sendable {
 
     // MARK: - Rounds
 
+    /// Instruments every file, numbering the mutants through the whole set.
+    ///
+    /// Through, not per file: every instrumented file reads the same
+    /// `SWIFT_MUTANTS_ACTIVE`, so a file numbered from zero means one value wakes the same
+    /// index in all of them. Measured on this repository before this existed: fifty-nine
+    /// files, so a run asking for mutant 3 woke up to fifty-nine mutants at once and
+    /// reported what it learned as a fact about one of them.
     static func instrument(
         _ files: [FileUnderValidation], as discoveries: [FileDiscovery]
     ) throws(ValidationError) -> [InstrumentedFile] {
         var instrumented: [InstrumentedFile] = []
+        var next: UInt32 = 0
         for (file, discovery) in zip(files, discoveries) {
             do {
-                instrumented.append(try Instrument.file(file.source, discovery: discovery))
+                let one = try Instrument.file(
+                    file.source, discovery: discovery, startingAt: next)
+                next = one.nextIndex
+                instrumented.append(one)
             } catch {
                 throw ValidationError("\(file.name) could not be instrumented: \(error)")
             }

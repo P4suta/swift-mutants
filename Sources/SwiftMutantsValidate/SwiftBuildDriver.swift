@@ -63,6 +63,10 @@ public struct SwiftBuildDriver: TypecheckDriver {
                     // error costs the same as a round that surfaces forty - and the loop
                     // then needs forty times as many of them.
                     "-Xswiftc", "-continue-building-after-errors",
+                    // The versions in Package.resolved and no others. A run measures the
+                    // package as it is, and re-resolving could measure a different one -
+                    // as well as reaching for the network in the middle of a build.
+                    "--force-resolved-versions",
                 ],
                 directory: root,
                 environment: environment,

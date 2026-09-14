@@ -22,12 +22,12 @@ public import SwiftMutantsRunner
 /// whose mutants could not be shown to be in it.
 public struct Run: Sendable {
 
-    private let root: URL
-    private let configuration: Configuration
-    private let runner: Runner
-    private let executable: String
-    private let workspace: URL
-    private let testArguments: [String]
+    let root: URL
+    let configuration: Configuration
+    let runner: Runner
+    let executable: String
+    let workspace: URL
+    let testArguments: [String]
 
     /// Prepares a run of the package at `root`, working inside `workspace`.
     ///
@@ -125,17 +125,32 @@ public struct Run: Sendable {
         _ plan: TestPlan, in pipes: URL, progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> (baseline: Verdict, scheduler: Scheduler) {
         let jobs = configuration.execution.jobs ?? 4
+        let calibrating = Scheduler(
+            plan: plan,
+            runner: runner,
+            scratch: pipes,
+            timeout: configuration.test.timeout ?? Self.calibrationBudget,
+            jobs: jobs
+        )
         progress(.baseline)
-        let baseline = try await provedBaseline(
-            Scheduler(
-                plan: plan,
-                runner: runner,
-                scratch: pipes,
-                timeout: configuration.test.timeout ?? Self.calibrationBudget,
-                jobs: jobs
-            ))
+        let baseline = try await provedBaseline(calibrating)
 
-        let budget = configuration.test.timeout ?? Self.budget(from: baseline, jobs: jobs)
+        // Measured the way the mutants will be run, because that is the only figure a
+        // deadline can be derived from. It also asks whether this suite can run beside
+        // itself at all, which a mutation run assumes and nothing else checks.
+        let crowd = jobs > 1 ? await calibrating.contendedBaseline() : [baseline]
+        if let unhappy = crowd.first(where: { $0.outcome != .survived }) {
+            throw RunError(
+                """
+                the tests pass alone and do not pass with \(jobs) copies of them running at \
+                once, which is how a run runs them. A suite that shares a port, a directory \
+                or a temporary file with itself does this. Try `--jobs 1`.
+                \(Self.blame(unhappy))
+                """
+            )
+        }
+        let slowest = crowd.max { $0.durationMilliseconds < $1.durationMilliseconds } ?? baseline
+        let budget = configuration.test.timeout ?? Self.budget(from: slowest, jobs: jobs)
         progress(.calibrated(budget))
         return (
             baseline,
@@ -226,11 +241,12 @@ public struct Run: Sendable {
     /// or so loose that a mutant which really does hang costs the whole budget - and the
     /// only thing that tells the two apart is how long this suite takes.
     ///
-    /// Five, and not five times the number of workers, because a deadline is no longer the
-    /// last word: a mutant that misses one is run again, alone. That retry is what makes a
-    /// tight budget safe, and a budget allowing for every worker to slow every other one
-    /// made a genuine hang cost sixteen minutes. Measured here: a solitary suite of
-    /// twenty-five seconds gave a budget of a thousand seconds, and the run spent them.
+    /// Five, and not five times the number of workers, because the baseline it is derived
+    /// from was already measured with every worker running - so the contention is in the
+    /// number rather than guessed at on top of it. Guessing on top of it made a genuine
+    /// hang cost sixteen minutes; guessing under it, from a solitary suite, timed out most
+    /// of a run. Measured here: thirty-five seconds alone, over five times that with eight
+    /// at once.
     ///
     /// The asymmetry still sets the direction. A deadline met under load costs one serial
     /// retry; a deadline set too tight *without* a retry reports a survivor as a kill,
@@ -252,126 +268,7 @@ public struct Run: Sendable {
     ///
     /// Nothing is polluted by this. The copy is disposable and the tree the user pointed
     /// at is never written to at all.
-    private static func buildDirectory(in tree: URL) -> URL {
+    static func buildDirectory(in tree: URL) -> URL {
         tree.appending(path: ".build")
-    }
-
-    // MARK: - Steps
-
-    private func snapshot(_ progress: @Sendable (RunStage) -> Void) throws(RunError) -> URL {
-        progress(.snapshotting)
-        let tree = workspace.appending(path: "tree")
-        do {
-            _ = try Snapshot.create(of: root, at: tree)
-        } catch {
-            throw RunError("\(root.path) could not be copied: \(error)")
-        }
-        return tree
-    }
-
-    private func list(environment: [String: String]) async throws(RunError) -> Listing {
-        do {
-            return try await Lister(
-                root: root, configuration: configuration, runner: runner, executable: executable
-            ).list(environment: environment)
-        } catch {
-            throw RunError("\(root.path) could not be read: \(error)")
-        }
-    }
-
-    /// The files to instrument, read from the copy rather than from the original.
-    ///
-    /// Read from the copy because that is what will be compiled, and a file that changed
-    /// between the two would be a catalogue about one program and a build about another.
-    private func subjectsToValidate(
-        _ listing: Listing, in tree: URL
-    ) throws(RunError) -> [FileUnderValidation] {
-        var subjects: [FileUnderValidation] = []
-        for path in listing.filesWithMutants {
-            let file = tree.appending(path: path.rendered)
-            guard let source = try? String(contentsOf: file, encoding: .utf8) else {
-                throw RunError("\(file.path) could not be read out of the copy")
-            }
-            subjects.append(
-                FileUnderValidation(
-                    name: path.rendered,
-                    source: source,
-                    discovery: Discover.candidates(in: source, at: path)
-                )
-            )
-        }
-        return subjects
-    }
-
-    private func validate(
-        _ subjects: [FileUnderValidation],
-        in tree: URL,
-        environment: [String: String],
-        progress: @Sendable (RunStage) -> Void
-    ) async throws(RunError) -> Validation {
-        // SwiftPM rather than a bare `swiftc`, because a package is not a pile of files:
-        // each target compiles on its own, against its own dependencies and search paths.
-        // The same place the tests are built into, so the build that proves the mutants
-        // compile *is* the build that produces them.
-        let validator = Validator(
-            compiler: SwiftBuildDriver(
-                runner: runner,
-                executable: executable,
-                root: tree.path,
-                scratch: Self.buildDirectory(in: tree).path,
-                environment: environment
-            ),
-            directory: tree
-        )
-        do {
-            return try await validator.validate(subjects) { progress(.validating($0)) }
-        } catch {
-            throw RunError("the instrumented copy could not be validated: \(error)")
-        }
-    }
-
-    /// Every mutant in the catalogue has to be in the file, before anything is run.
-    ///
-    /// Muter assumed insertion and reported four hundred mutants as newly surviving when in
-    /// fact none had been inserted at all. Assuming is the mistake; this is the check that
-    /// makes it impossible rather than unlikely.
-    private func prove(_ files: [InstrumentedFile]) throws(RunError) {
-        for file in files {
-            let proof = ActivationProof.inSource(file)
-            guard proof.isProved else {
-                let missing = proof.absences.map(\.marker).prefix(3).joined(separator: ", ")
-                throw RunError(
-                    """
-                    \(proof.expected - proof.found) of \(proof.expected) mutants are not in \
-                    the instrumented file (\(missing)). Running would report them as \
-                    surviving tests that never had a chance to catch them.
-                    """
-                )
-            }
-        }
-    }
-
-    private func buildTests(
-        in tree: URL, environment: [String: String]
-    ) async throws(RunError) -> TestPlan {
-        do {
-            let plan = try await SwiftPackageManager(
-                root: tree, runner: runner, executable: executable
-            ).buildForTesting(
-                scratch: Self.buildDirectory(in: tree).path,
-                environment: environment,
-                timeout: .seconds(1800)
-            )
-            guard !testArguments.isEmpty else { return plan }
-            return TestPlan(
-                executable: plan.executable,
-                arguments: plan.arguments + testArguments,
-                environment: plan.environment,
-                directory: plan.directory,
-                eventStreamVersion: plan.eventStreamVersion
-            )
-        } catch {
-            throw RunError("the instrumented copy could not be built: \(error)")
-        }
     }
 }

@@ -24,6 +24,13 @@ public struct InstrumentedFile: Sendable, Hashable {
     /// built product whether this file reached it at all.
     public let runtimeToken: String
 
+    /// The number the next file's first mutant should take.
+    ///
+    /// Numbering runs through a whole run rather than restarting per file, because every
+    /// instrumented file reads the same `SWIFT_MUTANTS_ACTIVE`: one value must wake one
+    /// mutant, not one in each file.
+    public let nextIndex: UInt32
+
     /// How many lines the runtime added.
     ///
     /// The only lines a file gains. Everything above the runtime keeps its number, which is

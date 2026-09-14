@@ -18,146 +18,20 @@ import Testing
 @Suite("Scheduler")
 struct SchedulerTests {
 
-    struct Fake {
-        let plan: TestPlan
-        let scratch: URL
-        func cleanUp() { try? FileManager.default.removeItem(at: scratch) }
-    }
+    typealias Fake = ScriptedBundle.Fake
 
-    /// A scripted test bundle that fails for some mutants and passes for the rest.
-    ///
-    /// It also records that it ran, so a test can ask how many were in flight at once
-    /// rather than trusting the scheduler's own account of itself.
     static func fake(
         failingFor failing: Set<UInt32>,
         failingBaselineTests: [String] = [],
         slowUntilRetried: Set<UInt32> = [],
         alwaysSlow: Set<UInt32> = []
     ) throws -> Fake {
-        let scratch = FileManager.default.temporaryDirectory
-            .appending(path: "swift-mutants-sched-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        let script = scratch.appending(path: "bundle.sh")
-        try Data(
-            Self.script(
-                failingFor: failing,
-                slowUntilRetried: slowUntilRetried,
-                alwaysSlow: alwaysSlow,
-                in: scratch
-            ).utf8
-        ).write(to: script)
-
-        // The baseline's events, written out rather than escaped into the script: a shell
-        // heredoc holding JSON inside Swift string interpolation is a thing nobody should
-        // have to read twice.
-        if !failingBaselineTests.isEmpty {
-            let events =
-                [
-                    """
-                    {"kind":"event","payload":{"kind":"runStarted"}}
-                    """
-                ]
-                + failingBaselineTests.flatMap { test in
-                    [
-                        """
-                        {"kind":"event","payload":{"kind":"testStarted","testID":"\(test)"}}
-                        """,
-                        """
-                        {"kind":"event","payload":{"kind":"issueRecorded","testID":"\(test)",\
-                        "issue":{"isFailure":true}}}
-                        """,
-                    ]
-                }
-                + [
-                    """
-                    {"kind":"event","payload":{"kind":"runEnded"}}
-                    """
-                ]
-            try Data((events.joined(separator: "\n") + "\n").utf8)
-                .write(to: scratch.appending(path: "baseline-events.jsonl"))
-        }
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o755)], ofItemAtPath: script.path)
-
-        return Fake(
-            plan: TestPlan(
-                executable: "/bin/sh",
-                arguments: [script.path],
-                environment: [:],
-                directory: scratch.path
-            ),
-            scratch: scratch
+        try ScriptedBundle.fake(
+            failingFor: failing,
+            failingBaselineTests: failingBaselineTests,
+            slowUntilRetried: slowUntilRetried,
+            alwaysSlow: alwaysSlow
         )
-    }
-
-    static func script(
-        failingFor failing: Set<UInt32>,
-        slowUntilRetried: Set<UInt32> = [],
-        alwaysSlow: Set<UInt32> = [],
-        in scratch: URL
-    ) -> String {
-        let failures = failing.map(String.init).sorted().joined(separator: " ")
-        let slowness = Self.slowness(
-            once: slowUntilRetried, always: alwaysSlow, in: scratch)
-        return """
-            #!/bin/sh
-            STREAM=""
-            while [ $# -gt 0 ]; do
-              case "$1" in
-                --event-stream-output-path) STREAM="$2"; shift 2 ;;
-                *) shift ;;
-              esac
-            done
-            MUTANT="${SWIFT_MUTANTS_ACTIVE:-base}"
-            SCRIPTED='\(scratch.path)/baseline-events.jsonl'
-            if [ "$MUTANT" = "base" ] && [ -f "$SCRIPTED" ]; then
-              cat "$SCRIPTED" > "$STREAM"
-              exit 1
-            fi
-            LIVE='\(scratch.path)/live'
-            mkdir -p "$LIVE"
-            touch "$LIVE/$MUTANT"
-            ls "$LIVE" | wc -l >> '\(scratch.path)/inflight.txt'
-            printf '%s\\n' \\
-              '{"kind":"event","payload":{"kind":"runStarted"}}' \\
-              '{"kind":"event","payload":{"kind":"testStarted","testID":"P.S/f()"}}' > "$STREAM"
-            \(slowness)
-            for bad in \(failures); do
-              if [ "$MUTANT" = "$bad" ]; then
-                printf '%s\\n' \\
-                  '{"kind":"event","payload":{"kind":"issueRecorded","testID":"P.S/f()",\
-            "issue":{"isFailure":true}}}' > "$STREAM"
-                rm -f "$LIVE/$MUTANT"
-                exit 1
-              fi
-            done
-            sleep 0.2
-            printf '%s\\n' \\
-              '{"kind":"event","payload":{"kind":"testEnded","testID":"P.S/f()"}}' \\
-              '{"kind":"event","payload":{"kind":"runEnded"}}' > "$STREAM"
-            rm -f "$LIVE/$MUTANT"
-            exit 0
-            """
-    }
-
-    /// Shell that makes some mutants slow: once, or every time.
-    ///
-    /// Once is the shape a suite has when eight copies of it share a machine - the mark it
-    /// leaves survives, so the retry runs at full speed.
-    static func slowness(once: Set<UInt32>, always: Set<UInt32>, in scratch: URL) -> String {
-        let first = once.map(String.init).sorted().joined(separator: " ")
-        let every = always.map(String.init).sorted().joined(separator: " ")
-        return """
-            for slow in \(first); do
-              if [ "$MUTANT" = "$slow" ] && [ ! -f '\(scratch.path)/seen-'"$slow" ]; then
-                touch '\(scratch.path)/seen-'"$slow"
-                sleep 30
-              fi
-            done
-            for slow in \(every); do
-              if [ "$MUTANT" = "$slow" ]; then sleep 30; fi
-            done
-            """
     }
 
     static func path() -> WorkspaceRelativePath {
@@ -323,58 +197,5 @@ struct SchedulerTests {
         #expect(summary.survived == mutants.count - 1)
         #expect(summary.rejected == 2)
         #expect(summary.total == mutants.count + 2)
-    }
-}
-
-/// Running a mutant again when the first answer was a deadline.
-///
-/// A killed mutant stops at the first test that notices it; a surviving mutant runs the
-/// whole suite. So the mutants that meet a deadline are, overwhelmingly, the survivors -
-/// and a deadline counts as a detection. Measured on this repository before any of this
-/// existed: 592 mutants, 82 deadlines, 0 survivors reported, and a score of 100% that was
-/// not true of anything.
-@Suite("Retrying deadlines")
-struct RetryTests {
-
-    typealias Fake = SchedulerTests.Fake
-
-    static func mutants() throws -> [InstrumentedMutant] { try SchedulerTests.mutants() }
-
-    /// The reason retries exist, and it is not hypothetical.
-    ///
-    /// A killed mutant stops at the first test that notices it; a surviving mutant runs
-    /// the whole suite. So the mutants that meet a deadline are, overwhelmingly, the
-    /// survivors - and counting a deadline as a detection turns every one of them into a
-    /// kill. Measured on this repository: 592 mutants, 82 deadlines, 0 survivors reported,
-    /// and a score of 100%, which was not true of anything.
-    @Test("runs a mutant that ran out of time again, and takes the second answer")
-    func retriesTimeouts() async throws {
-        let mutants = try Self.mutants()
-        let fake = try SchedulerTests.fake(failingFor: [], slowUntilRetried: [mutants[2].index])
-        defer { fake.cleanUp() }
-
-        // A deadline the slow pass certainly misses and the quick one certainly meets.
-        let results = await SchedulerTests.scheduler(fake, timeout: .milliseconds(700))
-            .run(mutants, in: SchedulerTests.path())
-        let retried = try #require(results.first { $0.identity == mutants[2].identity })
-        #expect(retried.verdict.outcome == .survived)
-        #expect(retried.attempts == 2)
-
-        // Everything else was answered the first time.
-        #expect(results.filter { $0.attempts > 1 }.count == 1)
-    }
-
-    /// A mutant that runs out of time twice, the second time alone, has earned it.
-    @Test("keeps the verdict when a mutant runs out of time twice")
-    func confirmedTimeout() async throws {
-        let mutants = try Self.mutants()
-        let fake = try SchedulerTests.fake(failingFor: [], alwaysSlow: [mutants[1].index])
-        defer { fake.cleanUp() }
-
-        let results = await SchedulerTests.scheduler(fake, timeout: .milliseconds(700))
-            .run(mutants, in: SchedulerTests.path())
-        let stuck = try #require(results.first { $0.identity == mutants[1].identity })
-        #expect(stuck.verdict.outcome == .timedOut)
-        #expect(stuck.attempts == 2)
     }
 }

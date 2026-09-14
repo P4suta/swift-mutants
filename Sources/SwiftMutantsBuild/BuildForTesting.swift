@@ -34,7 +34,10 @@ extension SwiftPackageManager {
             ProcessSpec(
                 kind: .build,
                 executable: executable,
-                arguments: ["build", "--build-tests", "--scratch-path", scratch],
+                arguments: [
+                    "build", "--build-tests", "--scratch-path", scratch,
+                    "--force-resolved-versions",
+                ],
                 directory: root.path,
                 environment: environment,
                 timeout: timeout

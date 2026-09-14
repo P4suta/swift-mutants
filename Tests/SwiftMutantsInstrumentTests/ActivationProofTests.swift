@@ -47,7 +47,8 @@ struct ActivationProofTests {
             source: "func f(_ a: Int, _ b: Int) -> Bool { a < b }",
             runtime: file.runtime,
             mutants: file.mutants,
-            runtimeToken: file.runtimeToken
+            runtimeToken: file.runtimeToken,
+            nextIndex: 0
         )
         let proof = ActivationProof.inSource(pretending)
         #expect(!proof.isProved)
@@ -66,7 +67,8 @@ struct ActivationProofTests {
             source: file.source + file.source,
             runtime: file.runtime,
             mutants: file.mutants,
-            runtimeToken: file.runtimeToken
+            runtimeToken: file.runtimeToken,
+            nextIndex: 0
         )
         let proof = ActivationProof.inSource(doubled)
         #expect(!proof.isProved)

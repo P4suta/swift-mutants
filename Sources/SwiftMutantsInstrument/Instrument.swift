@@ -29,12 +29,23 @@ public import SwiftMutantsDiscover
 public enum Instrument {
 
     /// Instruments one file from what discovery found in it.
+    /// `base` is the number this file's first mutant takes, and
+    /// ``InstrumentedFile/nextIndex`` is where the file after it starts.
+    ///
+    /// Numbering runs through a whole run rather than restarting per file, because every
+    /// instrumented file reads the same `SWIFT_MUTANTS_ACTIVE`. Numbering each from zero
+    /// meant one value woke the same index in all of them: measured on this repository,
+    /// fifty-nine files, so asking for mutant 3 woke up to fifty-nine at once - and what a
+    /// run learned from wrecking a program fifty-nine ways it reported as a fact about
+    /// one of them.
     public static func file(
         _ source: String,
-        discovery: FileDiscovery
+        discovery: FileDiscovery,
+        startingAt base: UInt32 = 0
     ) throws(InstrumentError) -> InstrumentedFile {
         guard !discovery.candidates.isEmpty else {
-            return InstrumentedFile(source: source, runtime: "", mutants: [], runtimeToken: "")
+            return InstrumentedFile(
+                source: source, runtime: "", mutants: [], runtimeToken: "", nextIndex: base)
         }
 
         let bytes = Array(source.utf8)
@@ -60,10 +71,11 @@ public enum Instrument {
             )
         }
 
-        let numbered = Self.number(forest, token: token, discovery: discovery)
+        let numbered = Self.number(forest, token: token, discovery: discovery, from: base)
 
         let spliced = try Self.splice(forest, bytes: bytes, token: token, numbered: numbered)
-        let runtime = Runtime.source(token: token, count: numbered.mutants.count)
+        let runtime = Runtime.source(
+            token: token, count: numbered.mutants.count, base: base)
         return InstrumentedFile(
             source: spliced.text + runtime,
             runtime: runtime,
@@ -73,7 +85,8 @@ public enum Instrument {
                 within: spliced.sites,
                 in: discovery
             ),
-            runtimeToken: token
+            runtimeToken: token,
+            nextIndex: base + UInt32(numbered.mutants.count)
         )
     }
 
@@ -178,17 +191,19 @@ public enum Instrument {
         let rule: RuleIdentifier
     }
 
-    /// Gives every mutant a dense index, innermost site first.
+    /// Gives every mutant a number, innermost site first.
     ///
-    /// Dense because a guard is an equality test against one integer, and per file because
-    /// the runtime that holds that integer is per file.
+    /// Contiguous because a guard is an equality test against one integer, and continued
+    /// across files because the environment variable the runtime reads is one value for
+    /// the whole process.
     private static func number(
         _ forest: IntervalForest<[Candidate]>,
         token: String,
-        discovery: FileDiscovery
+        discovery: FileDiscovery,
+        from base: UInt32
     ) -> Numbering {
         var numbering = Numbering()
-        var next: UInt32 = 0
+        var next = base
         for node in forest.innermostFirst {
             var assigned: [UInt32] = []
             for candidate in node.values.flatMap({ $0 }) {
