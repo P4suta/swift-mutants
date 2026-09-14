@@ -5,6 +5,7 @@ import ArgumentParser
 import Foundation
 import SwiftMutantsConfig
 import SwiftMutantsCore
+import SwiftMutantsConsole
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsValidate
@@ -164,6 +165,37 @@ struct RunCommand: AsyncParsableCommand {
         ))
     var json = false
 
+    @Flag(
+        name: [.customShort("v")],
+        help: ArgumentHelp(
+            "Say more. Twice says what the run started, as it happens.",
+            discussion: """
+                Once adds how long each phase took. Twice adds one line per recorded event, \
+                indented two spaces so the account and the run can be told apart in one \
+                scrollback: `grep '^  '` is what ran, `grep -v '^  '` is what was found.
+
+                The recording happens either way. This only decides whether any of it is \
+                said, which is why it is worth reaching for on the run that is going wrong \
+                rather than the one after it.
+                """
+        ))
+    var verbose: Int
+
+    @Flag(
+        name: .long,
+        help: "Say nothing but errors. The exit code is the answer.")
+    var quiet = false
+
+    /// How much this invocation says.
+    ///
+    /// `--quiet` wins over `-v`, because somebody who passed both wrote the second one for
+    /// a reason and the quiet one is the safer of the two to honour: a script that is told
+    /// too little still works.
+    var verbosity: Verbosity {
+        if quiet { return .quiet }
+        return Verbosity(rawValue: min(Verbosity.veryVerbose.rawValue, 1 + verbose)) ?? .normal
+    }
+
     func run() async throws {
         // A line at a time, even when nobody is watching a terminal. Output to a file or a
         // pipe is buffered in blocks by default, so a run that takes an hour writes a CI
@@ -191,11 +223,11 @@ struct RunCommand: AsyncParsableCommand {
         let swept = TempOwner.sweep(in: temporary, besides: workspace)
         if swept > 0 { print(Narration.swept(swept)) }
 
-        let progress = RunProgress()
+        let progress = RunProgress(verbosity: verbosity)
         // One recorder for the whole run. Every subprocess passes through it, so when a run
         // fails an hour in, what it did is already written down - and this is what reads it
         // back out, because the moment somebody needs it is the moment the run is over.
-        let recorder = TraceRecorder()
+        let recorder = TraceRecorder(sinks: [LiveTrace(verbosity: verbosity)])
         let outcome: RunOutcome
         do {
             outcome = try await Run(
@@ -245,7 +277,10 @@ struct RunCommand: AsyncParsableCommand {
             print(String(decoding: try RunReport.encoded(account), as: UTF8.self))
             return
         }
-        Self.summarise(outcome)
+        Self.summarise(outcome, verbosity)
+        // Below normal, the exit code is the answer and nothing else is said - including
+        // where the documents went, because a run told to be quiet was told by a script.
+        guard verbosity > .quiet else { return }
         for file in published { print(Narration.published(file, relativeTo: root)) }
         print(Narration.explainable(outcome.summary.survived))
         Self.annotate(account, in: Ambient.environment)
@@ -280,8 +315,8 @@ struct RunCommand: AsyncParsableCommand {
         try? handle.close()
     }
 
-    private static func summarise(_ outcome: RunOutcome) {
-        for line in Narration.summary(of: outcome) { print(line) }
+    private static func summarise(_ outcome: RunOutcome, _ verbosity: Verbosity) {
+        for line in Narration.summary(of: outcome, verbosity: verbosity) { print(line) }
     }
 }
 

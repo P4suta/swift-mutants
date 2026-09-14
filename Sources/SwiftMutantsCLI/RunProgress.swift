@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsConsole
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -75,13 +76,34 @@ final class RunProgress: Sendable {
 
     private let counter = Mutex(RunCounter())
 
+    /// How much to say.
+    private let verbosity: Verbosity
+
+    /// Where the lines go.
+    ///
+    /// A parameter rather than `print`, because what a run says while it works is a thing
+    /// worth testing and a terminal is not a thing a test should need. The default is the
+    /// terminal, so nothing at a call site has to say so.
+    private let say: @Sendable (String) -> Void
+
+    init(verbosity: Verbosity = .normal, say: @escaping @Sendable (String) -> Void = { print($0) })
+    {
+        self.verbosity = verbosity
+        self.say = say
+    }
+
     /// Says what phase a run has reached, and how far through the mutants it is.
+    ///
+    /// Nothing at all when it was told to be quiet: somebody running this in a script wants
+    /// the exit code, and a tool that talked through it anyway would be a tool they pipe to
+    /// /dev/null - which loses the errors too.
     func report(_ stage: RunStage) {
         let counted = counter.withLock { $0.observe(stage) }
+        guard verbosity > .quiet else { return }
         if let counted {
-            print(counted)
+            say(counted)
             return
         }
-        if let line = Narration.line(for: stage) { print(line) }
+        if let line = Narration.line(for: stage) { say(line) }
     }
 }

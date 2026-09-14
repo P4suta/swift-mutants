@@ -3,6 +3,7 @@
 
 import Foundation
 import SwiftMutantsConfig
+import SwiftMutantsConsole
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -125,7 +126,13 @@ enum Narration {
     /// A mutant no test reaches is usually the cheaper thing to deal with - often by
     /// deleting the code rather than by writing an assertion - so it is listed first and
     /// separately.
-    static func summary(of outcome: RunOutcome) -> [String] {
+    /// Nothing at all under ``Verbosity/quiet``, which is what "errors only" means. At
+    /// every other level the block is the same block: somebody reads a CI log and a
+    /// colleague reads their terminal, and the two have to be talking about the same thing,
+    /// so there is one function that formats it and the level decides only whether it is
+    /// printed.
+    static func summary(of outcome: RunOutcome, verbosity: Verbosity = .normal) -> [String] {
+        guard verbosity > .quiet else { return [] }
         let summary = outcome.summary
         let survivors = outcome.results.filter { $0.verdict.outcome == .survived }
         let unreached = survivors.filter { $0.verdict.startedTests.isEmpty }

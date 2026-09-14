@@ -1,36 +1,18 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-public import SwiftMutantsCore
 public import SwiftMutantsTrace
 
-/// Turns what a run knows into the lines a person reads.
+/// Turns the recorded account of a run into lines a person reads.
 ///
 /// A pure function from values to strings, with nothing here that can write to a terminal.
-/// That is what lets the live dashboard and the plain output agree rather than merely
-/// resemble each other: a run on a real terminal draws while it works, and then replays its
-/// closing summary through *this* renderer instead of formatting its own, so the block left
-/// in the scrollback is byte-identical to the one a pipe would have received.
+///
+/// Only the account. What a run *found* is rendered in one place - `Narration` - and that
+/// is the point rather than an accident: a run on a real terminal draws while it works and
+/// then leaves the same closing block a pipe would have received, and the way to guarantee
+/// that is for there to be one function that formats it. This renders the other stream, the
+/// one `-vv` asks for, which has no second implementation to agree with.
 public struct ConsoleRenderer: Sendable {
-
-    /// How much a run says.
-    ///
-    /// Additive: each level prints everything the level below it does, and more. `-vv` is
-    /// the recorded account printed as it happens - the same events `--trace` writes, sent
-    /// through the console the run is already using.
-    public enum Verbosity: Int, Sendable, Comparable, CaseIterable {
-        /// Errors only.
-        case quiet
-        /// Phases, results and the closing summary.
-        case normal
-        /// Adds phase durations, what killed each mutant, and what covers a survivor.
-        case verbose
-        /// Adds one line per recorded event.
-        case veryVerbose
-
-        /// Orders by how much is said.
-        public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
-    }
 
     /// How much this renderer says.
     public let verbosity: Verbosity
@@ -42,47 +24,6 @@ public struct ConsoleRenderer: Sendable {
     /// something else.
     public init(verbosity: Verbosity) {
         self.verbosity = verbosity
-    }
-
-    /// The closing block: the counters, the score, and how the run ended.
-    ///
-    /// Empty under ``Verbosity/quiet``, which is what "only errors" means.
-    ///
-    /// A column appears only where it means something. In a run without coverage guidance
-    /// there is no such thing as an uncovered mutant, so a `uncovered 0` would read as a
-    /// finding rather than as an absence; the same holds for the cache.
-    public func summary(
-        _ summary: RunSummary,
-        runIdentifier: String,
-        exitCode: Int,
-        coverageGuided: Bool,
-        cacheConsulted: Bool
-    ) -> [String] {
-        guard verbosity > .quiet else { return [] }
-
-        var columns = [
-            "mutants \(summary.total)",
-            "killed \(summary.killed)",
-            "survived \(summary.survived)",
-            "timeout \(summary.timedOut)",
-            "inconclusive \(summary.inconclusive)",
-            "errored \(summary.errored)",
-            "not-run \(summary.notRun)",
-            "rejected \(summary.rejected)",
-            "equivalent \(summary.equivalent)",
-        ]
-        if coverageGuided {
-            columns.append("uncovered \(summary.uncovered)")
-        }
-        if cacheConsulted {
-            columns.append("cached \(summary.cached)")
-        }
-
-        return [
-            columns.joined(separator: "  "),
-            "score \(summary.score.rendered)  covered \(summary.score.renderedForCoveredCode)",
-            "run \(runIdentifier)  exit \(exitCode)",
-        ]
     }
 
     /// One recorded event, or nothing below the level that asked for it.
