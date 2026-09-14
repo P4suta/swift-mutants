@@ -69,10 +69,14 @@ enum Narration {
         case .covered(let uncovered, let average):
             "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "
                 + "tests each, not the whole suite"
+        case .unmeasured(let tests):
+            "  \(tests) of them did not finish, so every mutant is offered them"
         case .scoped(let reference, let files):
             files == 0
                 ? "nothing has changed since \(reference)"
                 : "measuring only what changed since \(reference): \(files) files"
+        case .remembered(let known, let total):
+            "\(known) of \(total) were answered by an earlier run and are not run again"
         case .running(let total, let processes):
             processes == total
                 ? "running \(total) mutants"

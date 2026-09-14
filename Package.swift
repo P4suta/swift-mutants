@@ -89,6 +89,7 @@ let package = Package(
         .target(
             name: "SwiftMutantsEngine",
             dependencies: [
+                "SwiftMutantsCache",
                 "SwiftMutantsBuild", "SwiftMutantsConfig", "SwiftMutantsConsole",
                 "SwiftMutantsCore", "SwiftMutantsDiscover", "SwiftMutantsExecute",
                 "SwiftMutantsInstrument", "SwiftMutantsRunner", "SwiftMutantsSnapshot",
@@ -98,6 +99,13 @@ let package = Package(
         ),
 
         // The command tree, and nothing else.
+        // Answering a mutant from a previous run, when nothing it depends on has changed.
+        .target(
+            name: "SwiftMutantsCache",
+            dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
         // The canonical account of a run: what it measured, what became of each mutant,
         // and the counts every other artefact is a projection of.
         .target(
@@ -241,8 +249,8 @@ let package = Package(
         .testTarget(
             name: "RunIntegrationTests",
             dependencies: [
-                "SwiftMutantsEngine", "SwiftMutantsReport", "SwiftMutantsTestKit",
-                "SwiftMutantsTrace",
+                "SwiftMutantsCache", "SwiftMutantsEngine", "SwiftMutantsReport",
+                "SwiftMutantsTestKit", "SwiftMutantsTrace",
             ],
             swiftSettings: strict
         ),
@@ -295,6 +303,11 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsRunnerTests",
             dependencies: ["SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsCacheTests",
+            dependencies: ["SwiftMutantsCache", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
         .testTarget(

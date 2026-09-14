@@ -9,6 +9,7 @@ public import Foundation
 import SwiftMutantsValidate
 
 public import SwiftMutantsConfig
+import SwiftMutantsCache
 import SwiftMutantsCore
 public import SwiftMutantsExecute
 import SwiftMutantsInstrument
@@ -85,32 +86,30 @@ public struct Run: Sendable {
         progress(.building)
         let plan = try await buildTests(in: tree, environment: environment)
 
-        let pipes = workspace.appending(path: "pipes")
-        guard
-            (try? FileManager.default.createDirectory(
-                at: pipes, withIntermediateDirectories: true)) != nil
-        else {
-            throw RunError("\(pipes.path) could not be made, so the tests cannot be watched")
-        }
-
+        let pipes = try pipesDirectory()
         let calibration = try await calibrate(plan, in: pipes, progress: progress)
         let baseline = calibration.baseline
-        let scheduler = calibration.scheduler.offering(
-            await cover(
-                calibration,
-                in: pipes,
-                tests: baseline.startedTests,
-                indices: validated.files.flatMap { $0.instrumented.mutants.map(\.index) },
-                progress: progress
-            ))
+        let measured = await ask(
+            Work(
+                validated: validated,
+                subjects: subjects
+            ),
+            calibration,
+            listing: listing,
+            in: pipes,
+            progress: progress
+        )
 
-        let results = await measure(validated, subjects, with: scheduler, progress: progress)
-
-        guard let summary = RunSummary.of(results, rejected: validated.rejected.count) else {
+        let tally = RunSummary.of(
+            measured.results,
+            rejected: validated.rejected.count,
+            cached: measured.remembered
+        )
+        guard let summary = tally else {
             throw RunError("the counts did not add up, which is a defect in swift-mutants")
         }
         return RunOutcome(
-            results: results,
+            results: measured.results,
             rejected: validated.rejected,
             summary: summary,
             baseline: baseline,
@@ -228,7 +227,7 @@ public struct Run: Sendable {
     /// them is not. The phase is `Θ(tests)` and it replaces a per-mutant term of
     /// `Θ(tests)` with `Θ(the tests that matter)` - six hundred mutants against four
     /// hundred tests goes from a quarter of a million test executions to a few thousand.
-    private func cover(
+    func cover(
         _ calibration: Calibration,
         in pipes: URL,
         tests: [String],
@@ -251,6 +250,9 @@ public struct Run: Sendable {
             covered.isEmpty ? 0 : Double(covered.reduce(0, +)) / Double(covered.count)
         progress(
             .covered(uncovered: coverage.uncovered(among: indices), averageTests: average))
+        if !coverage.untrusted.isEmpty {
+            progress(.unmeasured(tests: coverage.untrusted.count))
+        }
         return coverage
     }
 
@@ -306,27 +308,6 @@ public struct Run: Sendable {
     }
 
     /// Runs every mutant of every file, in catalogue order.
-    private func measure(
-        _ validated: Validation,
-        _ subjects: [FileUnderValidation],
-        with scheduler: Scheduler,
-        progress: @Sendable (RunStage) -> Void
-    ) async -> [MutantResult] {
-        let everyMutant = validated.files.flatMap { $0.instrumented.mutants }
-        progress(
-            .running(
-                total: everyMutant.count, processes: scheduler.processes(for: everyMutant)))
-        var results: [MutantResult] = []
-        for (file, subject) in zip(validated.files, subjects) {
-            guard let path = WorkspaceRelativePath(subject.name) else { continue }
-            results += await scheduler.run(
-                file.instrumented.mutants.sorted { $0.index < $1.index },
-                in: path
-            ) { progress(.finished($0)) }
-        }
-        return results
-    }
-
     /// How long the baseline itself is given, before anything is known about the suite.
     ///
     /// Generous, because it is spent once and the alternative is a run that gives up on a

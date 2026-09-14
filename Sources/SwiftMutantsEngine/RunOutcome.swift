@@ -114,6 +114,14 @@ public enum RunStage: Sendable, Hashable {
     /// average mutant will actually face.
     case covered(uncovered: Int, averageTests: Double)
 
+    /// How many tests the probe could not establish anything about.
+    ///
+    /// Said out loud because the answer it forces is slower and the answer it prevents is
+    /// wrong. A test whose probe did not finish is offered to every mutant, so a run with
+    /// several of them costs more than it should - and a reader seeing that cost deserves
+    /// to know it was bought rather than lost.
+    case unmeasured(tests: Int)
+
     /// The run was narrowed to what changed, and to how many files.
     case scoped(since: String, files: Int)
 
@@ -122,6 +130,13 @@ public enum RunStage: Sendable, Hashable {
     /// The saving, said out loud. A mutant nothing reaches takes none at all, and mutants
     /// no test shares take one between them - so the gap between these two numbers is what
     /// the coverage bought.
+    /// How many mutants a previous run already answered, out of how many there are.
+    ///
+    /// Said out loud because it is the largest saving this tool has and the one easiest to
+    /// be wrong about. A reader who sees six hundred mutants answered in a second deserves
+    /// to be told why, and to be able to turn it off.
+    case remembered(known: Int, total: Int)
+
     case running(total: Int, processes: Int)
     case finished(MutantResult)
 }

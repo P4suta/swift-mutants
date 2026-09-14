@@ -97,17 +97,25 @@ run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS"
 
 [tasks.dogfood]
 description = "swift-mutants measures swift-mutants"
-# `RepositoryGateTests` is skipped, and the reason is structural rather than a
-# convenience. Those tests assert things about this repository's *source text* - that
-# no module outside one doorway reads the environment, that the pure modules import no
-# I/O - and instrumentation rewrites that source text by design, appending a runtime
-# that calls `getenv` to every file it touches. They fail with no mutant awake at all,
-# which is a true statement about the instrumented tree and says nothing about anybody's
-# tests. swift-mutants stops the run and names them, which is the right behaviour: it is
-# the one case where a suite is not measuring the program.
+# Two things are skipped, and both are the suite telling the truth about itself.
+#
+# `RepositoryGateTests` asserts things about this repository's *source text* - that no
+# module outside one doorway reads the environment, that the pure modules import no I/O.
+# Instrumentation rewrites that source text by design, appending a runtime that calls
+# `getenv` to every file it touches, so those tests fail with no mutant awake at all.
+# swift-mutants stops the run and names them rather than reporting six hundred answers
+# about a program nobody has, which is the right behaviour: it is the one case where a
+# suite is not measuring the program.
+#
+# The integration tiers are skipped because each of their tests builds a Swift package.
+# A suite that shells out to a compiler costs minutes per run, and a mutation run is
+# hundreds of runs - so including them would measure the toolchain rather than the tests.
+# The score is then about what the unit tier catches, which is what the `--` arguments
+# mean: narrowing the suite narrows what the score is about, and it says so.
 run = [
   "swift build -c release",
-  ".build/release/swift-mutants run --jobs 8 -- --skip RepositoryGateTests",
+  """.build/release/swift-mutants run --jobs 8 -- \
+     --skip RepositoryGateTests --skip IntegrationTests --skip ToolchainTests""",
 ]
 
 [tasks.analyze]

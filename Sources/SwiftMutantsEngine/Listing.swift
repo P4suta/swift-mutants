@@ -35,6 +35,16 @@ public struct Listing: Sendable {
     /// How many files were read.
     public let filesRead: Int
 
+    /// A digest of every file the package has, mutable or not.
+    ///
+    /// Every file, including the tests, and that breadth is the point. An outcome may be
+    /// remembered between runs only if everything it rests on is unchanged, and what a test
+    /// concludes rests on the test as much as on the code - a cache that watched only the
+    /// files it could mutate would answer `survived` for a mutant somebody had just written
+    /// a test for. A file this has no digest for makes the mutants near it uncacheable
+    /// rather than wrongly cached.
+    public let digests: [WorkspaceRelativePath: Digest]
+
     /// The same listing, holding only the files that pass `isKept`.
     ///
     /// The catalogue is rebuilt rather than filtered in place, because a catalogue checks
@@ -47,7 +57,11 @@ public struct Listing: Sendable {
             skips: skips.filter { isKept($0.path) },
             unknownSuppressions: unknownSuppressions.filter { isKept($0.path) },
             positions: positions.filter { isKept($0.key) },
-            filesRead: filesRead
+            filesRead: filesRead,
+            // Every file, still: narrowing what is *measured* does not narrow what the
+            // answers rest on. A run scoped to four files is still wrong if a fifth one
+            // changed under it.
+            digests: digests
         )
     }
 
@@ -119,16 +133,23 @@ public struct Lister: Sendable {
         var skips: [(path: WorkspaceRelativePath, skip: Skip)] = []
         var unknown: [(path: WorkspaceRelativePath, suppression: UnknownSuppression)] = []
         var positions: [WorkspaceRelativePath: LineIndex] = [:]
+        var digests: [WorkspaceRelativePath: Digest] = [:]
         var filesRead = 0
 
-        for target in description.mutableTargets {
-            for path in target.sources where selection.admits(path) {
+        for target in description.targets {
+            // Every file is digested, including the tests: what a test concludes rests on
+            // the test as much as on the code, and an answer remembered between runs has
+            // to rest on all of it. Only the mutable ones are read for candidates.
+            let isMutable = target.kind.isMutable
+            for path in target.sources {
                 guard
                     let source = try? String(
                         contentsOf: root.appending(path: path.rendered),
                         encoding: .utf8
                     )
                 else { continue }
+                digests[path] = Digest.of(source)
+                guard isMutable, selection.admits(path) else { continue }
                 filesRead += 1
 
                 let discovery = Discover.candidates(in: source, at: path)
@@ -146,7 +167,8 @@ public struct Lister: Sendable {
             skips: skips,
             unknownSuppressions: unknown,
             positions: positions,
-            filesRead: filesRead
+            filesRead: filesRead,
+            digests: digests
         )
     }
 }

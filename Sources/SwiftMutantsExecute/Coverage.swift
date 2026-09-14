@@ -28,6 +28,27 @@ public struct Coverage: Sendable {
     /// Every test that ran during the probe, in a fixed order.
     public let tests: [String]
 
+    /// What each test was seen to evaluate a guard for.
+    ///
+    /// The same finding as ``tests(reaching:)`` read the other way round, and it answers a
+    /// different question: not "who can catch this mutant" but "what does this test run".
+    /// Every guard is in a file, so this is how a run knows which files a test executes -
+    /// which is what an answer remembered between runs has to rest on.
+    public let reach: [String: Set<UInt32>]
+
+    /// Tests whose reach could not be established.
+    ///
+    /// A probe run that did not finish - it ran out of time on a loaded machine, it
+    /// crashed, its log could not be read - establishes nothing about that test, and
+    /// nothing is not the same as none. An empty set reads exactly like "this test reaches
+    /// nothing", which is how a mutant the test catches every day comes back `survived`
+    /// with no tests against its name: wrong, silent, and pointing somebody at working code
+    /// to tell them to delete it.
+    ///
+    /// So a test nobody could establish anything about is offered to every mutant. The cost
+    /// is running it more often than necessary, which is the direction to be wrong in.
+    public let untrusted: [String]
+
     /// Records what a probe found.
     ///
     /// Each mutant's tests are ordered by how much else that test reaches, fewest first.
@@ -39,16 +60,23 @@ public struct Coverage: Sendable {
     ///
     /// It costs nothing: the inverted map is already in hand, and the ordering is decided
     /// once rather than per mutant.
-    public init(byMutant: [UInt32: [String]], tests: [String]) {
-        var reach: [String: Int] = [:]
+    public init(
+        byMutant: [UInt32: [String]],
+        tests: [String],
+        reach: [String: Set<UInt32>] = [:],
+        untrusted: [String] = []
+    ) {
+        var breadth: [String: Int] = [:]
         for tests in byMutant.values {
-            for test in tests { reach[test, default: 0] += 1 }
+            for test in tests { breadth[test, default: 0] += 1 }
         }
         // Ties broken by name, so two runs of the same package order them the same way.
         self.byMutant = byMutant.mapValues { covering in
-            covering.sorted { ((reach[$0] ?? 0), $0) < ((reach[$1] ?? 0), $1) }
+            covering.sorted { ((breadth[$0] ?? 0), $0) < ((breadth[$1] ?? 0), $1) }
         }
         self.tests = tests
+        self.reach = reach
+        self.untrusted = untrusted.sorted()
     }
 
     /// The tests that reach a mutant, or nothing when none do.
@@ -56,11 +84,31 @@ public struct Coverage: Sendable {
     /// `nil` and `[]` would be the same set and are not the same news: one is "these tests
     /// cover it" and the other is "nothing covers it, so it cannot be killed and the
     /// report should say so rather than pretending it was measured".
-    public func tests(reaching index: UInt32) -> [String]? { byMutant[index] }
+    /// Every test whose reach could not be established is in every answer, because it
+    /// might reach anything.
+    public func tests(reaching index: UInt32) -> [String]? {
+        guard let known = byMutant[index] else {
+            return untrusted.isEmpty ? nil : untrusted
+        }
+        return untrusted.isEmpty ? known : known + untrusted
+    }
+
+    /// Which tests reach each mutant, for a caller that needs the whole map.
+    ///
+    /// Named apart from ``tests(reaching:)`` because the two answer differently for a
+    /// mutant nothing reaches - one says `nil` and this one simply has no entry - and a
+    /// caller working out what an answer rests on needs the map rather than one lookup at
+    /// a time.
+    public var byMutantForCaching: [UInt32: [String]] { byMutant }
 
     /// How many mutants nothing reaches.
+    ///
+    /// None, while anything is unknown. "No test reaches this" is the claim that costs
+    /// somebody an afternoon, so it is not made while a test that might have reached it
+    /// went unmeasured.
     public func uncovered(among indices: [UInt32]) -> Int {
-        indices.count { byMutant[$0] == nil }
+        guard untrusted.isEmpty else { return 0 }
+        return indices.count { byMutant[$0] == nil }
     }
 }
 
@@ -105,7 +153,9 @@ public struct Prober: Sendable {
         guard !tests.isEmpty else { return Coverage(byMutant: [:], tests: []) }
 
         var reached: [UInt32: [String]] = [:]
-        await withTaskGroup(of: (String, Set<UInt32>).self) { group in
+        var reach: [String: Set<UInt32>] = [:]
+        var untrusted: [String] = []
+        await withTaskGroup(of: (String, Set<UInt32>?).self) { group in
             var next = 0
             while next < min(jobs, tests.count) {
                 let test = tests[next]
@@ -117,6 +167,21 @@ public struct Prober: Sendable {
             }
             var done = 0
             while let (test, indices) = await group.next() {
+                guard let indices else {
+                    untrusted.append(test)
+                    done += 1
+                    progress(done)
+                    if next < tests.count {
+                        let test = tests[next]
+                        let worker = next % jobs
+                        group.addTask { [self] in
+                            (test, await self.indices(reachedBy: test, worker: worker))
+                        }
+                        next += 1
+                    }
+                    continue
+                }
+                reach[test] = indices
                 for index in indices.sorted() { reached[index, default: []].append(test) }
                 done += 1
                 progress(done)
@@ -129,12 +194,24 @@ public struct Prober: Sendable {
                 next += 1
             }
         }
-        return Coverage(byMutant: reached, tests: tests)
+        return Coverage(byMutant: reached, tests: tests, reach: reach, untrusted: untrusted)
     }
 
-    private func indices(reachedBy test: String, worker: Int) async -> Set<UInt32> {
+    /// What one test reached, or nothing when the run that should have said did not.
+    ///
+    /// `nil` rather than an empty set, and the difference is the whole point. A probe that
+    /// ran out of time, crashed, or left no log establishes nothing about that test - and
+    /// an empty set reads exactly like "this test reaches nothing", which is how a mutant
+    /// the test catches every day comes back as a survivor nobody looks at.
+    private func indices(reachedBy test: String, worker: Int) async -> Set<UInt32>? {
         let log = scratch.appending(path: "probe-\(worker)-\(abs(test.hashValue)).log")
         try? FileManager.default.removeItem(at: log)
+        // Made empty before the run, so that the file existing means the process got to
+        // the end of its job and the file being empty means the test reached nothing. The
+        // runtime opens it with `O_APPEND | O_CREAT`, so an empty file it inherits is the
+        // same to it as one it made. Without this the two would be the same absence, and
+        // "reached nothing" is a finding while "did not finish" is a failure.
+        FileManager.default.createFile(atPath: log.path, contents: Data())
 
         var environment = plan.environment
         environment["SWIFT_MUTANTS"] = "1"
@@ -153,9 +230,16 @@ public struct Prober: Sendable {
                 timeout: timeout
             )
         )
-        _ = outcome
         defer { try? FileManager.default.removeItem(at: log) }
-        guard let text = try? String(contentsOf: log, encoding: .utf8) else { return [] }
+        // The probe runs with nothing awake, so the suite passes and the process exits
+        // zero. Anything else is a process that did not get to the end of its job, and
+        // whatever it managed to write is a prefix rather than an answer.
+        guard outcome.exitCode == 0,
+            let text = try? String(contentsOf: log, encoding: .utf8)
+        else {
+            return nil
+        }
+
         return Set(text.split(separator: "\n").compactMap { UInt32($0) })
     }
 

@@ -200,6 +200,56 @@ struct ListerTests {
         #expect(before == after)
     }
 
+    /// An answer may be remembered between runs only if everything it rests on is
+    /// unchanged, and what a test concludes rests on the test as much as on the code. A
+    /// listing that digested only what it could mutate would let a cache answer `survived`
+    /// for a mutant somebody had just written a test for.
+    @Test("digests the tests as well as the code")
+    func digestsTheTestsToo() async throws {
+        let fixture = try Self.fixture(
+            [
+                "Sources/Core/Compare.swift": "func f(_ a: Int, _ b: Int) -> Bool { a < b }",
+                "Tests/CoreTests/CompareTests.swift":
+                    "func t(_ a: Int, _ b: Int) -> Bool { a > b }",
+            ],
+            describing: """
+                {"name":"Core","type":"library","path":"$ROOT/Sources/Core","sources":["Compare.swift"]},
+                {"name":"CoreTests","type":"test","path":"$ROOT/Tests/CoreTests","sources":["CompareTests.swift"]}
+                """
+        )
+        defer { fixture.cleanUp() }
+
+        let listing = try await Self.list(fixture)
+        let test = try #require(WorkspaceRelativePath("Tests/CoreTests/CompareTests.swift"))
+        let code = try #require(WorkspaceRelativePath("Sources/Core/Compare.swift"))
+        #expect(listing.digests[test] != nil)
+        #expect(listing.digests[code] != nil)
+        // And it still did not mutate the test.
+        #expect(listing.catalog.mutants.allSatisfy { $0.path == code })
+    }
+
+    /// Narrowing what is measured does not narrow what the answers rest on. A run scoped
+    /// to four files is still wrong if a fifth one changed under it.
+    @Test("keeps every digest when it is narrowed to one file")
+    func narrowingKeepsEveryDigest() async throws {
+        let fixture = try Self.fixture(
+            [
+                "Sources/Core/Compare.swift": "func f(_ a: Int, _ b: Int) -> Bool { a < b }",
+                "Sources/Core/Other.swift": "func g(_ a: Int, _ b: Int) -> Bool { a > b }",
+            ],
+            describing: """
+                {"name":"Core","type":"library","path":"$ROOT/Sources/Core",
+                 "sources":["Compare.swift","Other.swift"]}
+                """
+        )
+        defer { fixture.cleanUp() }
+
+        let whole = try await Self.list(fixture)
+        let narrowed = whole.keeping { $0.rendered.hasSuffix("Compare.swift") }
+        #expect(narrowed.digests.count == whole.digests.count)
+        #expect(narrowed.digests.count == 2)
+    }
+
     @Test("holds a package with nothing in it")
     func emptyPackage() async throws {
         let fixture = try Self.fixture([:], describing: "")
@@ -267,7 +317,8 @@ struct NarrowingTests {
             skips: skips,
             unknownSuppressions: unknown,
             positions: positions,
-            filesRead: sources.count
+            filesRead: sources.count,
+            digests: sources.mapValues { Digest.of($0) }
         )
     }
 

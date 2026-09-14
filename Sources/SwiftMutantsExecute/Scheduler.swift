@@ -335,7 +335,13 @@ extension RunSummary {
     /// `rejected` is passed in rather than counted from the results, because a rejected
     /// mutant never ran: the compiler refused it before there was anything to run. Counting
     /// only what executed would quietly drop it from the report.
-    public static func of(_ results: [MutantResult], rejected: Int = 0) -> RunSummary? {
+    ///
+    /// `cached` likewise: an answer taken from a previous run is indistinguishable from a
+    /// fresh one in the row it produces, which is the point - and a reader still has to be
+    /// able to see how much of a report was measured this afternoon.
+    public static func of(
+        _ results: [MutantResult], rejected: Int = 0, cached: Int = 0
+    ) -> RunSummary? {
         var counts: [Outcome: Int] = [:]
         for result in results { counts[result.verdict.outcome, default: 0] += 1 }
 
@@ -356,7 +362,7 @@ extension RunSummary {
             rejected: rejected,
             equivalent: counts[.equivalent] ?? 0,
             uncovered: uncovered,
-            cached: 0,
+            cached: cached,
             expectedSurvivors: 0
         )
     }
