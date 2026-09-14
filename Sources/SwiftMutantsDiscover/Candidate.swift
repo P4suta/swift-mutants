@@ -77,6 +77,16 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     /// An operator this tool has no meaning for.
     case userDefinedOperator = "user-defined-operator"
 
+    /// Inside a default argument value.
+    ///
+    /// A guard cannot go there. Swift refuses a default argument value that references a
+    /// private declaration, and the runtime this tool appends is private by design - it
+    /// has to be, or two instrumented files in one module would collide. The compiler's
+    /// complaint is about the guard rather than about the mutant, so it lands nowhere
+    /// attribution can place it, and a run then halves its way through the whole
+    /// catalogue for a mutant that could never have compiled.
+    case defaultArgument = "default-argument"
+
     /// A configuration pattern removed the file.
     case excluded
 }

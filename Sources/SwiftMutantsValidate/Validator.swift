@@ -51,7 +51,12 @@ public struct Validator: Sendable {
         case refused(round: Int, count: Int)
 
         /// The compile would not say what it was unhappy about, so halving has begun.
-        case halving(mutants: Int)
+        ///
+        /// Carries the first error nobody could place, because that is the whole
+        /// explanation for being on the expensive path and a reader has no other way to
+        /// see it. Usually it means a diagnostic arrived from somewhere this tool did not
+        /// put a mutant - a macro buffer, a synthesised declaration, a linker.
+        case halving(mutants: Int, unplaceable: CompilerDiagnostic?)
     }
 
     /// Narrows each file to the mutants the compiler accepts.
@@ -99,14 +104,11 @@ public struct Validator: Sendable {
             // The compile failed while naming nothing this tool put there. Guessing from
             // here is how a tool starts rejecting mutants at positions nobody reported, so
             // it stops guessing and pays for halving instead.
-            progress(.halving(mutants: discoveries.reduce(0) { $0 + $1.candidates.count }))
-            let found = try await bisect(files, discoveries: discoveries)
-            let confirmed = try await confirm(files, discoveries: found.discoveries)
-            return Validation(
-                files: confirmed.files,
-                rejected: rejected + found.rejected,
-                rounds: rounds + found.rounds + confirmed.rounds,
-                bisected: true
+            return try await halve(
+                files,
+                from: Rounds(discoveries: discoveries, rejected: rejected, rounds: rounds),
+                unplaceable: attribution.unattributed.first,
+                progress: progress
             )
         }
         throw ValidationError(
@@ -114,6 +116,31 @@ public struct Validator: Sendable {
             validation did not settle after \(rounds) compiles. Each round should remove at \
             least one mutant, so this means the compiler refused the same tree twice.
             """
+        )
+    }
+
+    /// The expensive path: corner the refusals by halving, then confirm what is left.
+    private func halve(
+        _ files: [FileUnderValidation],
+        from state: Rounds,
+        unplaceable: CompilerDiagnostic?,
+        progress: @Sendable (Progress) -> Void
+    ) async throws(ValidationError) -> Validation {
+        let discoveries = state.discoveries
+        let rejected = state.rejected
+        let rounds = state.rounds
+        progress(
+            .halving(
+                mutants: discoveries.reduce(0) { $0 + $1.candidates.count },
+                unplaceable: unplaceable
+            ))
+        let found = try await bisect(files, discoveries: discoveries)
+        let confirmed = try await confirm(files, discoveries: found.discoveries)
+        return Validation(
+            files: confirmed.files,
+            rejected: rejected + found.rejected,
+            rounds: rounds + found.rounds + confirmed.rounds,
+            bisected: true
         )
     }
 
@@ -131,6 +158,13 @@ public struct Validator: Sendable {
         return discoveries.map { discovery in
             discovery.keeping { !refused.contains(Key($0.span, $0.rule)) }
         }
+    }
+
+    /// Where the loop had got to when it gave up explaining itself.
+    private struct Rounds {
+        let discoveries: [FileDiscovery]
+        let rejected: [Rejection]
+        let rounds: Int
     }
 
     /// What identifies a candidate inside one file: the bytes it edits and the rule.

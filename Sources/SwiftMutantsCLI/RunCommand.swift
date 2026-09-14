@@ -177,8 +177,13 @@ private final class RunProgress: @unchecked Sendable {
                     : "  building again, \(mutants) left")
         case .refused(_, let count):
             print("  the compiler refused \(count)")
-        case .halving(let mutants):
+        case .halving(let mutants, let unplaceable):
             print("  the compiler would not say which, so halving \(mutants) mutants")
+            if let unplaceable {
+                print(
+                    "  it said: \(unplaceable.file):\(unplaceable.position): "
+                        + unplaceable.message)
+            }
         }
     }
 

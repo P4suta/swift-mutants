@@ -58,6 +58,11 @@ public struct SwiftBuildDriver: TypecheckDriver {
                 arguments: [
                     "build", "--build-tests", "--scratch-path", scratch,
                     "-Xswiftc", "-diagnostic-style=llvm",
+                    // Report every error in a module rather than stopping at the first.
+                    // Each round of validation is a build, so a round that surfaces one
+                    // error costs the same as a round that surfaces forty - and the loop
+                    // then needs forty times as many of them.
+                    "-Xswiftc", "-continue-building-after-errors",
                 ],
                 directory: root,
                 environment: environment,

@@ -89,6 +89,13 @@ final class CandidateWalker: SyntaxVisitor {
     }
     override func visitPost(_ node: InitializerDeclSyntax) { leave() }
 
+    override func visit(_ node: InitializerClauseSyntax) -> SyntaxVisitorContinueKind {
+        // Only the `= value` of a parameter. The same syntax spells `let x = 1`, which is
+        // ordinary code and stays mutable.
+        guard node.parent?.is(FunctionParameterSyntax.self) == true else { return .visitChildren }
+        return skipRegion(Syntax(node.value), reason: .defaultArgument)
+    }
+
     // MARK: - Candidates
 
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
@@ -160,6 +167,13 @@ final class CandidateWalker: SyntaxVisitor {
         return .skipChildren
     }
 
+    /// Records a region as passed over.
+    ///
+    /// Kept even when it hid nothing, because the record is of the rule having matched,
+    /// and "this rule fires on four hundred sites, of which three hundred held nothing" is
+    /// exactly what a reader checking whether a rule is too broad needs. The exception is
+    /// an operator this tool has no meaning for, which is not a decision worth a line: it
+    /// is a fact about somebody's own operator.
     private func note(_ reason: SkipReason, over node: Syntax, hiding: Int) {
         guard !countOnly else { return }
         if reason == .userDefinedOperator, hiding == 0 { return }
