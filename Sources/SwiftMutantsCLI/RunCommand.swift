@@ -55,6 +55,13 @@ struct RunCommand: AsyncParsableCommand {
     var testArguments: [String] = []
 
     func run() async throws {
+        // A line at a time, even when nobody is watching a terminal. Output to a file or a
+        // pipe is buffered in blocks by default, so a run that takes an hour writes a CI
+        // log that is empty for an hour and then complete - which is the same as no
+        // progress at all for the person reading it, and worse if the run is killed before
+        // it flushes.
+        _ = unsafe setvbuf(stdout, nil, _IOLBF, 0)
+
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
         let workspace = FileManager.default.temporaryDirectory
             .appending(path: "swift-mutants-\(UUID().uuidString)")
