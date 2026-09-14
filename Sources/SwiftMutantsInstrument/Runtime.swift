@@ -82,7 +82,9 @@ enum Runtime {
         \(probing(token: token, count: count, base: base))
         @inline(__always) private func __sm_\(token)(_ index: UInt32) -> Bool {
             if __sm_probe_\(token) >= 0 { __sm_record_\(token)(index) }
-            return __sm_active_\(token) == index
+            let slot = Int(index) >> 6
+            guard slot < __sm_awake_\(token).count else { return false }
+            return (__sm_awake_\(token)[slot] >> UInt64(index & 63)) & 1 == 1
         }
         \(imports)
         """
@@ -96,22 +98,32 @@ enum Runtime {
     /// dictionary from `environ` every time round.
     private static func activation(token: String) -> String {
         """
-        private let __sm_active_\(token): UInt32 = {
-            // Spelled both ways, chosen at compile time. `getenv` returns a pointer, so a
-            // package built with -strict-memory-safety warns unless the call is marked -
-            // and one built without it warns about a mark that was not needed. Generated
-            // code has no business producing a warning either way, and a package that
-            // turns warnings into errors would not build at all.
+        // A set rather than one number, because several mutants can be awake at once when
+        // no test reaches more than one of them - which is most of them, and which is what
+        // turns one process per mutant into one process per handful. Read once into a bit
+        // array, so a guard stays a shift and a mask rather than becoming a search.
+        //
+        // Spelled both ways, chosen at compile time. `getenv` returns a pointer, so a
+        // package built with -strict-memory-safety warns unless the call is marked - and
+        // one built without it warns about a mark that was not needed. Generated code has
+        // no business producing a warning either way, and a package that turns warnings
+        // into errors would not build at all.
+        private let __sm_awake_\(token): [UInt64] = {
             #if hasFeature(StrictMemorySafety)
-                guard let raw = unsafe getenv("\(activationVariable)"),
-                    let value = UInt32(unsafe String(cString: raw))
-                else { return .max }
+                guard let raw = unsafe getenv("\(activationVariable)") else { return [] }
+                let text = unsafe String(cString: raw)
             #else
-                guard let raw = getenv("\(activationVariable)"),
-                    let value = UInt32(String(cString: raw))
-                else { return .max }
+                guard let raw = getenv("\(activationVariable)") else { return [] }
+                let text = String(cString: raw)
             #endif
-            return value
+            var bits: [UInt64] = []
+            for part in text.split(separator: ",") {
+                guard let index = UInt32(part) else { continue }
+                let slot = Int(index) >> 6
+                while bits.count <= slot { bits.append(0) }
+                bits[slot] |= UInt64(1) << UInt64(index & 63)
+            }
+            return bits
         }()
         """
     }

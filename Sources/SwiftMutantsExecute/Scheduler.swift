@@ -51,7 +51,7 @@ public struct Scheduler: Sendable {
     private let scratch: URL
     private let timeout: Duration?
     private let jobs: Int
-    private let coverage: Coverage?
+    let coverage: Coverage?
 
     /// Prepares to run mutants `jobs` at a time.
     ///
@@ -193,48 +193,63 @@ public struct Scheduler: Sendable {
     }
 
     /// One pass over the mutants, `jobs` at a time.
+    ///
+    /// A unit of work is a batch, which is usually several mutants: a test bundle costs
+    /// what it costs to load whether one test runs or forty, so a package with good
+    /// locality spends most of a run starting processes. Mutants whose covering tests are
+    /// disjoint share one, and a batch that cannot be shared out - it crashed, it ran out
+    /// of time, a test failed that belongs to nobody - is asked again one at a time.
     private func attempt(
         _ mutants: [InstrumentedMutant],
         in path: WorkspaceRelativePath,
         progress: @Sendable (MutantResult) -> Void
     ) async -> [MutantResult] {
         guard !mutants.isEmpty else { return [] }
-        var finished = [MutantResult?](repeating: nil, count: mutants.count)
+        let units = self.units(for: mutants)
+        var finished = [[MutantResult]](repeating: [], count: units.count)
 
-        await withTaskGroup(of: (Int, MutantResult).self) { group in
+        await withTaskGroup(of: (Int, [MutantResult]).self) { group in
             var next = 0
             // One task per worker to begin with, and one more started for each that
-            // finishes. The alternative - every mutant as a task at once - would have the
-            // task group holding a task per mutant, and on a package of any size that is a
+            // finishes. The alternative - every unit as a task at once - would have the
+            // task group holding a task per unit, and on a package of any size that is a
             // lot of nothing waiting to start.
-            while next < min(jobs, mutants.count) {
+            while next < min(jobs, units.count) {
                 let position = next
                 group.addTask { [self] in
                     (
                         position,
-                        await result(of: mutants[position], in: path, worker: position % jobs)
+                        await answers(for: units[position], in: path, worker: position % jobs)
                     )
                 }
                 next += 1
             }
-            while let (position, result) = await group.next() {
-                finished[position] = result
-                progress(result)
-                guard next < mutants.count else { continue }
+            while let (position, answers) = await group.next() {
+                finished[position] = answers
+                for answer in answers { progress(answer) }
+                guard next < units.count else { continue }
                 let position = next
                 group.addTask { [self] in
                     (
                         position,
-                        await self.result(of: mutants[position], in: path, worker: position % jobs)
+                        await self.answers(for: units[position], in: path, worker: position % jobs)
                     )
                 }
                 next += 1
             }
         }
-        return finished.compactMap { $0 }
+
+        // Back into catalogue order. Which worker finished first is a fact about the
+        // machine, and a batch reorders things further; a report that changed shape
+        // because of either could not be diffed against yesterday's.
+        let order = Dictionary(
+            uniqueKeysWithValues: mutants.enumerated().map { ($1.identity, $0) })
+        return finished.flatMap { $0 }.sorted {
+            (order[$0.identity] ?? 0) < (order[$1.identity] ?? 0)
+        }
     }
 
-    private func result(
+    func result(
         of mutant: InstrumentedMutant, in path: WorkspaceRelativePath, worker: Int
     ) async -> MutantResult {
         // A mutant nothing reaches cannot be caught, and running the suite to find that
@@ -283,7 +298,7 @@ public struct Scheduler: Sendable {
         )
     }
 
-    private func trial(worker: Int) -> Trial {
+    func trial(worker: Int) -> Trial {
         Trial(plan: plan, runner: runner, scratch: scratch, timeout: timeout, worker: worker)
     }
 }

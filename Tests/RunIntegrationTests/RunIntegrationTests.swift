@@ -192,9 +192,13 @@ struct RunIntegrationTests {
             if case .calibrated(let budget) = stage { seen.withLock { $0 = budget } }
         }
 
+        // Against the contended baseline, which is what the deadline is derived from: the
+        // solitary one is measured first and is not the figure the mutants live under. An
+        // earlier version of this compared against the solitary baseline and passed only
+        // while both were clamped to the floor, which is most of the time and not always.
         let budget = try #require(
             seen.withLock { $0 }, "the run never said what deadline it chose")
-        #expect(budget == Run.budget(from: outcome.baseline, jobs: 2))
+        #expect(budget == Run.budget(from: outcome.contendedBaseline, jobs: 2))
         #expect(budget >= .seconds(30))
     }
 

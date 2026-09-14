@@ -20,6 +20,13 @@ public struct RunOutcome: Sendable {
     /// How the instrumented tree behaved with nothing awake.
     public let baseline: Verdict
 
+    /// How it behaved with every worker running at once, which is how the mutants run.
+    ///
+    /// The figure a deadline comes from, and one worth seeing on its own: a suite that
+    /// takes twice as long beside itself is telling somebody something about their tests,
+    /// and it is the number that decides what a mutant is allowed to cost.
+    public let contendedBaseline: Verdict
+
     /// How many files were instrumented.
     public let filesInstrumented: Int
 

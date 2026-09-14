@@ -55,7 +55,26 @@ public struct Trial: Sendable {
         onlyTests: [String]? = nil,
         stoppingAtFirstFailure: Bool = true
     ) async -> Verdict {
-        let stream = scratch.appending(path: "events-\(worker)-\(index.map(String.init) ?? "base")")
+        await run(
+            waking: index.map { [$0] } ?? [],
+            onlyTests: onlyTests,
+            stoppingAtFirstFailure: stoppingAtFirstFailure
+        )
+    }
+
+    /// Runs the tests with a set of mutants awake.
+    ///
+    /// Several at once only when no test reaches more than one of them, which is the
+    /// caller's rule to keep. A test bundle costs what it costs to load whether one test
+    /// runs or forty, so a package with good locality spends most of a run starting
+    /// processes - and a batch is how that bill is divided.
+    public func run(
+        waking indices: [UInt32],
+        onlyTests: [String]? = nil,
+        stoppingAtFirstFailure: Bool = true
+    ) async -> Verdict {
+        let name = indices.isEmpty ? "base" : indices.map(String.init).joined(separator: "-")
+        let stream = scratch.appending(path: "events-\(worker)-\(name)")
         let watcher = Mutex(StreamWatcher())
 
         // A pipe is what makes stopping early possible. When one cannot be made - a
@@ -66,7 +85,7 @@ public struct Trial: Sendable {
         let outcome = await runner.run(
             spec(
                 writingEventsTo: pipe?.path ?? stream.path,
-                activating: index,
+                waking: indices,
                 onlyTests: onlyTests
             ),
             watching: pipe
@@ -103,12 +122,15 @@ public struct Trial: Sendable {
     ///   "which test killed this mutant" is then a race. Measured on the pinned toolchain:
     ///   four tests, three overlapping pairs by default and none with the flag.
     private func spec(
-        writingEventsTo path: String, activating index: UInt32?, onlyTests: [String]?
+        writingEventsTo path: String, waking indices: [UInt32], onlyTests: [String]?
     ) -> ProcessSpec {
         var environment = plan.environment
         environment["SWIFT_MUTANTS"] = "1"
         environment["SWIFT_MUTANTS_TEST_TOKEN"] = "\(worker)"
-        if let index { environment["SWIFT_MUTANTS_ACTIVE"] = "\(index)" }
+        if !indices.isEmpty {
+            environment["SWIFT_MUTANTS_ACTIVE"] =
+                indices.map(String.init).joined(separator: ",")
+        }
 
         // One `--filter` per test rather than one alternation, so no identifier has to
         // survive being spliced into a bigger pattern. Absent means the whole suite, which
@@ -116,7 +138,7 @@ public struct Trial: Sendable {
         let selection = (onlyTests ?? []).flatMap { ["--filter", Prober.exactly($0)] }
 
         return ProcessSpec(
-            kind: index == nil ? .baseline : .mutant,
+            kind: indices.isEmpty ? .baseline : .mutant,
             executable: plan.executable,
             arguments: plan.arguments + [
                 "--event-stream-output-path", path,

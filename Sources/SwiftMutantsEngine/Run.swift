@@ -112,6 +112,7 @@ public struct Run: Sendable {
             rejected: validated.rejected,
             summary: summary,
             baseline: baseline,
+            contendedBaseline: calibration.contended,
             filesInstrumented: validated.files.count,
             scope: scope
         )
@@ -200,6 +201,7 @@ public struct Run: Sendable {
         progress(.calibrated(budget))
         return Calibration(
             baseline: baseline,
+            contended: slowest,
             scheduler: Scheduler(
                 plan: plan, runner: runner, scratch: pipes, timeout: budget, jobs: jobs),
             plan: plan,
@@ -210,6 +212,7 @@ public struct Run: Sendable {
     /// What measuring the suite established, and what it lets the rest of the run do.
     struct Calibration {
         let baseline: Verdict
+        let contended: Verdict
         let scheduler: Scheduler
         let plan: TestPlan
         let jobs: Int

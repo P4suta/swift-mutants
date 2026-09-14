@@ -102,6 +102,49 @@ struct InstrumentIntegrationTests {
             .map(String.init)
     }
 
+    /// Several mutants awake at once, which is what turns one process per mutant into one
+    /// process per handful.
+    ///
+    /// Sound only when no test reaches more than one of them - the scheduler's job - but
+    /// the runtime has to be able to do it at all, and a guard has to stay cheap while it
+    /// can: a shift and a mask rather than a search.
+    @Test("wakes every mutant it is given and no others", .tags(.integration))
+    func wakesASet() throws {
+        let built = try Self.build()
+        defer { built.cleanUp() }
+
+        let comparison = try #require(built.mutants.first { $0.rule.name == "lt-to-le" })
+        let connective = try #require(built.mutants.first { $0.rule.name == "and-to-or" })
+
+        // Both at once: the comparison flips "not-less" to "less" and the connective
+        // flips "false" to "true". One run, two changes, each where it belongs.
+        #expect(
+            try Self.run(built.binary, waking: [comparison.index, connective.index])
+                == ["less", "true", "50000"])
+
+        // And a set of one behaves exactly as a single index did.
+        #expect(
+            try Self.run(built.binary, waking: [comparison.index]) == ["less", "false", "50000"])
+    }
+
+    /// Runs the subject with a set of mutants awake.
+    static func run(_ binary: URL, waking indices: [UInt32]) throws -> [String] {
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = ["2", "2", "y", "n"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["SWIFT_MUTANTS_ACTIVE"] = indices.map(String.init).joined(separator: ",")
+        process.environment = environment
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        let produced = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: produced, as: UTF8.self)
+            .split(separator: "\n")
+            .map(String.init)
+    }
+
     /// What the guards write down when they are asked to.
     ///
     /// This is the whole economy of a fast run. Without it a mutant costs the time the

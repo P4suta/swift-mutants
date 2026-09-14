@@ -111,27 +111,45 @@ struct WatchedRunTests {
 
     /// The test binary is a grandchild of the command, so ending the command is not
     /// enough - the thing still holding the machine is the one further down.
+    ///
+    /// Asked of the process table rather than of a clock. An earlier version gave a
+    /// grandchild a few seconds to write a file and checked afterwards, which meant the
+    /// margin had to cover *the reader* being slow rather than the grandchild being fast -
+    /// and under a loaded machine it did not. Whether a process exists is not a question
+    /// about timing.
     @Test("ends the whole tree, not just the command it started")
     func killsTheTree() async throws {
         let pipe = try #require(EventPipe(path: Self.pipePath()))
         defer { pipe.discard() }
-        let marker = FileManager.default.temporaryDirectory
-            .appending(path: "swift-mutants-tree-\(UUID().uuidString)").path
-        defer { try? FileManager.default.removeItem(atPath: marker) }
+        let pidFile = FileManager.default.temporaryDirectory
+            .appending(path: "swift-mutants-pid-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
 
         _ = await Runner(recorder: TraceRecorder()).run(
             Self.spec(
-                "(sleep 8; echo alive > '\(marker)') & echo stop > '\(pipe.path)'; sleep 30"),
+                """
+                (while true; do sleep 0.2; done) & echo $! > '\(pidFile)'
+                echo stop > '\(pipe.path)'
+                sleep 30
+                """),
             watching: pipe
         ) { line in line != "stop" }
 
-        // Eight seconds for the grandchild and eleven for the check, because the margin
-        // has to cover the wrong thing being slow rather than the right thing. A tighter
-        // pair passed alone and failed under a loaded machine: the reader had not yet seen
-        // "stop" by the time a two-second grandchild wrote, which says nothing about
-        // whether the kill reaches a tree.
-        try await Task.sleep(for: .seconds(11))
-        #expect(!FileManager.default.fileExists(atPath: marker), "a grandchild outlived the kill")
+        let grandchild = try #require(
+            Int32(
+                try String(contentsOfFile: pidFile, encoding: .utf8)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)),
+            "the fixture did not record a grandchild"
+        )
+
+        // A signal takes a moment to be delivered and reaped; existence does not take a
+        // moment to be true. Polling asks the right question and bounds the wrong one.
+        var alive = true
+        for _ in 0..<50 where alive {
+            alive = kill(grandchild, 0) == 0
+            if alive { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        #expect(!alive, "a grandchild outlived the kill")
     }
 
     /// The reader ends for two different reasons and only one of them is a decision: the
