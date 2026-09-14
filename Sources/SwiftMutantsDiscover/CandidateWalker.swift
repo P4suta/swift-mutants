@@ -169,8 +169,42 @@ final class CandidateWalker: SyntaxVisitor {
 
     override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind {
         guard let swap = Rules.booleanLiterals[node.literal.text] else { return .skipChildren }
+        if Self.isWholeConditionOfALoop(node) {
+            note(.loopConditionLiteral, over: Syntax(node), hiding: 1)
+            return .skipChildren
+        }
         record(swap, replacing: Syntax(node.literal), within: Syntax(node))
         return .skipChildren
+    }
+
+    /// Whether this literal is the entire condition of a `while` or `repeat`.
+    ///
+    /// The whole condition, not a part of one: `while ready && true` has a decision in it,
+    /// and the literal is part of that decision rather than a spelling of "loop".
+    ///
+    /// Walking up rather than down, because the shapes differ - `while` holds a list of
+    /// condition elements and `repeat` holds one expression - and both are two or three
+    /// nodes above the literal with nothing in between that changes the answer.
+    private static func isWholeConditionOfALoop(_ node: BooleanLiteralExprSyntax) -> Bool {
+        var child = Syntax(node)
+        while let parent = child.parent {
+            if let loop = parent.as(RepeatStmtSyntax.self) {
+                return loop.condition.id == child.id
+            }
+            if let element = parent.as(ConditionElementSyntax.self) {
+                guard case .expression(let condition) = element.condition,
+                    condition.id == child.id
+                else {
+                    return false
+                }
+                return element.parent?.parent?.is(WhileStmtSyntax.self) ?? false
+            }
+            // Anything that is not one of those - an operator, a call, a member access -
+            // means the literal is inside an expression rather than being one.
+            guard parent.is(ConditionElementListSyntax.self) else { return false }
+            child = parent
+        }
+        return false
     }
 
     // MARK: - Bookkeeping

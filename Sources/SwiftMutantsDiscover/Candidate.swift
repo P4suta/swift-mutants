@@ -105,6 +105,20 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     /// the judge of everything this cannot decide.
     case nonNumericOperand = "non-numeric-operand"
 
+    /// A boolean literal that is the whole condition of a loop.
+    ///
+    /// `while true` is not a decision the program makes. It is how Swift spells "loop", and
+    /// flipping it does not perturb a predicate - it removes the loop, which a suite
+    /// notices the way it would notice the body being deleted.
+    ///
+    /// It is usually not a program either. The compiler knows a `while true` with no
+    /// `break` never falls out of the bottom, so a function may end with one and return
+    /// nothing afterwards; `while false` falls out at once and leaves a path that returns
+    /// nothing. The error for that is reported against the function's closing brace rather
+    /// than against the literal, so it lands nowhere this tool put a mutant, and the run
+    /// halves its way through the catalogue for a mutant that could never have compiled.
+    case loopConditionLiteral = "loop-condition-literal"
+
     /// A configuration pattern removed the file.
     case excluded
 }
