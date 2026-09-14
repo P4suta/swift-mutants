@@ -120,7 +120,19 @@ run = [
 
 [tasks.analyze]
 description = "Whole-module analysis: needs a compiler log, so it is not in `check`"
-run = ["swiftlint analyze --strict --quiet", "periphery scan --strict"]
+# `periphery` only, and that is a decision rather than an omission.
+#
+# `swiftlint analyze` was in this task and had never run: it needs the compiler's own log,
+# nobody gave it one, and it failed with `Could not read compiler invocations` every time.
+# Given one - a forced `swift build --build-tests -v` - it segfaults inside SourceKit on
+# this toolchain (SwiftLint 0.65.1, Swift 6.3.3). A gate that crashes is not a gate, and a
+# gate that has never run is not one either.
+#
+# What it would have added over `periphery` is `capture_variable` and
+# `typesafe_array_init`; `unused_declaration` and `unused_import` are `periphery`'s job
+# and it does them better. That is the whole of what is missing here, written down so it
+# can be picked up when the crash is gone.
+run = ["periphery scan --strict"]
 
 [tasks.watch]
 description = "The TDD inner loop"

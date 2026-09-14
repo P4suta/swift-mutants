@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Dead code, found by indexing rather than by reading.
+#
+# Two things are retained, and each is a fact about this package rather than a way of
+# quietening the tool.
+#
+# `retain_codable_properties`: a property of a `Codable` type is read by the encoder, which
+# is the whole purpose of the types that carry most of them here - the run report is a file
+# somebody else parses, and a field nothing in this repository reads is still the field
+# they read.
+#
+# `disable_redundant_public_analysis`: this package ships a library. Its public API is for
+# callers outside it, and there are none yet inside this repository, so every public
+# declaration would be reported as one that could be internal. That check is about a
+# package with no library to ship.
+#
+# Everything else is on, including the strict flag: an unused function, an unused import
+# and a property nobody reads are each something to delete rather than something to note.
+strict: true
+retain_codable_properties: true
+disable_redundant_public_analysis: true

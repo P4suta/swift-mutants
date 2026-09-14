@@ -69,7 +69,7 @@ struct ProbeRecallTests {
     @Test("writes down what a test was seen to run")
     func writesWhatItSaw() {
         let memory = Self.memory(
-            of: Coverage(byMutant: [1: ["t"]], tests: ["t"], reach: ["t": [1]]))
+            of: Coverage(byMutant: [1: ["t"]], reach: ["t": [1]]))
         #expect(
             memory.reach(of: "t", observable: [Self.code], digests: Self.digests)
                 == [Self.identity.digest])
@@ -81,7 +81,7 @@ struct ProbeRecallTests {
     func writesNothingAboutTheUnmeasured() {
         let memory = Self.memory(
             of: Coverage(
-                byMutant: [:], tests: ["t"], reach: ["t": []], untrusted: ["t"]))
+                byMutant: [:], reach: ["t": []], untrusted: ["t"]))
         #expect(memory.reach(of: "t", observable: [Self.code], digests: Self.digests) == nil)
         #expect(memory.isEmpty)
     }
@@ -92,7 +92,6 @@ struct ProbeRecallTests {
         let memory = Self.memory(
             of: Coverage(
                 byMutant: [1: ["t"]],
-                tests: ["t", "u"],
                 reach: ["t": [1], "u": []],
                 untrusted: ["u"]
             ))
@@ -105,7 +104,7 @@ struct ProbeRecallTests {
     @Test("writes down that a test reaches nothing")
     func nothingIsWorthWritingDown() {
         let memory = Self.memory(
-            of: Coverage(byMutant: [:], tests: ["t"], reach: ["t": []]))
+            of: Coverage(byMutant: [:], reach: ["t": []]))
         #expect(
             memory.reach(of: "t", observable: [Self.code], digests: Self.digests)?.isEmpty == true)
     }

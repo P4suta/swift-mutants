@@ -89,7 +89,6 @@ public struct Runner: Sendable {
                 spec,
                 Completion(
                     exitCode: status.code,
-                    signal: status.signal,
                     stoppedEarly: supervision.stopped.wasExceeded,
                     timedOut: supervision.timedOut.wasExceeded,
                     duration: Self.milliseconds(since: started),
@@ -103,7 +102,6 @@ public struct Runner: Sendable {
                 spec,
                 Completion(
                     exitCode: -1,
-                    signal: nil,
                     stoppedEarly: supervision.stopped.wasExceeded,
                     timedOut: supervision.timedOut.wasExceeded,
                     duration: Self.milliseconds(since: started),
@@ -241,7 +239,6 @@ public struct Runner: Sendable {
     /// Everything known about a command once it is over.
     private struct Completion {
         let exitCode: Int
-        let signal: Int?
         let stoppedEarly: Bool
         let timedOut: Bool
         let duration: Int
@@ -275,14 +272,11 @@ public struct Runner: Sendable {
 
         return ProcessOutcome(
             exitCode: completion.exitCode,
-            signal: completion.signal,
             timedOut: completion.timedOut,
             stoppedEarly: completion.stoppedEarly,
             durationMilliseconds: completion.duration,
             standardOutput: output.retained,
             standardError: completion.error.retained,
-            standardOutputBytes: output.total,
-            standardErrorBytes: completion.error.total,
             startFailure: completion.startFailure,
             traceSequence: event.sequence
         )

@@ -264,7 +264,6 @@ struct BatchAttributionTests {
     @Test("gives the message to the mutant it is about")
     func theRightOwner() {
         let said = Scheduler.message(
-            of: 1,
             killedBy: ["P.S/a1()"],
             in: Self.verdict(killers: ["P.S/a1()", "P.S/b1()"], firstFailure: "a1 failed")
         )
@@ -278,7 +277,6 @@ struct BatchAttributionTests {
     func theWrongOwner() {
         #expect(
             Scheduler.message(
-                of: 2,
                 killedBy: ["P.S/b1()"],
                 in: Self.verdict(killers: ["P.S/a1()", "P.S/b1()"], firstFailure: "a1 failed")
             ) == nil
@@ -289,7 +287,6 @@ struct BatchAttributionTests {
     func theSurvivor() {
         #expect(
             Scheduler.message(
-                of: 3,
                 killedBy: [],
                 in: Self.verdict(killers: ["P.S/a1()"], firstFailure: "a1 failed")
             ) == nil
@@ -300,7 +297,6 @@ struct BatchAttributionTests {
     @Test("gives the message to the only mutant there was")
     func theOnlyOne() {
         let said = Scheduler.message(
-            of: 1,
             killedBy: ["P.S/a1()"],
             in: Self.verdict(killers: ["P.S/a1()"], firstFailure: "a1 failed")
         )

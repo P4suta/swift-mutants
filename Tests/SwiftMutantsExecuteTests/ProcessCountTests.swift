@@ -47,7 +47,6 @@ struct ProcessCountTests {
         let coverage = Coverage(
             byMutant: Dictionary(
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
-            tests: mutants.indices.map { "t\($0)" }
         )
         #expect(Self.scheduler(fake, coverage: coverage).processes(for: mutants) == 1)
     }
@@ -60,7 +59,7 @@ struct ProcessCountTests {
         let fake = try ScriptedBundle.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]], tests: ["a"])
+        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         #expect(Self.scheduler(fake, coverage: coverage).processes(for: mutants) == 1)
     }
 
@@ -76,7 +75,7 @@ struct ProcessCountTests {
         for (position, mutant) in mutants.enumerated() {
             sets[mutant.index] = ["shared\(position % 2)", "u\(position)"]
         }
-        let coverage = Coverage(byMutant: sets, tests: ["shared0", "shared1"])
+        let coverage = Coverage(byMutant: sets)
         let scheduler = Self.scheduler(fake, coverage: coverage)
 
         let expected = scheduler.processes(for: mutants)

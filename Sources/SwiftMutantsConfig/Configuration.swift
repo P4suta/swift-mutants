@@ -65,7 +65,12 @@ public struct Configuration: Sendable, Hashable {
     /// from the cache: surviving fulfils the expectation, being killed contradicts it, and
     /// an identity that has left the catalogue means the expectation is stale.
     public struct Expectation: Sendable, Hashable {
+        // periphery:ignore - read from the file and not yet acted on, see below
         /// The full identity of the mutant, as sixty-four hexadecimal characters.
+        ///
+        /// Nothing consults it yet: `expectedSurvivors` is always nought and a project that
+        /// writes an expectation gets no answer about it. The field stays because the file
+        /// format is the promise, and breaking it would be worse than not keeping it yet.
         public var identity: String
         /// Why it is expected to survive.
         public var reason: String

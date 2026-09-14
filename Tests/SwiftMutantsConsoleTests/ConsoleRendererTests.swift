@@ -44,7 +44,7 @@ struct ConsoleRendererTests {
 
     @Test("writes the closing block in the documented shape")
     func summaryBlock() {
-        let renderer = ConsoleRenderer(verbosity: .normal, color: false)
+        let renderer = ConsoleRenderer(verbosity: .normal)
         let lines = renderer.summary(
             Self.summary(),
             runIdentifier: "20260914T011213Z-67af",
@@ -66,7 +66,7 @@ struct ConsoleRendererTests {
     /// is no such thing as an uncovered mutant, and a zero would read as a finding.
     @Test("shows the uncovered column only in a coverage-guided run")
     func uncoveredColumnIsConditional() {
-        let renderer = ConsoleRenderer(verbosity: .normal, color: false)
+        let renderer = ConsoleRenderer(verbosity: .normal)
         let without = renderer.summary(
             Self.summary(uncovered: 0),
             runIdentifier: "r",
@@ -87,7 +87,7 @@ struct ConsoleRendererTests {
 
     @Test("shows the cached column only when the cache was consulted")
     func cachedColumnIsConditional() {
-        let renderer = ConsoleRenderer(verbosity: .normal, color: false)
+        let renderer = ConsoleRenderer(verbosity: .normal)
         let with = renderer.summary(
             Self.summary(cached: 4),
             runIdentifier: "r",
@@ -101,7 +101,7 @@ struct ConsoleRendererTests {
     /// There is no sentinel number for "nothing was measured", so the line says so.
     @Test("says N/A rather than inventing a percentage")
     func noScoreWithoutMeasurement() {
-        let renderer = ConsoleRenderer(verbosity: .normal, color: false)
+        let renderer = ConsoleRenderer(verbosity: .normal)
         let lines = renderer.summary(
             Self.summary(killed: 0, survived: 0),
             runIdentifier: "r",
@@ -116,7 +116,7 @@ struct ConsoleRendererTests {
     /// interleaving: `grep '^  '` is the account, `grep -v '^  '` is the run.
     @Test("indents a recorded event by exactly two spaces, and a run line by none")
     func accountAndRunAreSeparableByIndentation() throws {
-        let renderer = ConsoleRenderer(verbosity: .veryVerbose, color: false)
+        let renderer = ConsoleRenderer(verbosity: .veryVerbose)
         let line = try #require(
             renderer.trace(
                 TraceEvent(
@@ -144,16 +144,16 @@ struct ConsoleRendererTests {
     func traceNeedsVeryVerbose() {
         let event = TraceEvent(sequence: 1, kind: .phaseBegan(phase: "snapshot"))
         for verbosity in [ConsoleRenderer.Verbosity.quiet, .normal, .verbose] {
-            #expect(ConsoleRenderer(verbosity: verbosity, color: false).trace(event) == nil)
+            #expect(ConsoleRenderer(verbosity: verbosity).trace(event) == nil)
         }
-        #expect(ConsoleRenderer(verbosity: .veryVerbose, color: false).trace(event) != nil)
+        #expect(ConsoleRenderer(verbosity: .veryVerbose).trace(event) != nil)
     }
 
     /// An argument vector is meant to be selected and pasted, so it is printed on one line
     /// however wide, and never wrapped.
     @Test("prints a recorded command as one pasteable line")
     func recordedCommandIsOneLine() throws {
-        let renderer = ConsoleRenderer(verbosity: .veryVerbose, color: false)
+        let renderer = ConsoleRenderer(verbosity: .veryVerbose)
         let execution = TraceEvent.Execution(
             label: "swift-build",
             arguments: ["swift", "build", "--build-tests", "--scratch-path", "/tmp/w0"],
@@ -178,7 +178,7 @@ struct ConsoleRendererTests {
     /// same call with colour off produces bytes a golden file can hold.
     @Test("emits no escape sequences when colour is off")
     func noColourMeansNoEscapes() {
-        let renderer = ConsoleRenderer(verbosity: .veryVerbose, color: false)
+        let renderer = ConsoleRenderer(verbosity: .veryVerbose)
         let lines = renderer.summary(
             Self.summary(),
             runIdentifier: "r",
@@ -191,7 +191,7 @@ struct ConsoleRendererTests {
 
     @Test("says nothing at all when asked to be quiet")
     func quietSaysNothing() {
-        let renderer = ConsoleRenderer(verbosity: .quiet, color: false)
+        let renderer = ConsoleRenderer(verbosity: .quiet)
         #expect(
             renderer.summary(
                 Self.summary(),

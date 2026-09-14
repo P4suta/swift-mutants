@@ -32,7 +32,6 @@ struct BatchTests {
                 mutants[1].index: ["b"],
                 mutants[2].index: ["c"],
             ],
-            tests: ["a", "b", "c"]
         )
         let batches = Batch.group(Array(mutants.prefix(3)), using: coverage)
         #expect(batches.count == 1)
@@ -49,7 +48,6 @@ struct BatchTests {
                 mutants[0].index: ["a", "shared"],
                 mutants[1].index: ["b", "shared"],
             ],
-            tests: ["a", "b", "shared"]
         )
         let batches = Batch.group(Array(mutants.prefix(2)), using: coverage)
         #expect(batches.count == 2)
@@ -61,7 +59,6 @@ struct BatchTests {
         let mutants = try Self.mutants()
         let coverage = Coverage(
             byMutant: [mutants[0].index: ["a"], mutants[1].index: ["b"]],
-            tests: ["a", "b"]
         )
         let batch = try #require(Batch.group(Array(mutants.prefix(2)), using: coverage).first)
         #expect(batch.mutant(killedBy: "a") == mutants[0].index)
@@ -73,7 +70,7 @@ struct BatchTests {
     @Test("says nothing about a test that belongs to no one")
     func unknownTest() throws {
         let mutants = try Self.mutants()
-        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]], tests: ["a"])
+        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         let batch = try #require(Batch.group([mutants[0]], using: coverage).first)
         #expect(batch.mutant(killedBy: "elsewhere") == nil)
     }
@@ -86,7 +83,6 @@ struct BatchTests {
         let coverage = Coverage(
             byMutant: Dictionary(
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
-            tests: mutants.indices.map { "t\($0)" }
         )
         let batches = Batch.group(mutants, using: coverage, limit: 2)
         #expect(batches.allSatisfy { $0.mutants.count <= 2 })
@@ -97,7 +93,7 @@ struct BatchTests {
     @Test("leaves out a mutant nothing reaches")
     func skipsUnreached() throws {
         let mutants = try Self.mutants()
-        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]], tests: ["a"])
+        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         let batches = Batch.group(mutants, using: coverage)
         #expect(batches.flatMap { $0.mutants }.map(\.index) == [mutants[0].index])
     }
@@ -109,7 +105,6 @@ struct BatchTests {
         let coverage = Coverage(
             byMutant: Dictionary(
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0 % 3)"]) }),
-            tests: ["t0", "t1", "t2"]
         )
         let first = Batch.group(mutants, using: coverage).map { $0.mutants.map(\.index) }
         let again = Batch.group(mutants, using: coverage).map { $0.mutants.map(\.index) }
@@ -118,7 +113,7 @@ struct BatchTests {
 
     @Test("holds an empty catalogue")
     func empty() {
-        #expect(Batch.group([], using: Coverage(byMutant: [:], tests: [])).isEmpty)
+        #expect(Batch.group([], using: Coverage(byMutant: [:])).isEmpty)
     }
 }
 
@@ -153,7 +148,6 @@ struct BatchedRunTests {
                 mutants[1].index: ["b"],
                 mutants[2].index: ["c"],
             ],
-            tests: ["a", "b", "c"]
         )
         let batch = try #require(Batch.group(Array(mutants.prefix(3)), using: coverage).first)
         let results = try #require(
@@ -182,7 +176,6 @@ struct BatchedRunTests {
                 mutants[1].index: ["b"],
                 mutants[2].index: ["c"],
             ],
-            tests: ["a", "b", "c"]
         )
         let batch = try #require(Batch.group(Array(mutants.prefix(3)), using: coverage).first)
         let results = try #require(
@@ -204,7 +197,7 @@ struct BatchedRunTests {
         let fake = try ScriptedBundle.fake(failingFor: [], failingWhatever: "P.S/stranger()")
         defer { fake.cleanUp() }
 
-        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]], tests: ["a"])
+        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         let batch = try #require(Batch.group([mutants[0]], using: coverage).first)
         #expect(
             await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0)
@@ -219,7 +212,7 @@ struct BatchedRunTests {
         defer { fake.cleanUp() }
 
         let coverage = Coverage(
-            byMutant: [mutants[0].index: ["a"], mutants[1].index: ["b"]], tests: ["a", "b"])
+            byMutant: [mutants[0].index: ["a"], mutants[1].index: ["b"]])
         let batch = try #require(Batch.group(Array(mutants.prefix(2)), using: coverage).first)
         let results = try #require(
             await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0))
@@ -234,7 +227,7 @@ struct BatchedRunTests {
         let fake = try ScriptedBundle.fake(failingFor: [], neverStarting: true)
         defer { fake.cleanUp() }
 
-        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]], tests: ["a"])
+        let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         let batch = try #require(Batch.group([mutants[0]], using: coverage).first)
         #expect(
             await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0)
@@ -270,7 +263,6 @@ struct BatchedSchedulingTests {
         let coverage = Coverage(
             byMutant: Dictionary(
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
-            tests: mutants.indices.map { "t\($0)" }
         )
         let results = await Self.scheduler(fake, coverage: coverage)
             .run(mutants, in: SchedulerTests.path())
@@ -289,7 +281,6 @@ struct BatchedSchedulingTests {
         let coverage = Coverage(
             byMutant: Dictionary(
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
-            tests: mutants.indices.map { "t\($0)" }
         )
 
         let batched = try ScriptedBundle.fake(failingFor: [], failingTests: ["t2": "t2"])
@@ -327,8 +318,7 @@ struct BatchedSchedulingTests {
         for (position, mutant) in mutants.enumerated() {
             sets[mutant.index] = position <= 1 ? ["shared"] : ["u\(position)"]
         }
-        let coverage = Coverage(
-            byMutant: sets, tests: ["shared"] + mutants.indices.map { "u\($0)" })
+        let coverage = Coverage(byMutant: sets)
         let results = await Self.scheduler(fake, coverage: coverage)
             .run(mutants, in: SchedulerTests.path())
         #expect(results.map(\.identity) == mutants.map(\.identity))
@@ -347,7 +337,6 @@ struct BatchedSchedulingTests {
         let pair = Array(mutants.prefix(2))
         let coverage = Coverage(
             byMutant: Dictionary(uniqueKeysWithValues: pair.map { ($0.index, ["shared"]) }),
-            tests: ["shared"]
         )
         let results = await Self.scheduler(fake, coverage: coverage)
             .run(pair, in: SchedulerTests.path())
@@ -371,7 +360,6 @@ struct BatchedSchedulingTests {
         let coverage = Coverage(
             byMutant: Dictionary(
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
-            tests: mutants.indices.map { "t\($0)" }
         )
         let results = await Self.scheduler(fake, coverage: coverage)
             .run(mutants, in: SchedulerTests.path())

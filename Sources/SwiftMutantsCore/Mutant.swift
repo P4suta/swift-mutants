@@ -6,22 +6,21 @@
 /// The identity is derived rather than stored separately, so a mutant cannot be built
 /// carrying an identity that is not its own — which would be a mutant that adopted somebody
 /// else's cached verdict.
+///
+/// Two of the initialiser's arguments are not kept. The enclosing declaration and the
+/// file's digest are what the identity is made of, and the identity is made here; keeping
+/// a second copy of an input nothing reads back would be a second place for it to be
+/// wrong.
 public struct Mutant: Sendable, Hashable {
 
     /// Where the mutated file is, relative to the workspace root.
     public let path: WorkspaceRelativePath
-
-    /// A stable name for the declaration the edit sits inside, or `""` when unknown.
-    public let enclosingDeclaration: String
 
     /// Which rule produced it, at which version.
     public let rule: RuleIdentifier
 
     /// The bytes the edit replaces.
     public let span: SourceSpan
-
-    /// The digest of the whole file as it was read.
-    public let sourceDigest: Digest
 
     /// The source text at ``span``, as the file has it.
     public let original: String
@@ -43,10 +42,8 @@ public struct Mutant: Sendable, Hashable {
         replacement: String
     ) {
         self.path = path
-        self.enclosingDeclaration = enclosingDeclaration
         self.rule = rule
         self.span = span
-        self.sourceDigest = sourceDigest
         self.original = original
         self.replacement = replacement
         identity = MutantIdentity(

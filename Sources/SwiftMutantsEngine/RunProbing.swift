@@ -42,7 +42,6 @@ extension Run {
         }
         return Coverage(
             byMutant: byMutant,
-            tests: tests,
             reach: reach,
             untrusted: asked?.untrusted ?? []
         )

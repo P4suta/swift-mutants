@@ -113,7 +113,7 @@ public struct Validator: Sendable {
             // loop is the only thing that decides a tree compiles.
             let found = try await halve(
                 files,
-                from: Rounds(discoveries: discoveries, rejected: rejected, rounds: rounds),
+                from: Rounds(discoveries: discoveries),
                 blaming: attribution.unattributed,
                 progress: progress
             )
@@ -211,13 +211,17 @@ public struct Validator: Sendable {
     /// Where the loop had got to when it gave up explaining itself.
     private struct Rounds {
         let discoveries: [FileDiscovery]
-        let rejected: [Rejection]
-        let rounds: Int
     }
 
     /// What identifies a candidate inside one file: the bytes it edits and the rule.
+    ///
+    /// Both fields exist to be hashed and compared, which the compiler does for us - so
+    /// nothing in this package reads either of them by name, and an indexer looking for
+    /// readers finds none.
     struct Key: Hashable {
+        // periphery:ignore
         let span: SourceSpan
+        // periphery:ignore
         let rule: RuleIdentifier
         init(_ span: SourceSpan, _ rule: RuleIdentifier) {
             self.span = span

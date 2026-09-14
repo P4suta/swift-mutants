@@ -60,9 +60,6 @@ public struct DigestBuilder: Sendable {
     }
 
     /// Appends a raw byte field.
-    public func adding(bytes field: [UInt8]) -> Self {
-        appending(.bytes, field)
-    }
 
     /// Finishes the sequence and returns its digest.
     public consuming func finalize() -> Digest {

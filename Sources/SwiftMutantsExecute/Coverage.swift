@@ -25,9 +25,6 @@ public struct Coverage: Sendable {
     /// different things and only one of them is a finding: no test runs this code.
     private let byMutant: [UInt32: [String]]
 
-    /// Every test that ran during the probe, in a fixed order.
-    public let tests: [String]
-
     /// What each test was seen to evaluate a guard for.
     ///
     /// The same finding as ``tests(reaching:)`` read the other way round, and it answers a
@@ -62,7 +59,6 @@ public struct Coverage: Sendable {
     /// once rather than per mutant.
     public init(
         byMutant: [UInt32: [String]],
-        tests: [String],
         reach: [String: Set<UInt32>] = [:],
         untrusted: [String] = []
     ) {
@@ -74,7 +70,6 @@ public struct Coverage: Sendable {
         self.byMutant = byMutant.mapValues { covering in
             covering.sorted { ((breadth[$0] ?? 0), $0) < ((breadth[$1] ?? 0), $1) }
         }
-        self.tests = tests
         self.reach = reach
         self.untrusted = untrusted.sorted()
     }
@@ -150,7 +145,7 @@ public struct Prober: Sendable {
         _ tests: [String],
         progress: @Sendable (Int) -> Void = { _ in }
     ) async -> Coverage {
-        guard !tests.isEmpty else { return Coverage(byMutant: [:], tests: []) }
+        guard !tests.isEmpty else { return Coverage(byMutant: [:]) }
 
         var reached: [UInt32: [String]] = [:]
         var reach: [String: Set<UInt32>] = [:]
@@ -185,7 +180,7 @@ public struct Prober: Sendable {
                 next += 1
             }
         }
-        return Coverage(byMutant: reached, tests: tests, reach: reach, untrusted: untrusted)
+        return Coverage(byMutant: reached, reach: reach, untrusted: untrusted)
     }
 
     /// What one test reached, or nothing when the run that should have said did not.

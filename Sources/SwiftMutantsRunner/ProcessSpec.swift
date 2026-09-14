@@ -77,13 +77,17 @@ public struct ProcessSpec: Sendable, Hashable {
 }
 
 /// What became of a command.
+/// What became of a command.
+///
+/// It does not say which signal ended a process that one ended. Nothing reads that, and a
+/// field carried for an option nobody has taken is a second place for it to be wrong; the
+/// exit status says a process ended abnormally and `Termination` says what that means about
+/// a mutant. If the number itself becomes worth having - a trap tells you something a
+/// non-zero exit does not - it comes back with a reader and a test.
 public struct ProcessOutcome: Sendable {
 
     /// Its exit status, or `-1` when it never became a process.
     public let exitCode: Int
-
-    /// The signal that ended it, if one did.
-    public let signal: Int?
 
     /// Whether it was stopped for overrunning its deadline.
     public let timedOut: Bool
@@ -103,12 +107,6 @@ public struct ProcessOutcome: Sendable {
 
     /// The first ``Runner/outputLimit`` bytes it printed to standard error.
     public let standardError: [UInt8]
-
-    /// How much it printed to standard output in total, retained or not.
-    public let standardOutputBytes: Int
-
-    /// How much it printed to standard error in total, retained or not.
-    public let standardErrorBytes: Int
 
     /// Why it could not be started, when it could not be.
     public let startFailure: String?

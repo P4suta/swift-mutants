@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-import SwiftMutantsCore
 import Testing
 
 @testable import SwiftMutantsTrace

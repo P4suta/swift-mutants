@@ -40,7 +40,6 @@ struct CoverageTests {
 
         let coverage = Coverage(
             byMutant: [mutants[0].index: ["P.S/a()", "P.S/b()"]],
-            tests: ["P.S/a()", "P.S/b()", "P.S/c()"]
         )
         _ = await Self.scheduler(fake, coverage: coverage)
             .run([mutants[0]], in: SchedulerTests.path())
@@ -60,7 +59,7 @@ struct CoverageTests {
         let fake = try ScriptedBundle.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        let coverage = Coverage(byMutant: [:], tests: ["P.S/a()"])
+        let coverage = Coverage(byMutant: [:])
         let results = await Self.scheduler(fake, coverage: coverage)
             .run(mutants, in: SchedulerTests.path())
 
@@ -116,7 +115,7 @@ struct CoverageTests {
 
     @Test("counts what nothing reaches")
     func countsUncovered() throws {
-        let coverage = Coverage(byMutant: [1: ["P.S/a()"], 3: ["P.S/b()"]], tests: [])
+        let coverage = Coverage(byMutant: [1: ["P.S/a()"], 3: ["P.S/b()"]])
         #expect(coverage.uncovered(among: [0, 1, 2, 3, 4]) == 3)
     }
 }
@@ -144,7 +143,6 @@ struct TestOrderTests {
                 2: ["broad"],
                 3: ["broad"],
             ],
-            tests: ["broad", "narrow"]
         )
         #expect(coverage.tests(reaching: 1) == ["narrow", "broad"])
     }
@@ -154,13 +152,13 @@ struct TestOrderTests {
     @Test("breaks a tie the same way every time")
     func stableTies() {
         let coverage = Coverage(
-            byMutant: [1: ["zeta", "alpha", "mu"]], tests: ["alpha", "mu", "zeta"])
+            byMutant: [1: ["zeta", "alpha", "mu"]])
         #expect(coverage.tests(reaching: 1) == ["alpha", "mu", "zeta"])
     }
 
     @Test("leaves a mutant with one test alone")
     func singleTest() {
-        let coverage = Coverage(byMutant: [1: ["only"]], tests: ["only"])
+        let coverage = Coverage(byMutant: [1: ["only"]])
         #expect(coverage.tests(reaching: 1) == ["only"])
     }
 }

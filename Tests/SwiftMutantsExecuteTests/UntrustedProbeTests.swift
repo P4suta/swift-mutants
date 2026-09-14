@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-import SwiftMutantsCore
 import Testing
 
 @testable import SwiftMutantsExecute
@@ -24,7 +23,6 @@ struct UntrustedProbeTests {
     static func coverage(unknown: [String]) -> Coverage {
         Coverage(
             byMutant: [1: ["known"]],
-            tests: ["known"] + unknown,
             reach: ["known": [1]],
             untrusted: unknown
         )
@@ -68,7 +66,7 @@ struct UntrustedProbeTests {
     @Test("offers the whole suite when it established nothing at all")
     func everythingUnknown() {
         let coverage = Coverage(
-            byMutant: [:], tests: ["a", "b"], reach: [:], untrusted: ["a", "b"])
+            byMutant: [:], reach: [:], untrusted: ["a", "b"])
         #expect(coverage.tests(reaching: 1)?.sorted() == ["a", "b"])
         #expect(coverage.uncovered(among: [1, 2]) == 0)
     }

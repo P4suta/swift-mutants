@@ -18,8 +18,6 @@ import Testing
 @Suite("Retrying deadlines")
 struct RetryTests {
 
-    typealias Fake = SchedulerTests.Fake
-
     static func mutants() throws -> [InstrumentedMutant] { try SchedulerTests.mutants() }
 
     /// The reason retries exist, and it is not hypothetical.
@@ -64,8 +62,6 @@ struct RetryTests {
 /// Running the baseline the way the mutants will be run.
 @Suite("Contended baseline")
 struct ContendedBaselineTests {
-
-    static func mutants() throws -> [InstrumentedMutant] { try SchedulerTests.mutants() }
 
     /// A mutation run starts `jobs` copies of a suite against one machine. A suite that
     /// shares a port, a fixture directory or a temporary file with itself fails for

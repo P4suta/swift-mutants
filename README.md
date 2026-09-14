@@ -176,6 +176,7 @@ mistake review does not catch:
 | `UpcomingFeatureLedgerTests` | The manifest drifting from what the toolchain offers |
 | `ProvenanceGateTests` | A file without an SPDX header, or text that is not English |
 | `rules/ast-grep/` | `Foundation.Process`, `ProcessInfo.environment`, per-node `SourceLocationConverter` |
+| `mise run analyze` | Code nothing reads — a property, a function, an import, a whole module |
 
 ## Sibling projects
 

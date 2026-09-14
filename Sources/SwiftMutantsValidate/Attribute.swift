@@ -40,9 +40,6 @@ public struct Attribution: Sendable, Hashable {
     /// be guessed between: a caller that sees any of these has learned that this compile
     /// did not explain itself, and bisection is what answers instead.
     public let unattributed: [CompilerDiagnostic]
-
-    /// Whether this compile explained everything it complained about.
-    public var isComplete: Bool { unattributed.isEmpty }
 }
 
 /// Joins compiler diagnostics to the mutants they are about.

@@ -52,7 +52,7 @@ extension Scheduler {
                     outcome: killers[mutant.index] == nil ? .survived : .killed,
                     killedBy: killers[mutant.index] ?? [],
                     firstFailure: Self.message(
-                        of: mutant.index, killedBy: killers[mutant.index] ?? [], in: verdict),
+                        killedBy: killers[mutant.index] ?? [], in: verdict),
                     startedTests: verdict.startedTests,
                     durationMilliseconds: verdict.durationMilliseconds,
                     termination: verdict.termination
@@ -70,7 +70,7 @@ extension Scheduler {
     /// assertion - so a member gets it only when the test that produced it is one of its
     /// own, and nothing otherwise. The tests in `killedBy` are exact either way: no test
     /// reaches two mutants of a batch, by construction.
-    static func message(of index: UInt32, killedBy: [String], in verdict: Verdict) -> String? {
+    static func message(killedBy: [String], in verdict: Verdict) -> String? {
         guard !killedBy.isEmpty, let first = verdict.killedBy.first, killedBy.contains(first)
         else {
             return nil
@@ -108,13 +108,6 @@ extension Scheduler {
         case alone(InstrumentedMutant)
         case together(Batch)
         case unreached(InstrumentedMutant)
-
-        var mutants: [InstrumentedMutant] {
-            switch self {
-            case .alone(let mutant), .unreached(let mutant): [mutant]
-            case .together(let batch): batch.mutants
-            }
-        }
 
         /// Whether answering it costs a process.
         var startsSomething: Bool {

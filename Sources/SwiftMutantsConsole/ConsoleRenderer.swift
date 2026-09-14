@@ -35,16 +35,13 @@ public struct ConsoleRenderer: Sendable {
     /// How much this renderer says.
     public let verbosity: Verbosity
 
-    /// Whether the output is going somewhere that can show colour.
-    ///
-    /// A property of the destination, never of what is being said. With it off the bytes
-    /// are what a golden file can hold and what a CI log can be diffed as.
-    public let color: Bool
-
     /// Creates a renderer.
-    public init(verbosity: Verbosity, color: Bool) {
+    ///
+    /// It says nothing about colour. Every line it produces is what a golden file can hold
+    /// and what a CI log can be diffed as, and a flag nothing consulted was a promise of
+    /// something else.
+    public init(verbosity: Verbosity) {
         self.verbosity = verbosity
-        self.color = color
     }
 
     /// The closing block: the counters, the score, and how the run ended.
