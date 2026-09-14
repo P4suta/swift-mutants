@@ -9,6 +9,15 @@ excluded:
   - .build
   - Fixtures        # the corpus is input, and some of it is broken on purpose
 
+# Generated files say so at the top and disable the length rules for the whole file,
+# because their length is the length of what they carry. Listing them here instead would
+# not work: the pre-commit hook passes staged files by name, and SwiftLint ignores
+# `excluded` when it is given files.
+blanket_disable_command:
+  allowed_rules:
+    - file_length
+    - type_body_length
+
 # Formatting is swift-format's job. SwiftLint is here for the rules swift-format has no
 # opinion about, so anything purely cosmetic is disabled rather than fought over.
 disabled_rules:

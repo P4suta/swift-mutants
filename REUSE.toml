@@ -14,6 +14,8 @@ path = [
   "LICENSE-APACHE",
   "Package.resolved",
   "VERSION",
+  # JSON has no comments, so the schemas are annotated here rather than in themselves.
+  "schema/**",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 swift-mutants contributors"

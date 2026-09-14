@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/P4suta/swift-mutants/schema/stryker-projection-v1.schema.json",
+  "title": "swift-mutants' projection onto the Stryker mutation testing report",
+  "description": "The subset of Stryker's schema 1.0 that swift-mutants actually writes, and the only part of it this tool promises. It is deliberately not a copy of the ecosystem schema: this is a gate on this tool's own drift, not a conformance check on Stryker's shape. The projection is one-way and lossy - a mutant's own identity, the two scores, what the compiler said, and everything a run knows about timing are not expressible here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "thresholds", "framework", "files"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": "1.0" },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["high", "low"],
+      "properties": {
+        "high": { "type": "integer", "minimum": 0 },
+        "low": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "framework": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "swift-mutants" },
+        "version": { "type": "string" }
+      }
+    },
+    "files": {
+      "description": "Keyed by the path the repository uses, never by where the copy a run happened in was.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["language", "source", "mutants"],
+        "properties": {
+          "language": { "const": "swift" },
+          "source": { "type": "string" },
+          "mutants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "mutatorName",
+                "replacement",
+                "location",
+                "status",
+                "coveredBy",
+                "killedBy",
+                "testsCompleted"
+              ],
+              "properties": {
+                "id": { "type": "string" },
+                "mutatorName": { "type": "string" },
+                "replacement": { "type": "string" },
+                "location": {
+                  "description": "Counted in characters, which is what the schema and the viewer that renders it count. Everything inside swift-mutants counts UTF-8 bytes, and on a line with anything but ASCII the two disagree.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["start", "end"],
+                  "properties": {
+                    "start": { "$ref": "#/$defs/place" },
+                    "end": { "$ref": "#/$defs/place" }
+                  }
+                },
+                "status": {
+                  "enum": [
+                    "Killed",
+                    "Survived",
+                    "NoCoverage",
+                    "Timeout",
+                    "RuntimeError",
+                    "CompileError",
+                    "Ignored",
+                    "Pending"
+                  ]
+                },
+                "coveredBy": { "type": "array", "items": { "type": "string" } },
+                "killedBy": { "type": "array", "items": { "type": "string" } },
+                "testsCompleted": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "place": {
+      "description": "One-based, as the schema counts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "column"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsRunner
+import SwiftMutantsValidate
 
 extension RunReportTests {
 
@@ -105,11 +106,33 @@ extension RunReportTests {
             return counts
         }
 
+        /// One mutant the compiler would not accept, with its words beside it.
+        ///
+        /// A report with nothing refused in it validates against a schema that says nothing
+        /// about refusals, so a fixture that had none would leave that whole branch
+        /// unchecked.
+        static func refusal() -> Rejection {
+            Rejection(
+                identity: result(.killed, tests: []).identity,
+                rule: rule,
+                span: span,
+                diagnostics: [
+                    CompilerDiagnostic(
+                        file: "Sources/Codec/Header.swift",
+                        position: SourcePosition(line: 2, column: 3),
+                        severity: .error,
+                        message: "binary operator '<=' cannot be applied to two 'Data' operands"
+                    )
+                ]
+            )
+        }
+
         static func outcome(
             results: [MutantResult],
             summary: RunSummary? = nil,
             scope: RunScope = .everything,
-            expectations: Expectations.Verdict = .unasked
+            expectations: Expectations.Verdict = .unasked,
+            rejected: [Rejection] = []
         ) -> RunOutcome {
             let derived = counts(
                 killed: results.count { $0.verdict.outcome == .killed },
@@ -120,7 +143,7 @@ extension RunReportTests {
             )
             return RunOutcome(
                 results: results,
-                rejected: [],
+                rejected: rejected,
                 summary: summary ?? derived,
                 baseline: verdict(.survived, tests: ["P.S/a()"]),
                 contendedBaseline: verdict(.survived, tests: ["P.S/a()"]),

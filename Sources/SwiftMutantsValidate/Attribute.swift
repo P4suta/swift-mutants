@@ -25,6 +25,19 @@ public struct Rejection: Sendable, Hashable {
 
     /// Everything the compiler said about it, in the order it said it.
     public let diagnostics: [CompilerDiagnostic]
+
+    /// Records one refusal.
+    public init(
+        identity: MutantIdentity,
+        rule: RuleIdentifier,
+        span: SourceSpan,
+        diagnostics: [CompilerDiagnostic]
+    ) {
+        self.identity = identity
+        self.rule = rule
+        self.span = span
+        self.diagnostics = diagnostics
+    }
 }
 
 /// What one compile of an instrumented tree established.

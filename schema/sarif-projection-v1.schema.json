@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/P4suta/swift-mutants/schema/sarif-projection-v1.schema.json",
+  "title": "swift-mutants' projection onto SARIF 2.1.0",
+  "description": "The subset of SARIF 2.1.0 that swift-mutants actually writes, and the only part of it this tool promises. It is deliberately not a copy of the OASIS schema: this is a gate on this tool's own drift, not a conformance check on SARIF's shape. What it buys is real - partialFingerprints carry each mutant's own identity, so GitHub code scanning tracks a survivor across commits and offers a dismissal UI for free.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "version", "runs"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": "2.1.0" },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool", "results"],
+        "properties": {
+          "tool": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["driver"],
+            "properties": {
+              "driver": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "semanticVersion", "informationUri", "rules"],
+                "properties": {
+                  "name": { "const": "swift-mutants" },
+                  "semanticVersion": { "type": "string" },
+                  "informationUri": { "type": "string" },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["id", "name", "shortDescription", "fullDescription"],
+                      "properties": {
+                        "id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "shortDescription": { "$ref": "#/$defs/text" },
+                        "fullDescription": { "$ref": "#/$defs/text" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ruleId",
+                "level",
+                "message",
+                "locations",
+                "partialFingerprints"
+              ],
+              "properties": {
+                "ruleId": { "type": "string" },
+                "level": { "enum": ["none", "note", "warning", "error"] },
+                "message": { "$ref": "#/$defs/text" },
+                "locations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["physicalLocation"],
+                    "properties": {
+                      "physicalLocation": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["artifactLocation", "region"],
+                        "properties": {
+                          "artifactLocation": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["uri"],
+                            "properties": { "uri": { "type": "string" } }
+                          },
+                          "region": {
+                            "description": "Counted in characters and one-based, which is what SARIF counts. Everything inside swift-mutants counts UTF-8 bytes.",
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["startLine", "startColumn"],
+                            "properties": {
+                              "startLine": { "type": "integer", "minimum": 1 },
+                              "startColumn": { "type": "integer", "minimum": 1 }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "partialFingerprints": {
+                  "description": "Each mutant's own identity, which is what lets a survivor be tracked across commits.",
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": { "text": { "type": "string" } }
+    }
+  }
+}

@@ -118,6 +118,10 @@ run = [
      --skip RepositoryGateTests --skip IntegrationTests --skip ToolchainTests""",
 ]
 
+[tasks.schema-embed]
+description = "Regenerate the schemas the tool carries from the ones schema/ publishes"
+run = "./scripts/embed-schemas.sh"
+
 [tasks.analyze]
 description = "Whole-module analysis: needs a compiler log, so it is not in `check`"
 # `periphery` only, and that is a decision rather than an omission.

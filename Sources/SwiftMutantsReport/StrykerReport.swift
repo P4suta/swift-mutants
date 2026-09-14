@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+public import SwiftMutantsSchemas
 public import Foundation
 import SwiftMutantsCore
 
@@ -216,9 +217,13 @@ extension StrykerReport {
     }
 
     /// The report as bytes, the same bytes every time.
-    public static func encoded(_ report: Self) throws -> Data {
+    public static func encoded(
+        _ report: Self, checkedAgainst schema: String = Schemas.strykerProjection
+    ) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes, .prettyPrinted]
-        return try encoder.encode(report)
+        let bytes = try encoder.encode(report)
+        try Schemas.check(bytes, against: schema)
+        return bytes
     }
 }

@@ -7,6 +7,7 @@ import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsRunner
+import SwiftMutantsSchemas
 import Testing
 
 @testable import SwiftMutantsReport

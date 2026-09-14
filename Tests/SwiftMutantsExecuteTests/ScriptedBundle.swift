@@ -32,6 +32,7 @@ enum ScriptedBundle {
         var failingBaselineTests: [String] = []
         var slowUntilRetried: Set<UInt32> = []
         var alwaysSlow: Set<UInt32> = []
+        var slowBaseline = false
         var failingTests: [String: String] = [:]
         var failingWhatever: String?
         var neverStarting = false
@@ -42,6 +43,7 @@ enum ScriptedBundle {
         failingBaselineTests: [String] = [],
         slowUntilRetried: Set<UInt32> = [],
         alwaysSlow: Set<UInt32> = [],
+        slowBaseline: Bool = false,
         failingTests: [String: String] = [:],
         failingWhatever: String? = nil,
         neverStarting: Bool = false
@@ -52,6 +54,7 @@ enum ScriptedBundle {
                 failingBaselineTests: failingBaselineTests,
                 slowUntilRetried: slowUntilRetried,
                 alwaysSlow: alwaysSlow,
+                slowBaseline: slowBaseline,
                 failingTests: failingTests,
                 failingWhatever: failingWhatever,
                 neverStarting: neverStarting
@@ -89,6 +92,7 @@ enum ScriptedBundle {
                 failingFor: script.failing,
                 slowUntilRetried: script.slowUntilRetried,
                 alwaysSlow: script.alwaysSlow,
+                slowBaseline: script.slowBaseline,
                 failingTests: script.failingTests,
                 failingWhatever: script.failingWhatever,
                 in: scratch
@@ -132,6 +136,7 @@ enum ScriptedBundle {
         failingFor failing: Set<UInt32>,
         slowUntilRetried: Set<UInt32> = [],
         alwaysSlow: Set<UInt32> = [],
+        slowBaseline: Bool = false,
         failingTests: [String: String] = [:],
         failingWhatever: String? = nil,
         in scratch: URL
@@ -139,7 +144,7 @@ enum ScriptedBundle {
         let named = Self.namedTests(failingTests) + Self.stranger(failingWhatever)
         let failures = failing.map(String.init).sorted().joined(separator: " ")
         let slowness = Self.slowness(
-            once: slowUntilRetried, always: alwaysSlow, in: scratch)
+            once: slowUntilRetried, always: alwaysSlow, baseline: slowBaseline, in: scratch)
         return """
             #!/bin/sh
             STREAM=""
@@ -225,7 +230,16 @@ enum ScriptedBundle {
     ///
     /// Once is the shape a suite has when eight copies of it share a machine - the mark it
     /// leaves survives, so the retry runs at full speed.
-    static func slowness(once: Set<UInt32>, always: Set<UInt32>, in scratch: URL) -> String {
+    /// How the bundle hangs, for a test about what happens when it does.
+    ///
+    /// `baseline` is the one a probe needs: a probe run has no mutant awake, so a set of
+    /// mutant indices never matches it however it is spelled. Without this the script falls
+    /// through to its ordinary body and exits cleanly, and a test about a run that had to
+    /// be stopped is really a race between that body and the deadline - which is how one of
+    /// these passed a thousand times and failed on a loaded machine.
+    static func slowness(
+        once: Set<UInt32>, always: Set<UInt32>, baseline: Bool = false, in scratch: URL
+    ) -> String {
         let first = once.map(String.init).sorted().joined(separator: " ")
         let every = always.map(String.init).sorted().joined(separator: " ")
         return """
@@ -238,6 +252,7 @@ enum ScriptedBundle {
             for slow in \(every); do
               if [ "$MUTANT" = "$slow" ]; then sleep 30; fi
             done
+            \(baseline ? #"if [ "$MUTANT" = "base" ]; then sleep 30; fi"# : "")
             """
     }
 }

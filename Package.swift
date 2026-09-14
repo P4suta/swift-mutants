@@ -123,10 +123,14 @@ let package = Package(
         // The canonical account of a run: what it measured, what became of each mutant,
         // and the counts every other artefact is a projection of.
         .target(
+            name: "SwiftMutantsSchemas",
+            swiftSettings: strict
+        ),
+        .target(
             name: "SwiftMutantsReport",
             dependencies: [
                 "SwiftMutantsConfig", "SwiftMutantsCore", "SwiftMutantsEngine",
-                "SwiftMutantsExecute", "SwiftMutantsValidate",
+                "SwiftMutantsExecute", "SwiftMutantsSchemas", "SwiftMutantsValidate",
             ],
             swiftSettings: strict
         ),
@@ -232,6 +236,11 @@ let package = Package(
         // `TestKitIsolationGateTests` is what keeps production from importing it.
         .target(
             name: "SwiftMutantsTestKit",
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsSchemasTests",
+            dependencies: ["SwiftMutantsSchemas"],
             swiftSettings: strict
         ),
         .testTarget(
@@ -369,7 +378,7 @@ let package = Package(
         // they belong to the unit tier and run in the inner loop.
         .testTarget(
             name: "RepositoryGateTests",
-            dependencies: ["SwiftMutantsTestKit"],
+            dependencies: ["SwiftMutantsSchemas", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
 

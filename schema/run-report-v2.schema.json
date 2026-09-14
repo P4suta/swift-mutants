@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/P4suta/swift-mutants/schema/run-report-v2.schema.json",
+  "title": "swift-mutants run report, version 2",
+  "description": "The account a run gives of itself. Every key is present every time, including the zeroes; a number nobody measured is null rather than a sentinel; and places are named the way the repository names them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "tool",
+    "scope",
+    "summary",
+    "baseline",
+    "contendedBaseline",
+    "filesInstrumented",
+    "files",
+    "tests",
+    "mutants",
+    "rejected",
+    "expectations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "swift-mutants" },
+        "version": { "type": "string" }
+      }
+    },
+    "scope": {
+      "description": "What the run was about, when it was not about everything.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "since", "files", "shard"],
+      "properties": {
+        "kind": { "enum": ["everything", "changed"] },
+        "since": { "type": ["string", "null"] },
+        "files": { "type": ["integer", "null"], "minimum": 0 },
+        "shard": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "killed",
+        "survived",
+        "timedOut",
+        "inconclusive",
+        "errored",
+        "notRun",
+        "rejected",
+        "equivalent",
+        "uncovered",
+        "cached",
+        "expectedSurvivors",
+        "score",
+        "scoreOfCoveredCode"
+      ],
+      "properties": {
+        "killed": { "$ref": "#/$defs/count" },
+        "survived": { "$ref": "#/$defs/count" },
+        "timedOut": { "$ref": "#/$defs/count" },
+        "inconclusive": { "$ref": "#/$defs/count" },
+        "errored": { "$ref": "#/$defs/count" },
+        "notRun": { "$ref": "#/$defs/count" },
+        "rejected": { "$ref": "#/$defs/count" },
+        "equivalent": { "$ref": "#/$defs/count" },
+        "uncovered": { "$ref": "#/$defs/count" },
+        "cached": { "$ref": "#/$defs/count" },
+        "expectedSurvivors": { "$ref": "#/$defs/count" },
+        "score": { "$ref": "#/$defs/proportion" },
+        "scoreOfCoveredCode": { "$ref": "#/$defs/proportion" }
+      }
+    },
+    "baseline": { "$ref": "#/$defs/behaviour" },
+    "contendedBaseline": { "$ref": "#/$defs/behaviour" },
+    "filesInstrumented": { "$ref": "#/$defs/count" },
+    "files": {
+      "description": "Every file the package has, mutable or not, and what it digested to.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "tests": {
+      "description": "Every test any mutant was offered, written once and referred to by position.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "mutants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "line",
+          "column",
+          "span",
+          "rule",
+          "original",
+          "replacement",
+          "outcome",
+          "killedBy",
+          "ran",
+          "testsStarted",
+          "attempts",
+          "durationMilliseconds"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "path": { "type": "string" },
+          "line": { "type": ["integer", "null"], "minimum": 1 },
+          "column": { "type": ["integer", "null"], "minimum": 1 },
+          "span": { "$ref": "#/$defs/span" },
+          "rule": { "type": "string" },
+          "original": { "type": "string" },
+          "replacement": { "type": "string" },
+          "outcome": {
+            "enum": [
+              "killed",
+              "survived",
+              "timed-out",
+              "inconclusive",
+              "errored",
+              "not-run",
+              "rejected",
+              "equivalent"
+            ]
+          },
+          "killedBy": { "type": "array", "items": { "type": "string" } },
+          "ran": {
+            "description": "Positions in the run's own list of test names.",
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 }
+          },
+          "testsStarted": { "$ref": "#/$defs/count" },
+          "attempts": { "$ref": "#/$defs/count" },
+          "durationMilliseconds": { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+    "rejected": {
+      "description": "What the compiler refused, in the compiler's own words.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "rule", "span", "diagnostics"],
+        "properties": {
+          "id": { "type": "string" },
+          "rule": { "type": "string" },
+          "span": { "$ref": "#/$defs/span" },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["file", "line", "column", "severity", "message"],
+              "properties": {
+                "file": { "type": "string" },
+                "line": { "type": "integer", "minimum": 0 },
+                "column": { "type": "integer", "minimum": 0 },
+                "severity": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "expectations": {
+      "description": "What the project's [[mutation.expect]] rows amounted to. Present even when the project expected nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["met", "contradicted", "stale", "superseded", "isSatisfied"],
+      "properties": {
+        "met": { "$ref": "#/$defs/count" },
+        "contradicted": { "$ref": "#/$defs/expectations" },
+        "stale": { "$ref": "#/$defs/expectations" },
+        "superseded": { "$ref": "#/$defs/expectations" },
+        "isSatisfied": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "count": {
+      "description": "A tally, which is never negative.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "proportion": {
+      "description": "A score, or null when nothing was measured. Never a sentinel: zero reads as caught none and one hundred as caught all, and both are claims about tests that never ran.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "span": {
+      "description": "A half-open range of UTF-8 bytes in the file as the repository holds it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "behaviour": {
+      "description": "How one run of the tests went. Survived is the only healthy answer for a baseline.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "testsStarted", "durationMilliseconds"],
+      "properties": {
+        "outcome": { "type": "string" },
+        "testsStarted": { "$ref": "#/$defs/count" },
+        "durationMilliseconds": { "$ref": "#/$defs/count" }
+      }
+    },
+    "expectations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["identity", "reason", "disagreement"],
+        "properties": {
+          "identity": { "type": "string" },
+          "reason": { "type": "string" },
+          "disagreement": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

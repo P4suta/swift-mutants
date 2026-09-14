@@ -3,6 +3,7 @@
 
 public import Foundation
 import SwiftMutantsConfig
+public import SwiftMutantsSchemas
 public import SwiftMutantsCore
 public import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -94,16 +95,30 @@ extension RunReport {
         return (names, positions)
     }
 
-    /// The report as bytes, the same bytes every time.
+    /// The report as bytes, the same bytes every time - and only if it kept its promise.
     ///
     /// Sorted keys, because Swift deliberately varies the order a dictionary enumerates in
     /// between processes and a report that reordered itself could not be diffed or
     /// checksummed. Unescaped slashes, because a path is not a URL. Indented, because
     /// people read these in pull requests.
-    public static func encoded(_ report: Self) throws -> Data {
+    ///
+    /// Checked here because this is the one place a report turns into bytes: the history
+    /// store, `--json` on stdout, and anything added later all pass through it, so a caller
+    /// cannot forget. Checking afterwards would be checking what somebody has already read.
+    ///
+    /// - Throws: ``Schemas/Invalid`` naming everything wrong, rather than writing a document
+    ///   whose shape this tool has promised and does not have.
+    public static func encoded(
+        _ report: Self, checkedAgainst schema: JSONSchema = Schemas.schema(Schemas.runReport)
+    ) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes, .prettyPrinted]
-        return try encoder.encode(report)
+        let bytes = try encoder.encode(report)
+        let violations = schema.validate(bytes)
+        guard violations.isEmpty else {
+            throw Schemas.Invalid(schema: Schemas.runReport, violations: violations)
+        }
+        return bytes
     }
 }
 

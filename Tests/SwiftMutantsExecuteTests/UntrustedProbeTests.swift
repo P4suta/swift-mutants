@@ -117,9 +117,14 @@ struct ProbeTrustTests {
     }
 
     /// And a run it never gets an answer out of at all.
+    ///
+    /// The bundle hangs rather than merely being slow, so what this asserts does not depend
+    /// on the machine: there is no deadline the script could beat. A version that slept for
+    /// a fifth of a second passed a thousand times and failed once, on a loaded machine,
+    /// which is the whole reason this repository does not decide anything by the clock.
     @Test("believes nothing from a run it had to stop")
     func aStoppedRunEstablishesNothing() async throws {
-        let fake = try ScriptedBundle.fake(failingFor: [], alwaysSlow: [0])
+        let fake = try ScriptedBundle.fake(failingFor: [], slowBaseline: true)
         defer { fake.cleanUp() }
 
         let coverage = await Self.probe(fake, timeout: .milliseconds(1)).probe(["P.S/a()"])
