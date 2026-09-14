@@ -28,8 +28,8 @@ import SwiftMutantsInstrument
 /// discarded.
 public struct Validator: Sendable {
 
-    private let compiler: any TypecheckDriver
-    private let directory: URL
+    let compiler: any TypecheckDriver
+    let directory: URL
 
     /// Prepares to validate into `directory`, which is written to and nothing else is.
     public init(compiler: any TypecheckDriver, directory: URL) {
@@ -107,7 +107,7 @@ public struct Validator: Sendable {
             return try await halve(
                 files,
                 from: Rounds(discoveries: discoveries, rejected: rejected, rounds: rounds),
-                unplaceable: attribution.unattributed.first,
+                blaming: attribution.unattributed,
                 progress: progress
             )
         }
@@ -123,18 +123,25 @@ public struct Validator: Sendable {
     private func halve(
         _ files: [FileUnderValidation],
         from state: Rounds,
-        unplaceable: CompilerDiagnostic?,
+        blaming unplaceable: [CompilerDiagnostic],
         progress: @Sendable (Progress) -> Void
     ) async throws(ValidationError) -> Validation {
         let discoveries = state.discoveries
         let rejected = state.rejected
         let rounds = state.rounds
+
+        // The errors nobody could place still name files. A `missing return` is reported
+        // at a closing brace, nowhere near the mutant that removed the return - but it is
+        // reported in the file that mutant is in. Halving that file's candidates first
+        // costs a compile per halving of twenty rather than of six hundred, and widening
+        // to everything is still there for when it finds nothing.
+        let suspects = Self.suspects(named: unplaceable, among: files)
         progress(
             .halving(
-                mutants: discoveries.reduce(0) { $0 + $1.candidates.count },
-                unplaceable: unplaceable
+                mutants: Self.candidates(in: discoveries, restrictedTo: suspects).count,
+                unplaceable: unplaceable.first
             ))
-        let found = try await bisect(files, discoveries: discoveries)
+        let found = try await bisect(files, discoveries: discoveries, suspecting: suspects)
         let confirmed = try await confirm(files, discoveries: found.discoveries)
         return Validation(
             files: confirmed.files,
@@ -160,6 +167,31 @@ public struct Validator: Sendable {
         }
     }
 
+    /// Which files the compiler complained about, by position in `files`.
+    ///
+    /// Matched on the path with its links resolved, the same way attribution does, because
+    /// the compiler and this tool spell a temporary directory differently.
+    static func suspects(
+        named diagnostics: [CompilerDiagnostic], among files: [FileUnderValidation]
+    ) -> Set<Int> {
+        let blamed = Set(diagnostics.map { Attribute.resolved($0.file) })
+        return Set(
+            files.indices.filter { position in
+                blamed.contains { $0.hasSuffix("/" + files[position].name) }
+            })
+    }
+
+    /// Every candidate, or only those in the files named.
+    static func candidates(
+        in discoveries: [FileDiscovery], restrictedTo suspects: Set<Int>
+    ) -> [Located] {
+        discoveries.enumerated()
+            .filter { suspects.isEmpty || suspects.contains($0.offset) }
+            .flatMap { position, discovery in
+                discovery.candidates.map { Located(file: position, key: Key($0.span, $0.rule)) }
+            }
+    }
+
     /// Where the loop had got to when it gave up explaining itself.
     private struct Rounds {
         let discoveries: [FileDiscovery]
@@ -168,7 +200,7 @@ public struct Validator: Sendable {
     }
 
     /// What identifies a candidate inside one file: the bytes it edits and the rule.
-    private struct Key: Hashable {
+    struct Key: Hashable {
         let span: SourceSpan
         let rule: RuleIdentifier
         init(_ span: SourceSpan, _ rule: RuleIdentifier) {
@@ -179,7 +211,7 @@ public struct Validator: Sendable {
 
     // MARK: - Rounds
 
-    private static func instrument(
+    static func instrument(
         _ files: [FileUnderValidation], as discoveries: [FileDiscovery]
     ) throws(ValidationError) -> [InstrumentedFile] {
         var instrumented: [InstrumentedFile] = []
@@ -193,7 +225,7 @@ public struct Validator: Sendable {
         return instrumented
     }
 
-    private func write(
+    func write(
         _ instrumented: [InstrumentedFile], for files: [FileUnderValidation]
     ) throws(ValidationError) -> [String] {
         var paths: [String] = []
@@ -228,137 +260,4 @@ public struct Validator: Sendable {
         return (zip(paths, instrumented).map { ValidatedFile(path: $0, instrumented: $1) }, 1)
     }
 
-    // MARK: - Bisection
-
-    /// Halves the whole catalogue until the refusals are cornered.
-    ///
-    /// Over every file at once, not one file at a time. Narrowing a single file while the
-    /// others keep all their mutants asks a question nobody wanted the answer to: "does
-    /// this file compile while every other file is still full of possibly-refused
-    /// mutants". The answer is no whenever *any* file has a bad mutant, and the innocent
-    /// file being narrowed is what gets blamed. Measured on this repository the first time
-    /// it ran: five refused mutants in four other files, and the accusation landed on a
-    /// fifth that was fine.
-    ///
-    /// Costs a compile per halving rather than one per mutant, which is the only thing
-    /// that makes it an acceptable fallback. It assumes mutants are independent - that a
-    /// pair which each compile alone also compile together - which holds for guards that
-    /// are separate expressions and is why the assumption is worth stating.
-    private struct Bisection {
-        var rejected: [Rejection] = []
-        var discoveries: [FileDiscovery]
-        var rounds = 0
-    }
-
-    /// One candidate, and which file it came from.
-    private struct Located: Hashable {
-        let file: Int
-        let key: Key
-    }
-
-    private func bisect(
-        _ files: [FileUnderValidation], discoveries: [FileDiscovery]
-    ) async throws(ValidationError) -> Bisection {
-        // Nothing at all in, anywhere. If that does not build, the package does not build,
-        // and none of the errors are about anything this tool did.
-        let bare = try await compiles([], files: files, discoveries: discoveries)
-        guard bare.compiles else {
-            throw ValidationError(
-                """
-                the package does not build with no mutants in it at all, so the errors the \
-                compiler reported are not about anything swift-mutants did.
-                """,
-                diagnostics: bare.diagnostics
-            )
-        }
-
-        let everything = discoveries.enumerated().flatMap { position, discovery in
-            discovery.candidates.map { Located(file: position, key: Key($0.span, $0.rule)) }
-        }
-        let found = try await search(everything, files: files, discoveries: discoveries)
-
-        var result = Bisection(discoveries: discoveries, rounds: bare.rounds + found.rounds)
-        let refused = Set(found.refused)
-        for position in discoveries.indices {
-            let here = refused.filter { $0.file == position }.map(\.key)
-            guard !here.isEmpty else { continue }
-            let keys = Set(here)
-            result.discoveries[position] = discoveries[position].keeping {
-                !keys.contains(Key($0.span, $0.rule))
-            }
-            result.rejected += try Self.rejections(
-                matching: keys, in: files[position], discovery: discoveries[position])
-        }
-        return result
-    }
-
-    /// Whether the tree compiles with only these candidates in it, anywhere.
-    ///
-    /// A method rather than a closure over the search's state. Local functions that capture
-    /// and mutate a `var` across an `await` are a shape this code had once and does not
-    /// have now: the count comes back as a value, so there is nothing shared to get wrong -
-    /// and an optimised build no longer dies in `swift_retain` part way through.
-    private func compiles(
-        _ subset: [Located],
-        files: [FileUnderValidation],
-        discoveries: [FileDiscovery]
-    ) async throws(ValidationError) -> Attempt {
-        var byFile: [Int: Set<Key>] = [:]
-        for located in subset { byFile[located.file, default: []].insert(located.key) }
-
-        let trial = discoveries.enumerated().map { position, discovery in
-            let keep = byFile[position] ?? []
-            return discovery.keeping { keep.contains(Key($0.span, $0.rule)) }
-        }
-        let instrumented = try Self.instrument(files, as: trial)
-        let paths = try write(instrumented, for: files)
-        let output = await compiler.typecheck(paths)
-        return Attempt(
-            compiles: output.exitCode == 0,
-            rounds: 1,
-            diagnostics: output.exitCode == 0 ? [] : CompilerDiagnostic.parse(output.text)
-        )
-    }
-
-    /// One compile of one subset, and what it cost.
-    private struct Attempt {
-        let compiles: Bool
-        let rounds: Int
-        let diagnostics: [CompilerDiagnostic]
-    }
-
-    /// Halves a subset until the refusals are cornered.
-    private func search(
-        _ subset: [Located],
-        files: [FileUnderValidation],
-        discoveries: [FileDiscovery]
-    ) async throws(ValidationError) -> (refused: [Located], rounds: Int) {
-        let attempt = try await compiles(subset, files: files, discoveries: discoveries)
-        guard !attempt.compiles else { return ([], attempt.rounds) }
-        guard subset.count > 1 else { return (subset, attempt.rounds) }
-
-        let middle = subset.count / 2
-        let left = try await search(
-            Array(subset[..<middle]), files: files, discoveries: discoveries)
-        let right = try await search(
-            Array(subset[middle...]), files: files, discoveries: discoveries)
-        return (left.refused + right.refused, attempt.rounds + left.rounds + right.rounds)
-    }
-
-    /// Turns refused candidates back into rejections, with no compiler words to attach.
-    ///
-    /// Bisection learns *that* a mutant was refused without learning what was said about
-    /// it - the compile that refused it said nothing placeable. The rejection is recorded
-    /// with an empty diagnostic list rather than with a sentence this tool made up.
-    private static func rejections(
-        matching keys: Set<Key>, in file: FileUnderValidation, discovery: FileDiscovery
-    ) throws(ValidationError) -> [Rejection] {
-        let onlyThese = discovery.keeping { keys.contains(Key($0.span, $0.rule)) }
-        let instrumented = try Self.instrument(
-            [file], as: [onlyThese]
-        )
-        return (instrumented.first?.mutants ?? [])
-            .sorted { ($0.span.start, $0.index) < ($1.span.start, $1.index) }
-            .map { Rejection(identity: $0.identity, rule: $0.rule, span: $0.span, diagnostics: []) }
-    }
 }

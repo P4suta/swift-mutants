@@ -135,7 +135,7 @@ public enum Attribute {
     /// genuinely different files are still told apart - and so this keeps working on a
     /// platform whose links are somewhere else entirely. It relies on the file existing,
     /// which it does: validation wrote it a moment ago and the compiler has just read it.
-    private static func resolved(_ path: String) -> String {
+    static func resolved(_ path: String) -> String {
         URL(filePath: path).resolvingSymlinksInPath().path
     }
 }

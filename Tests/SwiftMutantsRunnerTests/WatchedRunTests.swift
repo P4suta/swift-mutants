@@ -121,12 +121,16 @@ struct WatchedRunTests {
 
         _ = await Runner(recorder: TraceRecorder()).run(
             Self.spec(
-                "(sleep 2; echo alive > '\(marker)') & echo stop > '\(pipe.path)'; sleep 30"),
+                "(sleep 8; echo alive > '\(marker)') & echo stop > '\(pipe.path)'; sleep 30"),
             watching: pipe
         ) { line in line != "stop" }
 
-        // Long enough that a grandchild which outlived the kill would have written.
-        try await Task.sleep(for: .seconds(3))
+        // Eight seconds for the grandchild and eleven for the check, because the margin
+        // has to cover the wrong thing being slow rather than the right thing. A tighter
+        // pair passed alone and failed under a loaded machine: the reader had not yet seen
+        // "stop" by the time a two-second grandchild wrote, which says nothing about
+        // whether the kill reaches a tree.
+        try await Task.sleep(for: .seconds(11))
         #expect(!FileManager.default.fileExists(atPath: marker), "a grandchild outlived the kill")
     }
 

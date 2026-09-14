@@ -37,11 +37,28 @@ struct ValidatorTests {
         /// error is in a macro buffer or a synthesised declaration.
         let refusingSilently: [String]
 
+        /// Text that makes the compiler complain at a position nowhere near it - the
+        /// shape of `missing return`, reported at a closing brace.
+        let complainingAbout: [String]
+
+        /// Which file that complaint names, when it is not the one the text is in.
+        ///
+        /// The compiler really can blame a file other than the one a mutant is in: a
+        /// declaration whose inference fails takes its users with it.
+        let blaming: String?
+
         private(set) var compiles = 0
 
-        init(refusing: [String], refusingSilently: [String] = []) {
+        init(
+            refusing: [String],
+            refusingSilently: [String] = [],
+            complainingAbout: [String] = [],
+            blaming: String? = nil
+        ) {
             self.refusing = refusing
             self.refusingSilently = refusingSilently
+            self.complainingAbout = complainingAbout
+            self.blaming = blaming
         }
 
         func typecheck(_ paths: [String]) async -> CompilerOutput {
@@ -66,8 +83,19 @@ struct ValidatorTests {
                     said.append("<unknown>:0: error: something, somewhere")
                     failed = true
                 }
+                // At line one, which no guard reaches: the position says nothing and only
+                // the file name does.
+                for needle in complainingAbout where text.contains(needle) {
+                    let named = blaming.map { Self.sibling(of: path, named: $0) } ?? path
+                    said.append("\(named):1:1: error: missing return somewhere in here")
+                    failed = true
+                }
             }
             return CompilerOutput(exitCode: failed ? 1 : 0, text: said.joined(separator: "\n"))
+        }
+
+        static func sibling(of path: String, named name: String) -> String {
+            path.split(separator: "/").dropLast().joined(separator: "/") + "/" + name
         }
 
         static func occurrences(of needle: String, in bytes: [UInt8]) -> [Int] {
@@ -331,67 +359,5 @@ struct ValidatorTests {
 
         let written = try FileManager.default.contentsOfDirectory(atPath: scratch.directory.path)
         #expect(written == ["Subject.swift"])
-    }
-}
-
-/// Cornering refusals the compiler would not place, across a package rather than a file.
-///
-/// The fallback path, and the one whose defects are hardest to see: it only runs when a
-/// compile has already failed to explain itself, so a wrong answer here arrives looking
-/// exactly like a right one.
-@Suite("Bisection")
-struct BisectionTests {
-
-    typealias Stub = ValidatorTests.Stub
-
-    static func scratch() throws -> ValidatorTests.Scratch { try ValidatorTests.scratch() }
-
-    static func subject(_ source: String, named name: String) -> FileUnderValidation {
-        ValidatorTests.subject(source, named: name)
-    }
-
-    /// Halving one file while the others keep every mutant asks a question nobody wanted
-    /// the answer to. The answer is "no" whenever *any* file holds a refused mutant, and
-    /// the innocent file being narrowed is what gets blamed. Measured on this repository
-    /// the first time it ran: five refused mutants across four files, and the accusation
-    /// landed on a fifth that was fine.
-    @Test("blames the file the refused mutant is actually in")
-    func blamesTheRightFile() async throws {
-        let scratch = try Self.scratch()
-        defer { scratch.cleanUp() }
-        // Refused in the second file, and unplaceable so the loop has to halve for it.
-        let compiler = Stub(refusing: [], refusingSilently: ["a >= b"])
-
-        let validated = try await Validator(compiler: compiler, directory: scratch.directory)
-            .validate([
-                Self.subject("func f(_ a: Int, _ b: Int) -> Bool { a < b }", named: "One.swift"),
-                Self.subject("func g(_ a: Int, _ b: Int) -> Bool { a > b }", named: "Two.swift"),
-            ])
-
-        #expect(validated.bisected)
-        #expect(validated.rejected.map(\.rule.name) == ["gt-to-ge"])
-        // The innocent file keeps everything it had.
-        let one = try #require(validated.files.first)
-        #expect(one.instrumented.mutants.map(\.rule.name) == ["lt-to-le"])
-    }
-
-    /// Several refused mutants spread across several files, none of them placeable.
-    @Test("corners refusals in more than one file at once")
-    func acrossSeveralFiles() async throws {
-        let scratch = try Self.scratch()
-        defer { scratch.cleanUp() }
-        let compiler = Stub(refusing: [], refusingSilently: ["a <= b", "c >= d"])
-
-        let validated = try await Validator(compiler: compiler, directory: scratch.directory)
-            .validate([
-                Self.subject("func f(_ a: Int, _ b: Int) -> Bool { a < b }", named: "One.swift"),
-                Self.subject("func g(_ c: Int, _ d: Int) -> Bool { c > d }", named: "Two.swift"),
-                Self.subject("func h(_ e: Int, _ f: Int) -> Bool { e < f }", named: "Three.swift"),
-            ])
-
-        #expect(validated.rejected.map(\.rule.name).sorted() == ["gt-to-ge", "lt-to-le"])
-        // The third file is untouched: its mutant produces `e <= f`, which nothing refuses.
-        let third = try #require(validated.files.last)
-        #expect(third.instrumented.mutants.map(\.rule.name) == ["lt-to-le"])
     }
 }
