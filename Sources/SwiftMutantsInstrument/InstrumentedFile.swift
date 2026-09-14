@@ -95,6 +95,16 @@ public struct InstrumentedMutant: Sendable, Hashable {
 
     /// Which rule produced it.
     public let rule: RuleIdentifier
+
+    /// The bytes it replaces, as the user wrote them.
+    public let original: String
+
+    /// The bytes it puts there instead.
+    ///
+    /// Carried through to the report so that an answer about a mutant says what the mutant
+    /// was. A report that named a rule and a position would send a reader back to the file
+    /// to work out what `lt-to-le@1` did to line 42, and the file may have moved on.
+    public let replacement: String
 }
 
 /// A file this tool could not instrument.

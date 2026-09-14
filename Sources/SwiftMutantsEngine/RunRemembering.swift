@@ -38,6 +38,8 @@ extension Run {
             path: path,
             rule: mutant.rule,
             span: mutant.span,
+            original: mutant.original,
+            replacement: mutant.replacement,
             verdict: Verdict(
                 outcome: answer.outcome,
                 killedBy: answer.killedBy,

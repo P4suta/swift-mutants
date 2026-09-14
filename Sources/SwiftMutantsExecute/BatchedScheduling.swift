@@ -46,6 +46,8 @@ extension Scheduler {
                 path: path,
                 rule: mutant.rule,
                 span: mutant.span,
+                original: mutant.original,
+                replacement: mutant.replacement,
                 verdict: Verdict(
                     outcome: killers[mutant.index] == nil ? .survived : .killed,
                     killedBy: killers[mutant.index] ?? [],

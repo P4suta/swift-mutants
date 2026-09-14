@@ -158,7 +158,9 @@ public enum Instrument {
                     span: mutant.span,
                     instrumentedSpan: span,
                     siteSpan: site,
-                    rule: mutant.rule
+                    rule: mutant.rule,
+                    original: mutant.original,
+                    replacement: mutant.replacement
                 )
             )
         }
@@ -189,6 +191,8 @@ public enum Instrument {
         let marker: String
         let span: SourceSpan
         let rule: RuleIdentifier
+        let original: String
+        let replacement: String
     }
 
     /// Gives every mutant a number, innermost site first.
@@ -214,7 +218,9 @@ public enum Instrument {
                         index: next,
                         marker: Runtime.marker(token: token, index: next),
                         span: candidate.span,
-                        rule: candidate.rule
+                        rule: candidate.rule,
+                        original: candidate.original,
+                        replacement: candidate.replacement
                     )
                 )
                 next += 1

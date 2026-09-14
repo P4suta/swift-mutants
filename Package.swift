@@ -256,8 +256,8 @@ let package = Package(
         .testTarget(
             name: "RunIntegrationTests",
             dependencies: [
-                "SwiftMutantsCache", "SwiftMutantsEngine", "SwiftMutantsReport",
-                "SwiftMutantsTestKit", "SwiftMutantsTrace",
+                "SwiftMutantsCLI", "SwiftMutantsCache", "SwiftMutantsEngine",
+                "SwiftMutantsReport", "SwiftMutantsTestKit", "SwiftMutantsTrace",
             ],
             swiftSettings: strict
         ),

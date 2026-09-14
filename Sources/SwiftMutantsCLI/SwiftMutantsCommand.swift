@@ -21,10 +21,13 @@ public struct SwiftMutantsCommand: AsyncParsableCommand {
             Your working tree is never written to.
 
             `list` is the fast path: it reads your sources and says what it would do, \
-            without building anything.
+            without building anything. `explain` says everything known about one mutant \
+            from the last run, without running anything.
             """,
         version: Version.current,
-        subcommands: [RunCommand.self, ListCommand.self, DoctorCommand.self],
+        subcommands: [
+            RunCommand.self, ListCommand.self, ExplainCommand.self, DoctorCommand.self,
+        ],
         defaultSubcommand: nil
     )
 

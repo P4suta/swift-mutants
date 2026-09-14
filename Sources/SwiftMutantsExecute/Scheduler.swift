@@ -22,6 +22,12 @@ public struct MutantResult: Sendable, Hashable {
     /// Where in that file.
     public let span: SourceSpan
 
+    /// The bytes it replaced, as the user wrote them.
+    public let original: String
+
+    /// The bytes it put there instead.
+    public let replacement: String
+
     /// What the tests said about it.
     public let verdict: Verdict
 
@@ -38,6 +44,8 @@ public struct MutantResult: Sendable, Hashable {
         path: WorkspaceRelativePath,
         rule: RuleIdentifier,
         span: SourceSpan,
+        original: String = "",
+        replacement: String = "",
         verdict: Verdict,
         attempts: Int
     ) {
@@ -45,6 +53,8 @@ public struct MutantResult: Sendable, Hashable {
         self.path = path
         self.rule = rule
         self.span = span
+        self.original = original
+        self.replacement = replacement
         self.verdict = verdict
         self.attempts = attempts
     }
@@ -208,6 +218,8 @@ public struct Scheduler: Sendable {
                 path: again.path,
                 rule: again.rule,
                 span: again.span,
+                original: again.original,
+                replacement: again.replacement,
                 verdict: again.verdict,
                 attempts: result.attempts + again.attempts
             )
@@ -295,6 +307,8 @@ public struct Scheduler: Sendable {
             path: path,
             rule: mutant.rule,
             span: mutant.span,
+            original: mutant.original,
+            replacement: mutant.replacement,
             verdict: await trial(worker: worker)
                 .run(activating: mutant.index, onlyTests: covering),
             attempts: 1
@@ -310,6 +324,8 @@ public struct Scheduler: Sendable {
             path: path,
             rule: mutant.rule,
             span: mutant.span,
+            original: mutant.original,
+            replacement: mutant.replacement,
             verdict: Verdict(
                 outcome: .survived,
                 killedBy: [],

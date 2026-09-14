@@ -122,6 +122,31 @@ struct RunReportTests {
         #expect((mutant["span"] as? [String: Any])?["start"] as? Int == 10)
     }
 
+    /// A report that named a rule and a position would send a reader back to the file to
+    /// work out what `lt-to-le@1` did to line 42, and the file may have moved on by then.
+    @Test("says what each mutant changed, and to what")
+    func saysWhatItChanged() throws {
+        let json = try Self.object(of: Self.report(results: [Fixture.result(.survived, tests: [])]))
+        let mutant = try #require((json["mutants"] as? [[String: Any]])?.first)
+        #expect(mutant["original"] as? String == "<")
+        #expect(mutant["replacement"] as? String == "<=")
+    }
+
+    /// The names a survivor's explanation needs, written once and pointed at. Twenty-four
+    /// thousand copies of four hundred strings is not a report, it is a transcript.
+    @Test("writes each test's name once and points at it")
+    func namesTestsOnce() throws {
+        let json = try Self.object(
+            of: Self.report(results: [
+                Fixture.result(.survived, tests: ["P.S/a()", "P.S/b()"]),
+                Fixture.result(.killed, tests: ["P.S/a()"]),
+            ]))
+        #expect(json["tests"] as? [String] == ["P.S/a()", "P.S/b()"])
+        let mutants = try #require(json["mutants"] as? [[String: Any]])
+        #expect(mutants.first?["ran"] as? [Int] == [0, 1])
+        #expect(mutants.last?["ran"] as? [Int] == [0])
+    }
+
     @Test("says what became of each mutant, and what noticed it")
     func saysWhatBecameOfThem() throws {
         let json = try Self.object(

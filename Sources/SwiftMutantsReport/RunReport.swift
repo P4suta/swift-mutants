@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-public import Foundation
-public import SwiftMutantsCore
-public import SwiftMutantsEngine
-import SwiftMutantsExecute
-import SwiftMutantsValidate
+// The report is a value: it names nothing from any other module in its own shape, which is
+// what lets anything read one without linking the engine that made it.
 
 /// The account a run gives of itself.
 ///
@@ -44,6 +41,13 @@ public struct RunReport: Codable, Sendable, Hashable {
 
     /// How many files were instrumented.
     public let filesInstrumented: Int
+
+    /// Every test any mutant was offered, in a fixed order.
+    ///
+    /// Written once and referred to by position, because the names repeat: a package with
+    /// six hundred mutants facing forty tests each would otherwise carry twenty-four
+    /// thousand copies of four hundred strings. The order is the run's own.
+    public let tests: [String]
 
     /// What became of each mutant, in catalogue order.
     public let mutants: [Mutant]
@@ -151,11 +155,27 @@ public struct RunReport: Codable, Sendable, Hashable {
         /// Which rule produced it, with the version that took part in its identity.
         public let rule: String
 
+        /// The bytes it replaced, as the user wrote them.
+        public let original: String
+
+        /// The bytes it put there instead.
+        ///
+        /// Carried so that a report says what a mutant was rather than naming a rule and a
+        /// position and sending a reader back to a file that may have moved on.
+        public let replacement: String
+
         /// What became of it.
         public let outcome: String
 
         /// The tests that failed with it awake, in the order their failures arrived.
         public let killedBy: [String]
+
+        /// Which tests ran with it awake, as positions in ``RunReport/tests``.
+        ///
+        /// The tests that looked at a survivor and said nothing are the whole of what to do
+        /// about it - one of them is where the missing assertion belongs - so a report that
+        /// only counted them would leave a reader to find them among four hundred.
+        public let ran: [Int]
 
         /// How many tests it was offered and began.
         public let testsStarted: Int
@@ -166,6 +186,39 @@ public struct RunReport: Codable, Sendable, Hashable {
 
         /// How long the run that decided it took.
         public let durationMilliseconds: Int
+
+        /// Records what became of one mutant.
+        public init(
+            id: String,
+            path: String,
+            line: Reported<Int>,
+            column: Reported<Int>,
+            span: Span,
+            rule: String,
+            original: String,
+            replacement: String,
+            outcome: String,
+            killedBy: [String],
+            ran: [Int],
+            testsStarted: Int,
+            attempts: Int,
+            durationMilliseconds: Int
+        ) {
+            self.id = id
+            self.path = path
+            self.line = line
+            self.column = column
+            self.span = span
+            self.rule = rule
+            self.original = original
+            self.replacement = replacement
+            self.outcome = outcome
+            self.killedBy = killedBy
+            self.ran = ran
+            self.testsStarted = testsStarted
+            self.attempts = attempts
+            self.durationMilliseconds = durationMilliseconds
+        }
     }
 
     /// A half-open range of bytes.
@@ -176,6 +229,12 @@ public struct RunReport: Codable, Sendable, Hashable {
 
         /// One past the last byte.
         public let end: Int
+
+        /// Records a half-open range of bytes.
+        public init(start: Int, end: Int) {
+            self.start = start
+            self.end = end
+        }
     }
 
     /// A value a report carries whether or not the run had one.
@@ -247,114 +306,5 @@ public struct RunReport: Codable, Sendable, Hashable {
 
         /// What it said, with the severity and position stripped off the front.
         public let message: String
-    }
-}
-
-extension RunReport {
-
-    /// Reads a finished run.
-    ///
-    /// `positions` says where each byte offset falls in the file a person reads. A file it
-    /// has nothing for still yields entries, with `null` for line and column: losing a
-    /// finding because its position could not be worked out would be losing it to a
-    /// formatting detail.
-    public init(
-        of outcome: RunOutcome,
-        positions override: [WorkspaceRelativePath: LineIndex]? = nil,
-        version: String = Version.current
-    ) {
-        let positions = override ?? outcome.positions
-        self.schemaVersion = 1
-        self.tool = Tool(name: "swift-mutants", version: version)
-        self.scope = Scope(of: outcome.scope)
-        self.summary = Summary(of: outcome.summary)
-        self.baseline = Behaviour(of: outcome.baseline)
-        self.contendedBaseline = Behaviour(of: outcome.contendedBaseline)
-        self.filesInstrumented = outcome.filesInstrumented
-        self.mutants = outcome.results.map { result in
-            let place = positions[result.path]?.position(of: result.span.start)
-            return Mutant(
-                id: result.identity.digest.hexadecimal,
-                path: result.path.rendered,
-                line: Reported(place?.line),
-                column: Reported(place?.column),
-                span: Span(start: result.span.start, end: result.span.end),
-                rule: result.rule.rendered,
-                outcome: result.verdict.outcome.rawValue,
-                killedBy: result.verdict.killedBy,
-                testsStarted: result.verdict.testsStarted,
-                attempts: result.attempts,
-                durationMilliseconds: result.verdict.durationMilliseconds
-            )
-        }
-        self.rejected = outcome.rejected.map { refusal in
-            Refusal(
-                id: refusal.identity.digest.hexadecimal,
-                rule: refusal.rule.rendered,
-                span: Span(start: refusal.span.start, end: refusal.span.end),
-                diagnostics: refusal.diagnostics.map {
-                    Diagnostic(
-                        file: $0.file,
-                        line: $0.position.line,
-                        column: $0.position.column,
-                        severity: $0.severity.rawValue,
-                        message: $0.message
-                    )
-                }
-            )
-        }
-    }
-
-    /// The report as bytes, the same bytes every time.
-    ///
-    /// Sorted keys, because Swift deliberately varies the order a dictionary enumerates in
-    /// between processes and a report that reordered itself could not be diffed or
-    /// checksummed. Unescaped slashes, because a path is not a URL. Indented, because
-    /// people read these in pull requests.
-    public static func encoded(_ report: Self) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes, .prettyPrinted]
-        return try encoder.encode(report)
-    }
-}
-
-extension RunReport.Scope {
-    init(of scope: RunScope) {
-        switch scope {
-        case .everything:
-            self.init(kind: "everything", since: .init(nil), files: .init(nil))
-        case .changed(let reference, let files):
-            self.init(kind: "changed", since: .init(reference), files: .init(files))
-        }
-    }
-}
-
-extension RunReport.Summary {
-    init(of summary: RunSummary) {
-        self.init(
-            killed: summary.killed,
-            survived: summary.survived,
-            timedOut: summary.timedOut,
-            inconclusive: summary.inconclusive,
-            errored: summary.errored,
-            notRun: summary.notRun,
-            rejected: summary.rejected,
-            equivalent: summary.equivalent,
-            uncovered: summary.uncovered,
-            cached: summary.cached,
-            expectedSurvivors: summary.expectedSurvivors,
-            score: .init(summary.score.value),
-            scoreOfCoveredCode: .init(summary.score.ofCoveredCode)
-        )
-    }
-}
-
-extension RunReport.Behaviour {
-    init(of verdict: Verdict) {
-        self.init(
-            outcome: verdict.outcome.rawValue,
-            testsStarted: verdict.testsStarted,
-            durationMilliseconds: verdict.durationMilliseconds
-        )
     }
 }

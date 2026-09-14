@@ -73,6 +73,8 @@ extension RunReportTests {
                 path: path,
                 rule: rule,
                 span: span,
+                original: "<",
+                replacement: "<=",
                 verdict: verdict(outcome, tests: tests),
                 attempts: 1
             )

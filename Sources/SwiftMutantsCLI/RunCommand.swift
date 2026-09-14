@@ -136,10 +136,17 @@ struct RunCommand: AsyncParsableCommand {
             changedSince: changed
         ).run(environment: Ambient.environment) { progress.report($0) }
 
+        let report = RunReport(of: outcome)
+        // Kept before it is printed, so that a run whose output somebody scrolled past is
+        // still a run `explain` can answer about. Failing to keep it is a warning rather
+        // than a failure: the run answered the question it was asked.
+        try? ReportStore.write(report, to: ReportStore.location(for: root))
+
         if json {
-            print(String(decoding: try RunReport.encoded(RunReport(of: outcome)), as: UTF8.self))
+            print(String(decoding: try RunReport.encoded(report), as: UTF8.self))
         } else {
             Self.summarise(outcome)
+            print(Narration.explainable(outcome.summary.survived))
         }
         // Exit 1 is reserved for a policy somebody asked for. A run that completed and
         // found survivors has not failed - it has answered - and a tool that exited

@@ -130,6 +130,16 @@ enum Narration {
         return lines
     }
 
+    /// How to turn a list of survivors into something to do.
+    ///
+    /// Printed only when there is something to explain. A tool that told somebody to run a
+    /// command about nothing would be teaching them to ignore its last line.
+    static func explainable(_ survivors: Int) -> String {
+        survivors == 0
+            ? "nothing survived."
+            : "swift-mutants explain <id> says everything known about one of them."
+    }
+
     /// What was cleared up before this run started.
     ///
     /// Said rather than done quietly: deleting hundreds of megabytes of somebody's disk is
