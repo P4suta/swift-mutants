@@ -66,7 +66,10 @@ public struct Scheduler: Sendable {
     /// tree with no mutant awake does not behave like the one the user wrote, every one of
     /// those answers is about a program nobody has.
     public func baseline() async -> Verdict {
-        await trial(worker: 0).run(activating: nil)
+        // Run to the end rather than stopping at the first failure. A baseline is a
+        // diagnosis, not a verdict: "a test failed with nothing awake" leaves somebody
+        // nowhere, and the list of which ones usually points straight at the cause.
+        await trial(worker: 0).run(activating: nil, stoppingAtFirstFailure: false)
     }
 
     /// Runs every mutant, reporting them in the order they were given.

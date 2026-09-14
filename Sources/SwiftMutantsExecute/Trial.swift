@@ -44,7 +44,16 @@ public struct Trial: Sendable {
     /// `nil` is the instrumented baseline: the same tree, the same process, nothing
     /// activated. It has to pass, and a run whose instrumented baseline fails is a run
     /// whose every later answer would be about a program the user did not write.
-    public func run(activating index: UInt32?) async -> Verdict {
+    /// `stoppingAtFirstFailure` is true for a mutant, where the answer is known as soon as
+    /// one test notices and every further second establishes something already
+    /// established. It is false for the instrumented baseline, which is a diagnosis rather
+    /// than a verdict: knowing that *a* test failed with nothing awake leaves somebody
+    /// nowhere, and knowing which ones usually points straight at a test that asserts
+    /// something about the source files rather than about the program.
+    public func run(
+        activating index: UInt32?,
+        stoppingAtFirstFailure: Bool = true
+    ) async -> Verdict {
         let stream = scratch.appending(path: "events-\(worker)-\(index.map(String.init) ?? "base")")
         let watcher = Mutex(StreamWatcher())
 
@@ -58,7 +67,8 @@ public struct Trial: Sendable {
             watching: pipe
         ) { line in
             guard let event = TestEvent(line: line) else { return true }
-            return watcher.withLock { $0.observe(event) }
+            let keepGoing = watcher.withLock { $0.observe(event) }
+            return stoppingAtFirstFailure ? keepGoing : true
         }
         pipe?.discard()
 

@@ -28,12 +28,45 @@ struct SchedulerTests {
     ///
     /// It also records that it ran, so a test can ask how many were in flight at once
     /// rather than trusting the scheduler's own account of itself.
-    static func fake(failingFor failing: Set<UInt32>) throws -> Fake {
+    static func fake(
+        failingFor failing: Set<UInt32>,
+        failingBaselineTests: [String] = []
+    ) throws -> Fake {
         let scratch = FileManager.default.temporaryDirectory
             .appending(path: "swift-mutants-sched-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         let script = scratch.appending(path: "bundle.sh")
         try Data(Self.script(failingFor: failing, in: scratch).utf8).write(to: script)
+
+        // The baseline's events, written out rather than escaped into the script: a shell
+        // heredoc holding JSON inside Swift string interpolation is a thing nobody should
+        // have to read twice.
+        if !failingBaselineTests.isEmpty {
+            let events =
+                [
+                    """
+                    {"kind":"event","payload":{"kind":"runStarted"}}
+                    """
+                ]
+                + failingBaselineTests.flatMap { test in
+                    [
+                        """
+                        {"kind":"event","payload":{"kind":"testStarted","testID":"\(test)"}}
+                        """,
+                        """
+                        {"kind":"event","payload":{"kind":"issueRecorded","testID":"\(test)",\
+                        "issue":{"isFailure":true}}}
+                        """,
+                    ]
+                }
+                + [
+                    """
+                    {"kind":"event","payload":{"kind":"runEnded"}}
+                    """
+                ]
+            try Data((events.joined(separator: "\n") + "\n").utf8)
+                .write(to: scratch.appending(path: "baseline-events.jsonl"))
+        }
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: 0o755)], ofItemAtPath: script.path)
 
@@ -60,6 +93,11 @@ struct SchedulerTests {
               esac
             done
             MUTANT="${SWIFT_MUTANTS_ACTIVE:-base}"
+            SCRIPTED='\(scratch.path)/baseline-events.jsonl'
+            if [ "$MUTANT" = "base" ] && [ -f "$SCRIPTED" ]; then
+              cat "$SCRIPTED" > "$STREAM"
+              exit 1
+            fi
             LIVE='\(scratch.path)/live'
             mkdir -p "$LIVE"
             touch "$LIVE/$MUTANT"
@@ -204,6 +242,19 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: [0])
         defer { fake.cleanUp() }
         #expect(await Self.scheduler(fake).baseline().outcome == .survived)
+    }
+
+    /// A baseline is a diagnosis rather than a verdict. Stopping at the first failure
+    /// would name one test when the cause is usually a family of them - a lint gate, a
+    /// golden file, a check on imports, all of which instrumentation upsets together.
+    @Test("runs a failing baseline to the end and names every test that failed")
+    func baselineNamesEverything() async throws {
+        let fake = try Self.fake(failingFor: [], failingBaselineTests: ["P.S/a()", "P.S/b()"])
+        defer { fake.cleanUp() }
+
+        let baseline = await Self.scheduler(fake).baseline()
+        #expect(baseline.outcome == .killed)
+        #expect(baseline.killedBy == ["P.S/a()", "P.S/b()"])
     }
 
     @Test("tells somebody about each answer as it arrives")

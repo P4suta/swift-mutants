@@ -176,10 +176,42 @@ public struct Run: Sendable {
                 the instrumented tree does not behave like the one you wrote: with no mutant \
                 awake the tests came back \(baseline.outcome.rawValue). Every later answer \
                 would be about a program nobody has, so the run stops here.
+                \(Self.blame(baseline))
                 """
             )
         }
         return baseline
+    }
+
+    /// Which tests said so, and what they said.
+    ///
+    /// Named, because "the baseline failed" is a sentence somebody can do nothing with.
+    /// The usual cause is a test that asserts something about the source files rather than
+    /// about the program - a lint gate, a golden file, a check on imports - and
+    /// instrumentation changes those files by design. Knowing which test it was turns a
+    /// dead end into a one-line exclusion.
+    private static func blame(_ baseline: Verdict) -> String {
+        guard !baseline.killedBy.isEmpty else {
+            return """
+
+                It named no failing test, so look at what it did instead: \
+                \(baseline.testsStarted) tests started and it ended \(baseline.termination).
+                """
+        }
+        let named = baseline.killedBy.prefix(5).map { "  \($0)" }.joined(separator: "\n")
+        let more =
+            baseline.killedBy.count > 5
+            ? "\n  ... and \(baseline.killedBy.count - 5) more" : ""
+        let said = baseline.firstFailure.map { "\n\nThe first said: \($0)" } ?? ""
+        return """
+
+            These tests failed with nothing awake:
+            \(named)\(more)\(said)
+
+            A test that asserts something about your source files rather than about your \
+            program will fail here, because instrumentation changes those files by design. \
+            Exclude it with `-- --skip <name>` if that is what this is.
+            """
     }
 
     /// Runs every mutant of every file, in catalogue order.
