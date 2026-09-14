@@ -186,6 +186,24 @@ struct RunCommand: AsyncParsableCommand {
         help: "Say nothing but errors. The exit code is the answer.")
     var quiet = false
 
+    @Flag(
+        name: .customLong("no-tui"),
+        help: "Print lines rather than drawing, even on a terminal.")
+    var noTui = false
+
+    /// Whether to draw a screen that redraws, rather than printing lines.
+    ///
+    /// Drawing is for a person watching. A pipe gets lines, because a log full of cursor
+    /// movement is a log nobody can read - so this is decided by asking where the output is
+    /// going rather than by a preference, with a flag for somebody who knows better.
+    ///
+    /// Never alongside `-vv`: the account is a stream of lines and a screen moves the
+    /// cursor over the last few, so one would scroll the other away. The account is the one
+    /// somebody asked for by name.
+    func draws(onATerminal terminal: Bool) -> Bool {
+        terminal && !noTui && verbosity > .quiet && verbosity < .veryVerbose
+    }
+
     /// How much this invocation says.
     ///
     /// `--quiet` wins over `-v`, because somebody who passed both wrote the second one for
@@ -205,8 +223,7 @@ struct RunCommand: AsyncParsableCommand {
         _ = unsafe setvbuf(stdout, nil, _IOLBF, 0)
 
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
-        let temporary = FileManager.default.temporaryDirectory
-        let workspace = temporary.appending(path: "swift-mutants-\(UUID().uuidString)")
+        let workspace = try claimWorkspace()
         defer {
             if keepTemp {
                 print(Narration.kept(workspace))
@@ -214,16 +231,11 @@ struct RunCommand: AsyncParsableCommand {
                 try? FileManager.default.removeItem(at: workspace)
             }
         }
-        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
-        // This one is ours, and the ones nobody is running in any more are nobody's. A run
-        // works inside a copy of the whole package, build directory included, so an
-        // interrupted run leaves hundreds of megabytes behind - and interrupting a
-        // mutation run is an ordinary thing to do.
-        try? TempOwner.claim(workspace)
-        let swept = TempOwner.sweep(in: temporary, besides: workspace)
-        if swept > 0 { print(Narration.swept(swept)) }
 
-        let progress = RunProgress(verbosity: verbosity)
+        let progress = RunProgress(
+            verbosity: verbosity,
+            drawing: draws(onATerminal: Ambient.isTerminal)
+        )
         // One recorder for the whole run. Every subprocess passes through it, so when a run
         // fails an hour in, what it did is already written down - and this is what reads it
         // back out, because the moment somebody needs it is the moment the run is over.
@@ -239,6 +251,7 @@ struct RunCommand: AsyncParsableCommand {
                 changedSince: changed
             ).run(environment: Ambient.environment) { progress.report($0) }
         } catch {
+            progress.finish()
             let written = FailureReport.write(
                 "\(error)",
                 recorder: recorder,
@@ -250,6 +263,8 @@ struct RunCommand: AsyncParsableCommand {
             throw error
         }
 
+        // Whatever was drawn stays on the screen, and the summary starts below it.
+        progress.finish()
         try publish(outcome, at: root)
         if let code = Gate.exitCode(
             survivors: Gate.survivors(of: outcome.summary),
@@ -258,65 +273,6 @@ struct RunCommand: AsyncParsableCommand {
         ) {
             throw ExitCode(code)
         }
-    }
-
-    /// Writes the run down, and says what it found.
-    ///
-    /// The report is kept before anything is printed, so a run whose output somebody
-    /// scrolled past is still a run `explain` can answer about. Failing to keep it is a
-    /// warning rather than a failure: the run answered the question it was asked.
-    private func publish(_ outcome: RunOutcome, at root: URL) throws {
-        // Whether the copy the run happened in survives this process, which is what decides
-        // whether `explain`'s command is one somebody can paste or one they would have to
-        // work out has already been deleted.
-        let account = RunReport(of: outcome, kept: keepTemp)
-        try? ReportStore.write(account, to: ReportStore.location(for: root))
-        let published = (try? Publishing.write(account, formats: Set(report), into: root)) ?? []
-
-        if json {
-            print(String(decoding: try RunReport.encoded(account), as: UTF8.self))
-            return
-        }
-        Self.summarise(outcome, verbosity)
-        // Below normal, the exit code is the answer and nothing else is said - including
-        // where the documents went, because a run told to be quiet was told by a script.
-        guard verbosity > .quiet else { return }
-        for file in published { print(Narration.published(file, relativeTo: root)) }
-        print(Narration.explainable(outcome.summary.survived))
-        Self.annotate(account, in: Ambient.environment)
-    }
-
-    /// What the flags on this invocation amount to.
-    private var asked: Configuration {
-        var configuration = Configuration()
-        configuration.execution.jobs = jobs
-        configuration.execution.shard = shard
-        configuration.execution.provesEquivalence = tce
-        configuration.cache.mode = cache
-        if let timeout { configuration.test.timeout = .seconds(timeout) }
-        return configuration
-    }
-
-    /// Says it again where the person who caused it is looking, if anything is.
-    ///
-    /// Appended to the summary rather than written over it: a workflow has other steps and
-    /// each of them owns part of that page.
-    private static func annotate(_ report: RunReport, in environment: [String: String]) {
-        guard Annotations.wanted(in: environment) else { return }
-        for line in Annotations.workflowCommands(for: report) { print(line) }
-        guard let file = Annotations.summaryFile(in: environment) else { return }
-        let text = Annotations.stepSummary(for: report) + "\n"
-        guard let handle = try? FileHandle(forWritingTo: file) else {
-            try? Data(text.utf8).write(to: file)
-            return
-        }
-        _ = try? handle.seekToEnd()
-        try? handle.write(contentsOf: Data(text.utf8))
-        try? handle.close()
-    }
-
-    private static func summarise(_ outcome: RunOutcome, _ verbosity: Verbosity) {
-        for line in Narration.summary(of: outcome, verbosity: verbosity) { print(line) }
     }
 }
 

@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import Foundation
 import SwiftMutantsConsole
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
+import SwiftMutantsTUI
 import Synchronization
 
 /// How far through the mutants a run is.
@@ -86,11 +88,40 @@ final class RunProgress: Sendable {
     /// terminal, so nothing at a call site has to say so.
     private let say: @Sendable (String) -> Void
 
-    init(verbosity: Verbosity = .normal, say: @escaping @Sendable (String) -> Void = { print($0) })
-    {
+    /// The screen it draws on, when it draws rather than printing lines.
+    private let screen: Screen?
+
+    /// What it last knew, so a frame can be drawn from a stage that carries only part of it.
+    private let state = Mutex(
+        Dashboard.State(phase: "", done: 0, total: 0, killed: 0, survived: 0))
+
+    private let dashboard = Dashboard(width: 72)
+
+    /// Where the drawn frames go.
+    ///
+    /// Apart from `say`, because the two are different things: a line is a line and a frame
+    /// is bytes with cursor movement in them, written without a newline of their own. Both
+    /// are parameters, so what a run draws is something a test can hold rather than
+    /// something somebody has to watch on a terminal.
+    init(
+        verbosity: Verbosity = .normal,
+        drawing: Bool = false,
+        say: @escaping @Sendable (String) -> Void = { print($0) },
+        draw: @escaping @Sendable (String) -> Void = { text in
+            FileHandle.standardOutput.write(Data(text.utf8))
+        }
+    ) {
         self.verbosity = verbosity
         self.say = say
+        self.screen = drawing ? Screen(height: Dashboard.height, write: draw) : nil
     }
+
+    /// Leaves whatever was drawn on the screen and moves past it.
+    ///
+    /// Said plainly rather than left to a deinit: the summary is printed right after this,
+    /// and a summary painted onto the last frame would be a summary with a progress bar
+    /// through it.
+    func finish() { screen?.finish() }
 
     /// Says what phase a run has reached, and how far through the mutants it is.
     ///
@@ -100,10 +131,35 @@ final class RunProgress: Sendable {
     func report(_ stage: RunStage) {
         let counted = counter.withLock { $0.observe(stage) }
         guard verbosity > .quiet else { return }
+        if let screen {
+            screen.draw(dashboard.frame(of: advanced(by: stage)))
+            return
+        }
         if let counted {
             say(counted)
             return
         }
         if let line = Narration.line(for: stage) { say(line) }
+    }
+
+    /// What is known after this stage.
+    ///
+    /// A stage carries part of it - a phase line carries no counts, a finished mutant
+    /// carries no phase - so the rest is whatever it was. A frame built from one stage
+    /// alone would blank the half of itself that stage did not mention, and a bar that
+    /// vanished every time a phase line arrived would be worse than no bar.
+    private func advanced(by stage: RunStage) -> Dashboard.State {
+        let counts = counter.withLock { ($0.done, $0.total, $0.killed, $0.survived) }
+        return state.withLock { state in
+            state = Dashboard.State(
+                phase: Narration.line(for: stage)?.trimmingCharacters(in: .whitespaces)
+                    ?? state.phase,
+                done: counts.0,
+                total: counts.1,
+                killed: counts.2,
+                survived: counts.3
+            )
+            return state
+        }
     }
 }

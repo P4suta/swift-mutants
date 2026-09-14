@@ -126,6 +126,10 @@ let package = Package(
         // The canonical account of a run: what it measured, what became of each mutant,
         // and the counts every other artefact is a projection of.
         .target(
+            name: "SwiftMutantsTUI",
+            swiftSettings: strict
+        ),
+        .target(
             name: "SwiftMutantsXcode",
             dependencies: ["SwiftMutantsBuild", "SwiftMutantsCore", "SwiftMutantsRunner"],
             swiftSettings: strict
@@ -147,7 +151,7 @@ let package = Package(
             dependencies: [
                 "SwiftMutantsConsole", "SwiftMutantsDiagnostics", "SwiftMutantsEngine",
                 "SwiftMutantsExecute", "SwiftMutantsReport", "SwiftMutantsTempOwner",
-                "SwiftMutantsValidate",
+                "SwiftMutantsTUI", "SwiftMutantsValidate",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: strict
@@ -251,6 +255,11 @@ let package = Package(
         .testTarget(
             name: "XcodeIntegrationTests",
             dependencies: ["SwiftMutantsRunner", "SwiftMutantsTrace", "SwiftMutantsXcode"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsTUITests",
+            dependencies: ["SwiftMutantsTUI"],
             swiftSettings: strict
         ),
         .testTarget(

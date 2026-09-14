@@ -200,3 +200,125 @@ struct VerbosityFlagTests {
         #expect(try Self.verbosity(["--quiet", "-vv"]) == .quiet)
     }
 }
+
+/// Whether a run draws, and what it leaves behind when it does.
+///
+/// Drawing is for a person watching a terminal. A pipe gets lines, because a log full of
+/// cursor movement is a log nobody can read and a CI page full of it is worse. That is a
+/// property of where the output is going rather than a preference, so it is decided by
+/// asking - with a flag for the case where somebody knows better than the answer.
+@Suite("Whether a run draws")
+struct DrawingTests {
+
+    static func decision(_ arguments: [String], terminal: Bool) throws -> Bool {
+        try RunCommand.parse(arguments).draws(onATerminal: terminal)
+    }
+
+    @Test("draws on a terminal")
+    func drawsOnATerminal() throws {
+        #expect(try Self.decision([], terminal: true))
+    }
+
+    /// A log full of cursor movement is a log nobody can read.
+    @Test("prints lines into a pipe")
+    func linesIntoAPipe() throws {
+        #expect(try !Self.decision([], terminal: false))
+    }
+
+    @Test("prints lines when it was told not to draw")
+    func honoursTheFlag() throws {
+        #expect(try !Self.decision(["--no-tui"], terminal: true))
+    }
+
+    /// Nothing to draw. A run told to say nothing but errors should not paint a progress
+    /// bar over the terminal it was told to keep quiet in.
+    @Test("draws nothing when it was told to be quiet")
+    func quietDrawsNothing() throws {
+        #expect(try !Self.decision(["--quiet"], terminal: true))
+    }
+
+    /// The account and a redrawing screen cannot share one terminal: the account is a
+    /// stream of lines and the screen moves the cursor over the last three, so one would
+    /// scroll the other away. `-vv` is the one somebody asked for by name.
+    @Test("prints lines when it was asked for the account")
+    func accountBeatsDrawing() throws {
+        #expect(try !Self.decision(["-vv"], terminal: true))
+        // `-v` is not the account, so it still draws.
+        #expect(try Self.decision(["-v"], terminal: true))
+    }
+}
+
+/// What a drawing run actually puts on the screen.
+///
+/// The decision to draw is one thing and the drawing is another, and only the second one
+/// can be wrong in a way somebody sees. A run that drew a frame per phase but never updated
+/// the counts, or that printed its lines *and* drew, would look fine in every test about
+/// the decision.
+@Suite("What a drawing run draws")
+struct DrawnFramesTests {
+
+    static func drawn(_ stages: [RunStage]) -> [String] {
+        let frames = Mutex<[String]>([])
+        let lines = Mutex<[String]>([])
+        let progress = RunProgress(
+            drawing: true,
+            say: { line in lines.withLock { $0.append(line) } },
+            draw: { text in frames.withLock { $0.append(text) } }
+        )
+        for stage in stages { progress.report(stage) }
+        progress.finish()
+        // Lines and frames would scroll each other away, so a drawing run says nothing.
+        #expect(lines.withLock { $0 }.isEmpty)
+        return frames.withLock { $0 }
+    }
+
+    @Test("draws one frame per stage, and one more to move past the last")
+    func oneFramePerStage() {
+        #expect(Self.drawn([.discovering, .proving, .building]).count == 4)
+    }
+
+    @Test("says what it is doing in the frame")
+    func drawsThePhase() {
+        let drawn = Self.drawn([.discovering]).joined()
+        #expect(drawn.contains("reading the sources"))
+    }
+
+    /// The counts have to move, which is the entire reason for drawing rather than printing.
+    @Test("moves the counts as mutants finish")
+    func countsMove() {
+        let results = (0..<3).map { _ in NarrationFixture.result(.killed, tests: ["T/t"]) }
+        let drawn = Self.drawn(
+            [.running(total: 3, processes: 3)] + results.map { RunStage.finished($0) })
+        #expect(drawn.last(where: { $0.contains("killed") })?.contains("3/3") == true)
+        #expect(drawn.last(where: { $0.contains("killed") })?.contains("3 killed") == true)
+    }
+
+    /// The phase stays while the counts move. A frame built from one stage alone would
+    /// blank the half of itself that stage did not mention.
+    @Test("keeps the phase while the counts move")
+    func phaseSurvivesCounts() {
+        let drawn = Self.drawn([
+            .running(total: 1, processes: 1),
+            .finished(NarrationFixture.result(.killed, tests: ["T/t"])),
+        ])
+        // The very last write is `finish()` moving past the frame, so the frame is the one
+        // before it.
+        let final = drawn.dropLast().last ?? ""
+        #expect(final.contains("running"))
+        #expect(final.contains("1/1"))
+    }
+
+    /// Nothing at all when it was told to be quiet, screen or no screen.
+    @Test("draws nothing when it was told to be quiet")
+    func quietDrawsNothing() {
+        let frames = Mutex<[String]>([])
+        let progress = RunProgress(
+            verbosity: .quiet,
+            drawing: true,
+            say: { _ in },
+            draw: { text in frames.withLock { $0.append(text) } }
+        )
+        progress.report(.discovering)
+        #expect(frames.withLock { $0 }.isEmpty)
+    }
+}

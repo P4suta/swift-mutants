@@ -19,4 +19,10 @@ public enum Ambient {
 
     /// What this process was started with.
     public static let environment: [String: String] = ProcessInfo.processInfo.environment
+
+    /// Whether standard output is a terminal somebody is watching.
+    ///
+    /// Asked once. It cannot change while a process runs, and asking per frame would be a
+    /// system call per frame for an answer that is already known.
+    public static let isTerminal: Bool = unsafe isatty(fileno(stdout)) == 1
 }
