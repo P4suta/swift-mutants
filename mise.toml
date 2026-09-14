@@ -95,6 +95,21 @@ run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip IntegrationTests --sk
 description = "Drives a real Swift toolchain against the fixture corpus"
 run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS"
 
+[tasks.dogfood]
+description = "swift-mutants measures swift-mutants"
+# `RepositoryGateTests` is skipped, and the reason is structural rather than a
+# convenience. Those tests assert things about this repository's *source text* - that
+# no module outside one doorway reads the environment, that the pure modules import no
+# I/O - and instrumentation rewrites that source text by design, appending a runtime
+# that calls `getenv` to every file it touches. They fail with no mutant awake at all,
+# which is a true statement about the instrumented tree and says nothing about anybody's
+# tests. swift-mutants stops the run and names them, which is the right behaviour: it is
+# the one case where a suite is not measuring the program.
+run = [
+  "swift build -c release",
+  ".build/release/swift-mutants run --jobs 8 -- --skip RepositoryGateTests",
+]
+
 [tasks.analyze]
 description = "Whole-module analysis: needs a compiler log, so it is not in `check`"
 run = ["swiftlint analyze --strict --quiet", "periphery scan --strict"]
