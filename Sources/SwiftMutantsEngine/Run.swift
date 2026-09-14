@@ -117,7 +117,8 @@ public struct Run: Sendable {
             filesInstrumented: validated.files.count,
             scope: scope,
             positions: listing.positions,
-            digests: listing.digests
+            digests: listing.digests,
+            shard: configuration.execution.shard
         )
     }
 

@@ -23,7 +23,7 @@ extension RunReport {
         let positions = override ?? outcome.positions
         self.schemaVersion = 1
         self.tool = Tool(name: "swift-mutants", version: version)
-        self.scope = Scope(of: outcome.scope)
+        self.scope = Scope(of: outcome.scope, shard: outcome.shard?.description)
         self.summary = Summary(of: outcome.summary)
         self.baseline = Behaviour(of: outcome.baseline)
         self.contendedBaseline = Behaviour(of: outcome.contendedBaseline)
@@ -106,12 +106,18 @@ extension RunReport {
 }
 
 extension RunReport.Scope {
-    init(of scope: RunScope) {
+    init(of scope: RunScope, shard: String?) {
         switch scope {
         case .everything:
-            self.init(kind: "everything", since: .init(nil), files: .init(nil))
+            self.init(
+                kind: "everything", since: .init(nil), files: .init(nil), shard: .init(shard))
         case .changed(let reference, let files):
-            self.init(kind: "changed", since: .init(reference), files: .init(files))
+            self.init(
+                kind: "changed",
+                since: .init(reference),
+                files: .init(files),
+                shard: .init(shard)
+            )
         }
     }
 }

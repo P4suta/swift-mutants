@@ -17,7 +17,7 @@ struct ReportCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "report",
         abstract: "Read what the last run found.",
-        subcommands: [Latest.self, Clean.self],
+        subcommands: [Latest.self, Merge.self, Clean.self],
         defaultSubcommand: Latest.self
     )
 
@@ -50,6 +50,50 @@ struct ReportCommand: AsyncParsableCommand {
                 )
             }
             print(String(decoding: try RunReport.encoded(report), as: UTF8.self))
+        }
+    }
+
+    /// Puts the shares of one run back together.
+    struct Merge: AsyncParsableCommand {
+
+        static let configuration = CommandConfiguration(
+            commandName: "merge",
+            abstract: "Put the shares of a sharded run back together.",
+            discussion: """
+                Takes the reports several machines wrote - `swift-mutants run --shard 2/5 \
+                --json > shard-2.json` - and writes one about the whole package to standard \
+                output.
+
+                Every mutant appears once, with the answer from whichever share measured \
+                it, and the counts are worked out again from those answers rather than \
+                added up from summaries that each counted the others as not run.
+                """
+        )
+
+        @Argument(help: "The reports to merge, one per share.")
+        var shares: [String] = []
+
+        func run() async throws {
+            guard shares.count > 1 else {
+                throw ValidationError(
+                    "give this the reports of two or more shares; one share is not a run.")
+            }
+            var read: [RunReport] = []
+            for path in shares {
+                guard let report = ReportStore.read(from: URL(filePath: path)) else {
+                    throw ValidationError("\(path) is not a report this build can read.")
+                }
+                read.append(report)
+            }
+            guard let merged = SwiftMutantsReport.Merge.of(read) else {
+                throw ValidationError(
+                    """
+                    those are not shares of one run: they describe different files. Merging \
+                    them would give a score about a program nobody has.
+                    """
+                )
+            }
+            print(String(decoding: try RunReport.encoded(merged), as: UTF8.self))
         }
     }
 

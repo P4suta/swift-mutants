@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsExecute
 import SwiftMutantsInstrument
@@ -74,6 +75,42 @@ struct Work: Sendable {
 /// Running every mutant that still has to be run.
 extension Run {
 
+    /// Whether this machine is the one that measures a mutant.
+    ///
+    /// Everything when no share was asked for. Otherwise decided from the mutant's own
+    /// identity, so every machine works out the same partition without any of them talking
+    /// to the others - and so that adding a mutant to one file does not move every mutant
+    /// after it to a different machine.
+    func holds(_ mutant: InstrumentedMutant) -> Bool {
+        configuration.execution.shard?.holds(mutant.identity.digest) ?? true
+    }
+
+    /// A mutant another machine is measuring.
+    ///
+    /// Reported rather than dropped, so the columns still add up to the catalogue and a
+    /// reader can see that this run was one share of it.
+    static func notRun(
+        _ mutant: InstrumentedMutant, at path: WorkspaceRelativePath
+    ) -> MutantResult {
+        MutantResult(
+            identity: mutant.identity,
+            path: path,
+            rule: mutant.rule,
+            span: mutant.span,
+            original: mutant.original,
+            replacement: mutant.replacement,
+            verdict: Verdict(
+                outcome: .notRun,
+                killedBy: [],
+                firstFailure: nil,
+                startedTests: [],
+                durationMilliseconds: 0,
+                termination: .stopped
+            ),
+            attempts: 0
+        )
+    }
+
     /// Where the named pipes a run watches its tests through are made.
     ///
     /// A pipe is what lets a mutant be answered at the first failure rather than at the
@@ -127,10 +164,13 @@ extension Run {
         progress: @Sendable (RunStage) -> Void
     ) async -> (results: [MutantResult], remembered: Int) {
         let everyMutant = work.validated.files.flatMap { $0.instrumented.mutants }
-        let toAsk = everyMutant.filter { remembering.answer(for: $0.index) == nil }
-        if toAsk.count < everyMutant.count {
-            progress(
-                .remembered(known: everyMutant.count - toAsk.count, total: everyMutant.count))
+        let mine = everyMutant.filter { self.holds($0) }
+        if let shard = configuration.execution.shard {
+            progress(.sharded(shard, mine: mine.count, total: everyMutant.count))
+        }
+        let toAsk = mine.filter { remembering.answer(for: $0.index) == nil }
+        if toAsk.count < mine.count {
+            progress(.remembered(known: mine.count - toAsk.count, total: mine.count))
         }
         progress(
             .running(total: toAsk.count, processes: scheduler.processes(for: toAsk)))
@@ -140,7 +180,9 @@ extension Run {
         for (file, subject) in zip(work.validated.files, work.subjects) {
             guard let path = WorkspaceRelativePath(subject.name) else { continue }
             let mutants = file.instrumented.mutants.sorted { $0.index < $1.index }
-            let asking = mutants.filter { remembering.answer(for: $0.index) == nil }
+            let asking = mutants.filter {
+                self.holds($0) && remembering.answer(for: $0.index) == nil
+            }
 
             var answered = Dictionary(
                 uniqueKeysWithValues: await scheduler.run(asking, in: path) {
@@ -153,6 +195,12 @@ extension Run {
             for mutant in mutants {
                 if let fresh = answered.removeValue(forKey: mutant.identity) {
                     results.append(fresh)
+                    continue
+                }
+                guard self.holds(mutant) else {
+                    // Another machine's. Counted so the columns add up to the catalogue,
+                    // and reported as what it is: not measured here.
+                    results.append(Self.notRun(mutant, at: path))
                     continue
                 }
                 guard let answer = remembering.answer(for: mutant.index) else { continue }

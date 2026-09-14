@@ -69,6 +69,8 @@ enum Narration {
         case .covered(let uncovered, let average):
             "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "
                 + "tests each, not the whole suite"
+        case .sharded(let shard, let mine, let total):
+            "this is share \(shard) of the catalogue: \(mine) of \(total) mutants"
         case .recalled(let known, let total):
             "  \(known) of \(total) had not changed since last time and were not asked again"
         case .unmeasured(let tests):

@@ -52,6 +52,14 @@ public struct RunOutcome: Sendable {
     /// about a different line of code would be worse than one that showed no code.
     public let digests: [WorkspaceRelativePath: Digest]
 
+    /// Which share of the catalogue this machine took, when it took one.
+    ///
+    /// Apart from ``scope`` because it is a different kind of narrowing and the two
+    /// combine: a run can be about what changed *and* be one machine of five. A score from
+    /// one share is a score about that share, and a report that did not say so would be a
+    /// number somebody quoted as though it were the package's.
+    public let shard: Shard?
+
     /// Records everything one run established.
     public init(
         results: [MutantResult],
@@ -62,7 +70,8 @@ public struct RunOutcome: Sendable {
         filesInstrumented: Int,
         scope: RunScope,
         positions: [WorkspaceRelativePath: LineIndex] = [:],
-        digests: [WorkspaceRelativePath: Digest] = [:]
+        digests: [WorkspaceRelativePath: Digest] = [:],
+        shard: Shard? = nil
     ) {
         self.results = results
         self.rejected = rejected
@@ -73,6 +82,7 @@ public struct RunOutcome: Sendable {
         self.scope = scope
         self.positions = positions
         self.digests = digests
+        self.shard = shard
     }
 }
 
@@ -151,6 +161,13 @@ public enum RunStage: Sendable, Hashable {
     /// Said out loud because it is the largest saving this tool has and the one easiest to
     /// be wrong about. A reader who sees six hundred mutants answered in a second deserves
     /// to be told why, and to be able to turn it off.
+    /// How many of the catalogue this machine took, and which share it is.
+    ///
+    /// Said out loud because a score from one share is a score about that share, and a
+    /// reader who was handed the number without the sentence would quote it as the
+    /// package's.
+    case sharded(Shard, mine: Int, total: Int)
+
     case remembered(known: Int, total: Int)
 
     case running(total: Int, processes: Int)

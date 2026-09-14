@@ -7,6 +7,7 @@ import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
+import SwiftMutantsReport
 import SwiftMutantsRunner
 import SwiftMutantsTestKit
 import SwiftMutantsTrace

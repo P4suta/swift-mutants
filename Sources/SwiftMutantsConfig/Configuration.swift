@@ -96,6 +96,12 @@ public struct Configuration: Sendable, Hashable {
         /// How many mutants to measure at once. Unset derives one from the machine.
         public var jobs: Int?
 
+        /// Which share of the catalogue this machine takes, when it takes one.
+        ///
+        /// Unset means all of it. A share is decided from each mutant's identity, so every
+        /// machine works out the same answer without any of them talking to the others.
+        public var shard: Shard?
+
         /// Creates the defaults.
         public init() {}
     }

@@ -102,6 +102,23 @@ struct RunCommand: AsyncParsableCommand {
 
     @Option(
         name: .long,
+        help: ArgumentHelp(
+            "This machine's share of the catalogue, as 2/5.",
+            discussion: """
+                Every machine works out the same split without any of them talking to the \
+                others, because a mutant's share is decided from its own identity - so \
+                adding one mutant to one file does not move every mutant after it to a \
+                different machine, nor throw away what those machines already knew.
+
+                A score from one share is a score about that share, and the run says so. \
+                `report merge` puts the pieces back together into one answer about the \
+                package.
+                """
+        ))
+    var shard: Shard?
+
+    @Option(
+        name: .long,
         parsing: .upToNextOption,
         help: ArgumentHelp(
             "Documents to write into the package: json, html, sarif.",
@@ -210,6 +227,7 @@ struct RunCommand: AsyncParsableCommand {
     private var asked: Configuration {
         var configuration = Configuration()
         configuration.execution.jobs = jobs
+        configuration.execution.shard = shard
         configuration.cache.mode = cache
         if let timeout { configuration.test.timeout = .seconds(timeout) }
         return configuration

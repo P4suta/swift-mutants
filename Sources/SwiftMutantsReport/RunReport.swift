@@ -62,6 +62,33 @@ public struct RunReport: Codable, Sendable, Hashable {
     /// What the compiler refused, in its own words.
     public let rejected: [Refusal]
 
+    /// Records a report directly, for a caller that has the pieces already.
+    public init(
+        schemaVersion: Int,
+        tool: Tool,
+        scope: Scope,
+        summary: Summary,
+        baseline: Behaviour,
+        contendedBaseline: Behaviour,
+        filesInstrumented: Int,
+        files: [String: String],
+        tests: [String],
+        mutants: [Mutant],
+        rejected: [Refusal]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.tool = tool
+        self.scope = scope
+        self.summary = summary
+        self.baseline = baseline
+        self.contendedBaseline = contendedBaseline
+        self.filesInstrumented = filesInstrumented
+        self.files = files
+        self.tests = tests
+        self.mutants = mutants
+        self.rejected = rejected
+    }
+
     /// Which build made a report.
     public struct Tool: Codable, Sendable, Hashable {
 
@@ -80,6 +107,13 @@ public struct RunReport: Codable, Sendable, Hashable {
         public let since: Reported<String>
         /// How many files it came to.
         public let files: Reported<Int>
+
+        /// Which share of the catalogue this machine took, as `2/5`.
+        ///
+        /// A score from one share is a score about that share. Saying so is not a caveat,
+        /// it is the number's meaning - and it is what `report merge` reads to know these
+        /// are pieces of one run rather than several runs of one package.
+        public let shard: Reported<String>
     }
 
     /// The counts, and what they amount to.
