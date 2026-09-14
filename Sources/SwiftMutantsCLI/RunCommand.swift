@@ -140,20 +140,32 @@ struct RunCommand: AsyncParsableCommand {
         let swept = TempOwner.sweep(in: temporary, besides: workspace)
         if swept > 0 { print(Narration.swept(swept)) }
 
-        var configuration = Configuration()
-        configuration.execution.jobs = jobs
-        configuration.cache.mode = cache
-        if let timeout { configuration.test.timeout = .seconds(timeout) }
-
         let progress = RunProgress()
-        let outcome = try await Run(
-            root: root,
-            configuration: configuration,
-            runner: Runner(recorder: TraceRecorder()),
-            workspace: workspace,
-            testArguments: testArguments,
-            changedSince: changed
-        ).run(environment: Ambient.environment) { progress.report($0) }
+        // One recorder for the whole run. Every subprocess passes through it, so when a run
+        // fails an hour in, what it did is already written down - and this is what reads it
+        // back out, because the moment somebody needs it is the moment the run is over.
+        let recorder = TraceRecorder()
+        let outcome: RunOutcome
+        do {
+            outcome = try await Run(
+                root: root,
+                configuration: asked,
+                runner: Runner(recorder: recorder),
+                workspace: workspace,
+                testArguments: testArguments,
+                changedSince: changed
+            ).run(environment: Ambient.environment) { progress.report($0) }
+        } catch {
+            let written = FailureReport.write(
+                "\(error)",
+                recorder: recorder,
+                environment: Ambient.environment,
+                keptAt: keepTemp ? workspace : nil,
+                into: FailureReport.home(for: root)
+            )
+            if let written { print(Narration.diagnosed(written)) }
+            throw error
+        }
 
         let report = RunReport(of: outcome)
         // Kept before it is printed, so that a run whose output somebody scrolled past is
@@ -171,6 +183,15 @@ struct RunCommand: AsyncParsableCommand {
         // found survivors has not failed - it has answered - and a tool that exited
         // non-zero for answering would be a tool people stop running.
         if strict, outcome.summary.survived > 0 { throw ExitCode(1) }
+    }
+
+    /// What the flags on this invocation amount to.
+    private var asked: Configuration {
+        var configuration = Configuration()
+        configuration.execution.jobs = jobs
+        configuration.cache.mode = cache
+        if let timeout { configuration.test.timeout = .seconds(timeout) }
+        return configuration
     }
 
     private static func summarise(_ outcome: RunOutcome) {

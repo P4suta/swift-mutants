@@ -126,8 +126,8 @@ let package = Package(
         .target(
             name: "SwiftMutantsCLI",
             dependencies: [
-                "SwiftMutantsEngine", "SwiftMutantsExecute", "SwiftMutantsReport",
-                "SwiftMutantsTempOwner", "SwiftMutantsValidate",
+                "SwiftMutantsDiagnostics", "SwiftMutantsEngine", "SwiftMutantsExecute",
+                "SwiftMutantsReport", "SwiftMutantsTempOwner", "SwiftMutantsValidate",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: strict

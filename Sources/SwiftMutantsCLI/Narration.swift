@@ -155,6 +155,14 @@ enum Narration {
             : "swift-mutants explain <id> says everything known about one of them."
     }
 
+    /// Where everything known about a failure was written down.
+    ///
+    /// Said, because a bundle nobody was told about is a bundle nobody has - and the moment
+    /// somebody needs it is the moment the run that could have made it is over.
+    static func diagnosed(_ directory: URL) -> String {
+        "what this run did is written down at \(directory.path)"
+    }
+
     /// What was cleared up before this run started.
     ///
     /// Said rather than done quietly: deleting hundreds of megabytes of somebody's disk is
