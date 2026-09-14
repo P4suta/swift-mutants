@@ -80,6 +80,13 @@ public struct RunError: Error, Hashable, CustomStringConvertible {
 public enum RunStage: Sendable, Hashable {
     case snapshotting
     case discovering
+
+    /// Building the package as the user wrote it, before anything is done to it.
+    ///
+    /// If this fails the package does not build, and every later complaint would have been
+    /// about something this tool did. It also produces the compiled interfaces that let
+    /// each module be validated on its own afterwards.
+    case priming
     case instrumenting(files: Int, mutants: Int)
     case validating(Validator.Progress)
     case building

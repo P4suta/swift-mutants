@@ -143,8 +143,8 @@ let package = Package(
         .target(
             name: "SwiftMutantsValidate",
             dependencies: [
-                "SwiftMutantsCore", "SwiftMutantsInstrument", "SwiftMutantsRunner",
-                "SwiftMutantsTrace",
+                "SwiftMutantsBuild", "SwiftMutantsCore", "SwiftMutantsInstrument",
+                "SwiftMutantsRunner", "SwiftMutantsTrace",
             ],
             swiftSettings: strict
         ),

@@ -23,6 +23,7 @@ enum Narration {
         switch stage {
         case .snapshotting: "copying the package"
         case .discovering: "reading the sources"
+        case .priming: "building your package as you wrote it, once"
         case .instrumenting(let files, let mutants):
             "instrumenting \(mutants) mutants across \(files) files"
         case .proving: "proving every mutant is in the tree"

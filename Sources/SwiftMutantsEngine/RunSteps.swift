@@ -6,6 +6,7 @@ import SwiftMutantsBuild
 import SwiftMutantsCore
 import SwiftMutantsDiscover
 import SwiftMutantsInstrument
+import SwiftMutantsRunner
 import SwiftMutantsSnapshot
 import SwiftMutantsValidate
 
@@ -87,24 +88,102 @@ extension Run {
         return subjects
     }
 
+    /// Builds the package as the user wrote it, before anything is done to it.
+    ///
+    /// Two things come out of one build. The first is the plainest answer a run can give:
+    /// if this fails, the package does not build, and every later complaint would have been
+    /// about something this tool did. Saying so here costs nothing, because the build is
+    /// needed anyway.
+    ///
+    /// The second is what makes validation one pass instead of one per module layer. Every
+    /// module's compiled interface now exists, built from the sources the user wrote, so
+    /// each module can be asked on its own whether it still type-checks with mutants in it -
+    /// and a module whose dependency is broken still answers, because nothing is reading
+    /// the dependency's source. `swift build` cannot do that: it stops where the first
+    /// module fails, so a package twenty layers deep needs twenty builds to surface twenty
+    /// rejections. This package needed nineteen.
+    ///
+    /// Returns the plan SwiftPM made, or nothing if it could not be read - in which case
+    /// validation builds the whole package each round, which is slower and always works.
+    func prime(
+        _ tree: URL,
+        environment: [String: String],
+        progress: @Sendable (RunStage) -> Void
+    ) async throws(RunError) -> BuildManifest? {
+        progress(.priming)
+        let scratch = Self.buildDirectory(in: tree)
+        let output = await Self.buildDriver(
+            tree,
+            scratch: scratch,
+            environment: environment,
+            runner: runner,
+            executable: executable
+        ).typecheck([])
+        guard output.exitCode == 0 else {
+            throw RunError(
+                """
+                the package does not build as it is, before any mutant was put in it. \
+                Nothing below this would be about your tests. The compiler said:
+                \(output.text.split(separator: "\n").suffix(20).joined(separator: "\n"))
+                """
+            )
+        }
+        guard
+            let text = try? String(
+                contentsOf: scratch.appending(path: "debug.yaml"), encoding: .utf8),
+            let manifest = BuildManifest(parsing: text)
+        else {
+            return nil
+        }
+        return manifest
+    }
+
+    /// The driver that builds the whole package, which is always correct and never quick.
+    static func buildDriver(
+        _ tree: URL,
+        scratch: URL,
+        environment: [String: String],
+        runner: Runner,
+        executable: String
+    ) -> SwiftBuildDriver {
+        SwiftBuildDriver(
+            runner: runner,
+            executable: executable,
+            root: tree.path,
+            scratch: scratch.path,
+            environment: environment
+        )
+    }
+
     func validate(
         _ subjects: [FileUnderValidation],
         in tree: URL,
+        using manifest: BuildManifest?,
         environment: [String: String],
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Validation {
         // SwiftPM rather than a bare `swiftc`, because a package is not a pile of files:
         // each target compiles on its own, against its own dependencies and search paths.
-        // The same place the tests are built into, so the build that proves the mutants
-        // compile *is* the build that produces them.
+        // With SwiftPM's own plan in hand each module can be asked separately, against the
+        // interfaces the pristine build produced; without it, the whole package is built
+        // each round, which is the same answer arrived at the slow way.
+        let building = Self.buildDriver(
+            tree,
+            scratch: Self.buildDirectory(in: tree),
+            environment: environment,
+            runner: runner,
+            executable: executable
+        )
         let validator = Validator(
-            compiler: SwiftBuildDriver(
-                runner: runner,
-                executable: executable,
-                root: tree.path,
-                scratch: Self.buildDirectory(in: tree).path,
-                environment: environment
-            ),
+            compiler: manifest.map {
+                ModuleTypecheckDriver(
+                    runner: runner,
+                    manifest: $0,
+                    root: tree.path,
+                    environment: environment,
+                    fallback: building
+                )
+            } ?? building,
             directory: tree
         )
         do {

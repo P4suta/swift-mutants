@@ -70,12 +70,14 @@ public struct Run: Sendable {
         let (listing, scope) = try await catalogue(environment: environment, progress: progress)
 
         let subjects = try subjectsToValidate(listing, in: tree)
+        let built = try await prime(tree, environment: environment, progress: progress)
+
         progress(
             .instrumenting(
                 files: subjects.count, mutants: listing.catalog.mutants.count))
 
         let validated = try await validate(
-            subjects, in: tree, environment: environment, progress: progress)
+            subjects, in: tree, using: built, environment: environment, progress: progress)
 
         progress(.proving)
         try prove(validated.files.map(\.instrumented))
