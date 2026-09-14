@@ -85,6 +85,14 @@ public struct Batch: Sendable {
         self.tests = tests
     }
 
+    /// Which mutant each test in this batch is about.
+    ///
+    /// What lets a process stop as soon as every mutant in it has been decided, rather than
+    /// at the last test of the last one. A batch does not need every test; it needs every
+    /// mutant, and running past that spends on tests exactly what the batch saved on
+    /// launches.
+    public var owners: [String: UInt32] { owner }
+
     /// Which mutant a failing test was about.
     ///
     /// Exactly one, by construction: a test is in a batch because it reaches one of its

@@ -67,6 +67,19 @@ struct RunCommand: AsyncParsableCommand {
         ))
     var testArguments: [String] = []
 
+    @Flag(
+        name: .long,
+        help: ArgumentHelp(
+            "Leave the copy behind, and say where it is.",
+            discussion: """
+                A run happens inside a copy that is deleted when it ends. When something \
+                goes wrong, that copy is the only place it exists: the instrumented \
+                sources, the tree the compiler was looking at, the build it did there. \
+                Keeping it is how a failure becomes something you can reproduce by hand.
+                """
+        ))
+    var keepTemp = false
+
     func run() async throws {
         // A line at a time, even when nobody is watching a terminal. Output to a file or a
         // pipe is buffered in blocks by default, so a run that takes an hour writes a CI
@@ -78,7 +91,13 @@ struct RunCommand: AsyncParsableCommand {
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
         let workspace = FileManager.default.temporaryDirectory
             .appending(path: "swift-mutants-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: workspace) }
+        defer {
+            if keepTemp {
+                print(Narration.kept(workspace))
+            } else {
+                try? FileManager.default.removeItem(at: workspace)
+            }
+        }
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
 
         var configuration = Configuration()

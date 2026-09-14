@@ -149,6 +149,69 @@ struct ModuleDriverIntegrationTests {
         #expect(!output.text.contains("App.swift: error"), "\(output.text)")
     }
 
+    /// The error this approach nearly shipped without.
+    ///
+    /// A whole class of Swift error is found after type checking, while the compiler lowers
+    /// the program. `missing return in instance method expected to return` is one, and a
+    /// `return-replacement` mutant produces exactly that shape. Asked with `-typecheck` the
+    /// compiler exits zero and says nothing; the build that follows validation then fails,
+    /// after validation has already said the tree was fine - which is the worst place for a
+    /// tool to be wrong, because the run dies rather than answering.
+    @Test("finds an error the type checker alone does not", .tags(.integration))
+    func findsWhatTypeCheckingMisses() async throws {
+        let fixture = try Self.fixture(core: Self.workingCore, app: Self.workingApp)
+        defer { fixture.cleanUp() }
+        let manifest = try await Self.prime(fixture)
+
+        // A function whose only `return` is behind a condition: well-typed, and not a
+        // program.
+        try SwiftBuildDriverTests.write(
+            """
+            public func twice(_ value: Int) -> Int { value * 2 }
+            public func thrice(_ value: Int) -> Int {
+                if value > 0 { return value * 3 }
+            }
+            """, to: fixture.root.appending(path: "Sources/Core/Core.swift"))
+
+        let output = await Self.driver(fixture, manifest).typecheck(Self.sources(fixture))
+
+        #expect(output.exitCode != 0)
+        #expect(output.text.contains("missing return"), "\(output.text)")
+    }
+
+    /// The premise, kept as a test so nobody quietly puts `-typecheck` back: the type
+    /// checker really does accept it.
+    @Test("and the type checker really does accept it", .tags(.integration))
+    func typeCheckingReallyAcceptsIt() async throws {
+        let fixture = try Self.fixture(core: Self.workingCore, app: Self.workingApp)
+        defer { fixture.cleanUp() }
+        let manifest = try await Self.prime(fixture)
+
+        try SwiftBuildDriverTests.write(
+            """
+            public func twice(_ value: Int) -> Int { value * 2 }
+            public func thrice(_ value: Int) -> Int {
+                if value > 0 { return value * 3 }
+            }
+            """, to: fixture.root.appending(path: "Sources/Core/Core.swift"))
+
+        let core = try #require(manifest.modules.first { $0.name == "Core" })
+        let asked = core.diagnosingArguments(
+            cachingModulesIn: fixture.scratch.appending(path: "ValidationModuleCache").path)
+        let typechecking = asked.map { $0 == "-emit-sil" ? "-typecheck" : $0 }
+            .filter { $0 != "-wmo" && $0 != "/dev/null" && $0 != "-o" }
+
+        let process = Process()
+        process.executableURL = URL(filePath: typechecking[0])
+        process.arguments = Array(typechecking.dropFirst())
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus == 0, "the type checker was supposed to miss it")
+    }
+
     /// Writes nothing. Each round of validation is asked against the modules the pristine
     /// build produced, and a round that rebuilt them would be answering later rounds about
     /// a tree that already has mutants in it.

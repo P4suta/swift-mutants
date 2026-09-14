@@ -53,13 +53,9 @@ public struct Trial: Sendable {
     public func run(
         activating index: UInt32?,
         onlyTests: [String]? = nil,
-        stoppingAtFirstFailure: Bool = true
+        settling: StreamWatcher.Settlement = .oneMutant
     ) async -> Verdict {
-        await run(
-            waking: index.map { [$0] } ?? [],
-            onlyTests: onlyTests,
-            stoppingAtFirstFailure: stoppingAtFirstFailure
-        )
+        await run(waking: index.map { [$0] } ?? [], onlyTests: onlyTests, settling: settling)
     }
 
     /// Runs the tests with a set of mutants awake.
@@ -71,11 +67,11 @@ public struct Trial: Sendable {
     public func run(
         waking indices: [UInt32],
         onlyTests: [String]? = nil,
-        stoppingAtFirstFailure: Bool = true
+        settling: StreamWatcher.Settlement = .oneMutant
     ) async -> Verdict {
         let name = indices.isEmpty ? "base" : indices.map(String.init).joined(separator: "-")
         let stream = scratch.appending(path: "events-\(worker)-\(name)")
-        let watcher = Mutex(StreamWatcher())
+        let watcher = Mutex(StreamWatcher(settling: settling))
 
         // A pipe is what makes stopping early possible. When one cannot be made - a
         // filesystem that has no pipes, a path that cannot be written - the run falls back
@@ -91,8 +87,7 @@ public struct Trial: Sendable {
             watching: pipe
         ) { line in
             guard let event = TestEvent(line: line) else { return true }
-            let keepGoing = watcher.withLock { $0.observe(event) }
-            return stoppingAtFirstFailure ? keepGoing : true
+            return watcher.withLock { $0.observe(event) }
         }
         pipe?.discard()
 

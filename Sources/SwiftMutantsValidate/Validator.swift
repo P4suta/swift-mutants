@@ -267,24 +267,4 @@ public struct Validator: Sendable {
         }
         return paths
     }
-
-    /// One compile over the current discoveries, kept if the compiler accepts it.
-    private func confirm(
-        _ files: [FileUnderValidation], discoveries: [FileDiscovery]
-    ) async throws(ValidationError) -> (files: [ValidatedFile], rounds: Int) {
-        let instrumented = try Self.instrument(files, as: discoveries)
-        let paths = try write(instrumented, for: files)
-        let output = await compiler.typecheck(paths)
-        guard output.exitCode == 0 else {
-            throw ValidationError(
-                """
-                the tree still does not compile with every refused mutant removed, which \
-                means the file does not compile on its own.
-                """,
-                diagnostics: CompilerDiagnostic.parse(output.text)
-            )
-        }
-        return (zip(paths, instrumented).map { ValidatedFile(path: $0, instrumented: $1) }, 1)
-    }
-
 }

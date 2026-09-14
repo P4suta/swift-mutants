@@ -52,13 +52,40 @@ public struct BuildManifest: Sendable, Hashable {
             self.sources = sources
         }
 
-        /// Arguments that ask whether the module is well-typed and write nothing.
+        /// Arguments that make the compiler diagnose this module and write nothing.
         ///
         /// The same command minus everything that produces a file. Validation reads none of
         /// an object, a module, a header, a dependency file or an index, and each of them
         /// would have this writing into a tree it is only asking about - including over the
         /// modules the next question needs to be answered against.
-        public var typecheckArguments: [String] {
+        ///
+        /// `-emit-sil` rather than `-typecheck`, and the difference is not an optimisation.
+        /// A whole class of Swift error is found after type checking, while the compiler is
+        /// lowering the program: `missing return in instance method expected to return`,
+        /// use before initialisation, and the rest of the mandatory dataflow passes.
+        /// `-typecheck` accepts a function with a missing return and says nothing.
+        /// Measured on this package: a `return-replacement` mutant left a method with no
+        /// return on one path, `-typecheck` exited zero, and the build that followed
+        /// validation failed - after validation had already said the tree was fine, which
+        /// is the worst place for a tool to be wrong.
+        ///
+        /// The output goes to `/dev/null`, so this still writes nothing. `-emit-sil` stops
+        /// before instruction selection, so it is a fraction of the compile it replaces -
+        /// and, unlike the build, it can be asked about one module at a time.
+        public var diagnosingArguments: [String] { diagnosingArguments(cachingModulesIn: nil) }
+
+        /// The same, caching compiled modules in `cache` rather than where the build does.
+        ///
+        /// Clang caches compiled module files, and the compiler refuses a cache holding one
+        /// module under two names - which is what happens when a build and a typecheck of
+        /// the same tree disagree about how to spell a path, as `/var` and `/private/var`
+        /// do on macOS for the same directory. The build then fails with `module
+        /// '_DarwinFoundation1' is defined in both`, which is about neither the package nor
+        /// any mutant in it, and which arrives after validation has already said the tree
+        /// was fine.
+        ///
+        /// A question must not write into the answer.
+        public func diagnosingArguments(cachingModulesIn cache: String?) -> [String] {
             var asked: [String] = []
             var index = arguments.startIndex
             while index < arguments.endIndex {
@@ -88,9 +115,16 @@ public struct BuildManifest: Sendable, Hashable {
                 asked.append(argument)
                 index = arguments.index(after: index)
             }
-            // After the compiler, which runs the program and stays the first word.
+            if let cache { asked += ["-module-cache-path", cache] }
+            // After the compiler, which runs the program and stays the first word. Whole
+            // module because a module lowered a file at a time writes a file per file, and
+            // there is one place here to throw output away.
             asked.insert(
-                contentsOf: ["-typecheck", "-diagnostic-style=llvm"], at: min(1, asked.count))
+                contentsOf: [
+                    "-emit-sil", "-wmo", "-o", "/dev/null", "-diagnostic-style=llvm",
+                ],
+                at: min(1, asked.count)
+            )
             return asked
         }
 
@@ -110,6 +144,7 @@ public struct BuildManifest: Sendable, Hashable {
         private static let writesAFileNamedNext: Set<String> = [
             "-o", "-emit-module-path", "-emit-objc-header-path", "-output-file-map",
             "-index-store-path", "-emit-dependencies-path", "-serialize-diagnostics-path",
+            "-module-cache-path",
         ]
     }
 

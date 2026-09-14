@@ -24,8 +24,13 @@ extension Run {
         } catch {
             throw RunError("\(root.path) could not be copied: \(error)")
         }
-        Self.lendDependencies(from: root, to: tree)
-        return tree
+        // One spelling, now that there is a directory to have one. macOS gives the same
+        // directory two names - `/var/folders/...` and `/private/var/folders/...` - and a
+        // compiler reached by both caches one module under two names, which it then
+        // refuses with an error about neither the package nor any mutant in it.
+        let named = CanonicalPath.of(tree)
+        Self.lendDependencies(from: root, to: named)
+        return named
     }
 
     func list(environment: [String: String]) async throws(RunError) -> Listing {
@@ -180,6 +185,8 @@ extension Run {
                     runner: runner,
                     manifest: $0,
                     root: tree.path,
+                    cachingModulesIn: Self.buildDirectory(in: tree)
+                        .appending(path: "ValidationModuleCache").path,
                     environment: environment,
                     fallback: building
                 )

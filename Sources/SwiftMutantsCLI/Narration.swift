@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import Foundation
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -119,6 +120,14 @@ enum Narration {
                 + "  of covered code \(summary.score.renderedForCoveredCode)",
         ]
         return lines
+    }
+
+    /// Where the copy a run happened in was left.
+    ///
+    /// Printed rather than merely not deleted: a path nobody was told about is the same as
+    /// no path, and the person reading has a failure in front of them and nowhere to look.
+    static func kept(_ workspace: URL) -> String {
+        "the copy is kept at \(workspace.path)"
     }
 
     /// A number to one decimal place, without reaching for a variadic C function.

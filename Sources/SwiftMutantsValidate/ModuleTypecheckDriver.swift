@@ -29,6 +29,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
     private let runner: Runner
     private let manifest: BuildManifest
     private let root: String
+    private let cache: String?
     private let environment: [String: String]
     private let timeout: Duration?
     private let fallback: any TypecheckDriver
@@ -38,6 +39,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         runner: Runner,
         manifest: BuildManifest,
         root: String,
+        cachingModulesIn cache: String? = nil,
         environment: [String: String] = [:],
         timeout: Duration? = .seconds(1800),
         fallback: any TypecheckDriver
@@ -45,6 +47,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         self.runner = runner
         self.manifest = manifest
         self.root = root
+        self.cache = cache
         self.environment = environment
         self.timeout = timeout
         self.fallback = fallback
@@ -69,7 +72,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
 
     /// One module's answer.
     private func ask(_ module: BuildManifest.Module) async -> CompilerOutput {
-        let arguments = module.typecheckArguments
+        let arguments = module.diagnosingArguments(cachingModulesIn: cache)
         guard let executable = arguments.first else {
             return CompilerOutput(
                 exitCode: 1, text: "the plan for \(module.name) names no compiler to run")

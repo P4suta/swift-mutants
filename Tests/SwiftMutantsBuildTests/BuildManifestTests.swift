@@ -93,14 +93,30 @@ struct BuildManifestTests {
 struct TypecheckArgumentsTests {
 
     static func typecheck(_ arguments: [String]) -> [String] {
-        BuildManifest.Module(name: "M", arguments: arguments).typecheckArguments
+        BuildManifest.Module(name: "M", arguments: arguments).diagnosingArguments
     }
 
-    @Test("asks rather than builds")
-    func asksRatherThanBuilds() {
+    /// `-emit-sil` rather than `-typecheck`, and not as an optimisation. A whole class of
+    /// Swift error is found after type checking, while the compiler lowers the program -
+    /// `missing return in instance method expected to return` among them. `-typecheck`
+    /// accepts a function with a missing return and says nothing, and a mutant that leaves
+    /// one was accepted by validation here and refused by the build that followed it, which
+    /// is the worst place for a tool to be wrong.
+    @Test("asks the compiler to lower the module, not merely to type-check it")
+    func asksForTheLoweringToo() {
         let asked = Self.typecheck(["/usr/bin/swiftc", "-c", "a.swift"])
-        #expect(asked.contains("-typecheck"))
+        #expect(asked.contains("-emit-sil"))
+        #expect(!asked.contains("-typecheck"))
         #expect(!asked.contains("-c"))
+    }
+
+    /// Lowering a module a file at a time writes a file per file, and there is one place
+    /// here to throw output away.
+    @Test("lowers the module as one thing, into nothing")
+    func lowersWholeModuleIntoNothing() {
+        let asked = Self.typecheck(["/usr/bin/swiftc", "-c"])
+        #expect(asked.contains("-wmo"))
+        #expect(asked.firstIndex(of: "-o").map { asked[$0 + 1] } == "/dev/null")
     }
 
     /// Machine-readable `line:col`, because attribution is by byte span and the default
@@ -180,6 +196,14 @@ struct TypecheckArgumentsTests {
     func compilerStaysFirst() {
         #expect(Self.typecheck(["/usr/bin/swiftc", "-c"]).first == "/usr/bin/swiftc")
     }
+
+    /// The build's own `-o` is dropped, so exactly one survives and it is this one.
+    @Test("writes to one place and only one")
+    func oneOutputOnly() {
+        let asked = Self.typecheck(["/usr/bin/swiftc", "-o", "/pkg/.build/M.o", "-c"])
+        #expect(asked.count { $0 == "-o" } == 1)
+        #expect(!asked.contains("/pkg/.build/M.o"))
+    }
 }
 
 extension BuildManifestTests {
@@ -218,5 +242,42 @@ extension BuildManifestTests {
         )
         let manifest = try #require(BuildManifest(parsing: text))
         #expect(manifest.modules.map(\.name).sorted() == ["App", "swift-syntax"])
+    }
+}
+
+extension TypecheckArgumentsTests {
+
+    static func typecheck(_ arguments: [String], cachingIn cache: String) -> [String] {
+        BuildManifest.Module(name: "M", arguments: arguments)
+            .diagnosingArguments(cachingModulesIn: cache)
+    }
+
+    /// A question must not write into the answer.
+    ///
+    /// Clang caches compiled module files, and the compiler refuses a cache holding one
+    /// module under two names - which is what happens when a build and a typecheck of the
+    /// same tree disagree about how to spell a path, as `/var` and `/private/var` do on
+    /// macOS for the same directory. The build then fails with `module '_DarwinFoundation1'
+    /// is defined in both`, about neither the package nor any mutant in it.
+    ///
+    /// Validation is a question asked about a tree, so it caches somewhere of its own and
+    /// leaves the build's cache exactly as it found it.
+    @Test("caches its own compiled modules somewhere of its own")
+    func cachesElsewhere() {
+        let asked = Self.typecheck(
+            ["/usr/bin/swiftc", "-module-cache-path", "/pkg/.build/ModuleCache", "-c"],
+            cachingIn: "/pkg/.build/ValidationModuleCache"
+        )
+        #expect(!asked.contains("/pkg/.build/ModuleCache"))
+        #expect(asked.contains("/pkg/.build/ValidationModuleCache"))
+        #expect(asked.count { $0 == "-module-cache-path" } == 1)
+    }
+
+    /// A plan with no cache of its own still gets one, rather than falling back to whatever
+    /// the compiler picks - which is shared between runs and outside the copy entirely.
+    @Test("gives itself a cache even when the plan named none")
+    func cachesEvenWithoutOne() {
+        let asked = Self.typecheck(["/usr/bin/swiftc", "-c"], cachingIn: "/pkg/.build/V")
+        #expect(asked.suffix(2) == ["-module-cache-path", "/pkg/.build/V"])
     }
 }

@@ -14,9 +14,11 @@ extension Scheduler {
 
     /// Runs one batch and hands each of its mutants the answer about itself.
     ///
-    /// A batch runs to the end rather than stopping at the first failure: stopping is right
-    /// for one mutant, where the answer is known at that point, and wrong here, where the
-    /// other mutants in the process have not been asked yet.
+    /// It stops when every mutant in the process has been decided, which is not the same as
+    /// the first failure and not the same as the last test. The first failure is wrong here
+    /// because the other mutants have not been asked yet; the last test is wrong because a
+    /// mutant is decided the moment one of its own tests fails or the last of them passes,
+    /// and everything after that is a launch saving being spent again on tests.
     ///
     /// A test that fails and belongs to nobody means the batch was built wrong. Rather than
     /// credit the kill to whoever happens to be nearby, the caller is told and the mutants
@@ -28,7 +30,7 @@ extension Scheduler {
             .run(
                 waking: batch.mutants.map(\.index),
                 onlyTests: batch.tests,
-                stoppingAtFirstFailure: false
+                settling: .eachOwner(batch.owners)
             )
 
         guard verdict.outcome == .killed || verdict.outcome == .survived else { return nil }

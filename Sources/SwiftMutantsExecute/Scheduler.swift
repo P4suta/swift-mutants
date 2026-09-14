@@ -120,7 +120,7 @@ public struct Scheduler: Sendable {
         // Run to the end rather than stopping at the first failure. A baseline is a
         // diagnosis, not a verdict: "a test failed with nothing awake" leaves somebody
         // nowhere, and the list of which ones usually points straight at the cause.
-        await trial(worker: 0).run(activating: nil, stoppingAtFirstFailure: false)
+        await trial(worker: 0).run(activating: nil, settling: .wholeSuite)
     }
 
     /// Runs the baseline the way the mutants will be run: all workers at once.
@@ -145,7 +145,7 @@ public struct Scheduler: Sendable {
             for worker in 0..<jobs {
                 group.addTask { [self] in
                     await trial(worker: worker)
-                        .run(activating: nil, stoppingAtFirstFailure: false)
+                        .run(activating: nil, settling: .wholeSuite)
                 }
             }
             var verdicts: [Verdict] = []
