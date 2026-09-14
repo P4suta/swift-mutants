@@ -94,6 +94,82 @@ struct BisectionTests {
         #expect(validated.rejected.map(\.rule.name).contains("lt-to-le"))
     }
 
+    /// A build stops at the first module that fails, so removing one layer's refusals is
+    /// what lets the next layer's errors appear at all. Halving is therefore another way
+    /// to remove candidates, not another way to finish: treating it as an ending made a
+    /// run give up on the layer it had just uncovered.
+    ///
+    /// Found by running swift-mutants on swift-mutants, where the layers were real
+    /// modules and each round revealed the next.
+    @Test("keeps going after halving, because a build reveals one layer at a time")
+    func layersAppearOneAtATime() async throws {
+        let scratch = try Self.scratch()
+        defer { scratch.cleanUp() }
+        // The first is unplaceable and forces halving; the second only becomes visible
+        // once the first is gone, the way a module's errors wait for its dependency's.
+        let compiler = Layered(
+            first: "a >= b", then: "c <= d", failingSilentlyOn: "a >= b")
+
+        let validated = try await Validator(compiler: compiler, directory: scratch.directory)
+            .validate([
+                Self.subject("func f(_ a: Int, _ b: Int) -> Bool { a > b }", named: "One.swift"),
+                Self.subject("func g(_ c: Int, _ d: Int) -> Bool { c < d }", named: "Two.swift"),
+            ])
+
+        #expect(validated.bisected)
+        #expect(validated.rejected.map(\.rule.name).sorted() == ["gt-to-ge", "lt-to-le"])
+    }
+
+    /// A compiler that hides the second problem until the first is gone.
+    final class Layered: TypecheckDriver, @unchecked Sendable {
+
+        private let first: String
+        private let then: String
+        private let silent: String
+
+        init(first: String, then: String, failingSilentlyOn silent: String) {
+            self.first = first
+            self.then = then
+            self.silent = silent
+        }
+
+        func typecheck(_ paths: [String]) async -> CompilerOutput {
+            let texts = paths.compactMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+            let joined = texts.joined()
+            if joined.contains(first) {
+                return CompilerOutput(
+                    exitCode: 1,
+                    text: silent == first
+                        ? "<unknown>:0: error: something, somewhere"
+                        : "\(paths[0]):1:1: error: no"
+                )
+            }
+            guard joined.contains(then) else { return CompilerOutput(exitCode: 0, text: "") }
+            // Placeable, so the loop can name it without halving again.
+            guard
+                let path = paths.first(where: {
+                    (try? String(contentsOfFile: $0, encoding: .utf8))?.contains(then) == true
+                }),
+                let text = try? String(contentsOfFile: path, encoding: .utf8),
+                let offset = Self.offset(of: then, in: text),
+                let place = LineIndex(text).position(of: offset)
+            else { return CompilerOutput(exitCode: 1, text: "<unknown>:0: error: lost") }
+            return CompilerOutput(
+                exitCode: 1, text: "\(path):\(place.line):\(place.column): error: no")
+        }
+
+        static func offset(of needle: String, in text: String) -> Int? {
+            let bytes = Array(text.utf8)
+            let pattern = Array(needle.utf8)
+            guard bytes.count >= pattern.count else { return nil }
+            for start in 0...(bytes.count - pattern.count)
+            where Array(bytes[start..<(start + pattern.count)]) == pattern {
+                return start
+            }
+            return nil
+        }
+    }
+
     /// Several refused mutants spread across several files, none of them placeable.
     @Test("corners refusals in more than one file at once")
     func acrossSeveralFiles() async throws {

@@ -67,11 +67,18 @@ public struct Validator: Sendable {
         var discoveries = files.map(\.discovery)
         var rejected: [Rejection] = []
         var rounds = 0
+        var passes = 0
+        var bisected = false
 
-        // At most one round per candidate, because a round that changes nothing ends the
-        // loop and a round that changes something removes a candidate.
+        // At most one pass per candidate, because a pass that changes nothing ends the
+        // loop and a pass that changes something removes at least one candidate.
+        //
+        // Counted separately from `rounds`, which is compiles. A pass that halves spends
+        // many compiles on one pass, and a ceiling that confused the two would give up
+        // part way through a run that was making perfectly good progress.
         let ceiling = discoveries.reduce(1) { $0 + $1.candidates.count }
-        while rounds < ceiling {
+        while passes < ceiling {
+            passes += 1
             rounds += 1
             progress(
                 .compiling(
@@ -86,14 +93,10 @@ public struct Validator: Sendable {
                     },
                     rejected: rejected,
                     rounds: rounds,
-                    bisected: false
+                    bisected: bisected
                 )
             }
-
-            let attribution = Attribute.diagnostics(
-                CompilerDiagnostic.parse(output.text),
-                to: Dictionary(uniqueKeysWithValues: zip(paths, instrumented))
-            )
+            let attribution = Self.attribute(output, to: paths, and: instrumented)
             if !attribution.rejected.isEmpty {
                 progress(.refused(round: rounds, count: attribution.rejected.count))
                 rejected += attribution.rejected
@@ -104,12 +107,20 @@ public struct Validator: Sendable {
             // The compile failed while naming nothing this tool put there. Guessing from
             // here is how a tool starts rejecting mutants at positions nobody reported, so
             // it stops guessing and pays for halving instead.
-            return try await halve(
+            // Halving is another way to remove candidates, not another way to finish.
+            // `swift build` stops at the first module that fails, so a clean build of one
+            // layer is what lets the next layer's errors appear at all - and they do. The
+            // loop is the only thing that decides a tree compiles.
+            let found = try await halve(
                 files,
                 from: Rounds(discoveries: discoveries, rejected: rejected, rounds: rounds),
                 blaming: attribution.unattributed,
                 progress: progress
             )
+            bisected = true
+            rejected += found.rejected
+            discoveries = found.discoveries
+            rounds += found.rounds
         }
         throw ValidationError(
             """
@@ -119,17 +130,18 @@ public struct Validator: Sendable {
         )
     }
 
-    /// The expensive path: corner the refusals by halving, then confirm what is left.
+    /// The expensive path: corner the refusals by halving.
+    ///
+    /// Hands back what it found rather than deciding the run is over. `swift build` stops
+    /// at the first module that fails, so removing one layer's refusals is what lets the
+    /// next layer's errors appear - and the loop, not this, is what decides a tree
+    /// compiles.
     private func halve(
         _ files: [FileUnderValidation],
         from state: Rounds,
         blaming unplaceable: [CompilerDiagnostic],
         progress: @Sendable (Progress) -> Void
-    ) async throws(ValidationError) -> Validation {
-        let discoveries = state.discoveries
-        let rejected = state.rejected
-        let rounds = state.rounds
-
+    ) async throws(ValidationError) -> Bisection {
         // The errors nobody could place still name files. A `missing return` is reported
         // at a closing brace, nowhere near the mutant that removed the return - but it is
         // reported in the file that mutant is in. Halving that file's candidates first
@@ -138,16 +150,20 @@ public struct Validator: Sendable {
         let suspects = Self.suspects(named: unplaceable, among: files)
         progress(
             .halving(
-                mutants: Self.candidates(in: discoveries, restrictedTo: suspects).count,
+                mutants: Self.candidates(in: state.discoveries, restrictedTo: suspects).count,
                 unplaceable: unplaceable.first
             ))
-        let found = try await bisect(files, discoveries: discoveries, suspecting: suspects)
-        let confirmed = try await confirm(files, discoveries: found.discoveries)
-        return Validation(
-            files: confirmed.files,
-            rejected: rejected + found.rejected,
-            rounds: rounds + found.rounds + confirmed.rounds,
-            bisected: true
+        return try await bisect(
+            files, discoveries: state.discoveries, suspecting: suspects)
+    }
+
+    /// Reads what the compiler said and works out which mutants it was about.
+    private static func attribute(
+        _ output: CompilerOutput, to paths: [String], and instrumented: [InstrumentedFile]
+    ) -> Attribution {
+        Attribute.diagnostics(
+            CompilerDiagnostic.parse(output.text),
+            to: Dictionary(uniqueKeysWithValues: zip(paths, instrumented))
         )
     }
 
