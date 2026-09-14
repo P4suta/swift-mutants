@@ -238,3 +238,72 @@ struct StoppedVerdictTests {
         #expect(interrupted.verdict(after: .stopped).outcome == .errored)
     }
 }
+
+/// Sharing one process's answer out among the mutants that were in it.
+///
+/// A batch runs several mutants at once and every one of them needs an answer about
+/// itself. The tests are attributed by ownership, which is exact - no test reaches two
+/// mutants in a batch, by construction. What was not exact was the message: every killed
+/// member was given the *batch's* first failure, which is the first failure of whichever
+/// mutant happened to be caught first.
+@Suite("Sharing out a batch's answer")
+struct BatchAttributionTests {
+
+    static func verdict(killers: [String], firstFailure: String?) -> Verdict {
+        Verdict(
+            outcome: killers.isEmpty ? .survived : .killed,
+            killedBy: killers,
+            firstFailure: firstFailure,
+            startedTests: ["P.S/a1()", "P.S/b1()"],
+            durationMilliseconds: 1,
+            termination: .stopped
+        )
+    }
+
+    /// The mutant whose own test failed first gets the message, because it is about it.
+    @Test("gives the message to the mutant it is about")
+    func theRightOwner() {
+        let said = Scheduler.message(
+            of: 1,
+            killedBy: ["P.S/a1()"],
+            in: Self.verdict(killers: ["P.S/a1()", "P.S/b1()"], firstFailure: "a1 failed")
+        )
+        #expect(said == "a1 failed")
+    }
+
+    /// And the other one gets nothing rather than somebody else's words. A report that put
+    /// one mutant's failure against another is a report that sends a reader to the wrong
+    /// assertion.
+    @Test("gives nothing to the mutant it is not about")
+    func theWrongOwner() {
+        #expect(
+            Scheduler.message(
+                of: 2,
+                killedBy: ["P.S/b1()"],
+                in: Self.verdict(killers: ["P.S/a1()", "P.S/b1()"], firstFailure: "a1 failed")
+            ) == nil
+        )
+    }
+
+    @Test("gives nothing to a mutant nothing caught")
+    func theSurvivor() {
+        #expect(
+            Scheduler.message(
+                of: 3,
+                killedBy: [],
+                in: Self.verdict(killers: ["P.S/a1()"], firstFailure: "a1 failed")
+            ) == nil
+        )
+    }
+
+    /// One mutant in a process is the ordinary case, and the message is its own.
+    @Test("gives the message to the only mutant there was")
+    func theOnlyOne() {
+        let said = Scheduler.message(
+            of: 1,
+            killedBy: ["P.S/a1()"],
+            in: Self.verdict(killers: ["P.S/a1()"], firstFailure: "a1 failed")
+        )
+        #expect(said == "a1 failed")
+    }
+}

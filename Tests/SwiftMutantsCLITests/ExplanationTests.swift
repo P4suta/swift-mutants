@@ -114,6 +114,16 @@ struct ExplanationTests {
         #expect(!said.contains("no test"))
     }
 
+    /// A deadline is a weaker claim than an assertion, and a reader deciding what to do
+    /// about one deserves to be told which they have.
+    @Test("says what a deadline means, and what it does not")
+    func aDeadlineIsNotAnAssertion() {
+        let said = Self.lines(Self.mutant(outcome: "timed-out")).joined(separator: "\n")
+        #expect(said.contains("ran out of time"))
+        #expect(said.contains("detected"))
+        #expect(!said.contains("no test"))
+    }
+
     /// A position it never worked out is said plainly rather than printed as `:0:0`, which
     /// an editor would take somewhere wrong.
     @Test("says where it is even when it does not know the line")

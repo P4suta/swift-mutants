@@ -57,6 +57,14 @@ enum Explanation {
                 "\(mutant.testsStarted) tests ran with this change in and all of them passed.",
                 "One of them is where the missing assertion belongs:",
             ] + Self.listed(tests)
+        case "timed-out":
+            return [
+                "this ran out of time twice, the second time with nothing else running.",
+                "That counts as detected, and is shown apart from a kill because a deadline",
+                "is a weaker claim than an assertion: something noticed, but not what.",
+            ]
+        case "rejected":
+            return ["the compiler would not accept this change, so nothing could run it."]
         default:
             return ["\(mutant.outcome)."]
         }

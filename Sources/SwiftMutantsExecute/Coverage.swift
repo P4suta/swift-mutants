@@ -167,29 +167,20 @@ public struct Prober: Sendable {
             }
             var done = 0
             while let (test, indices) = await group.next() {
-                guard let indices else {
+                if let indices {
+                    reach[test] = indices
+                    for index in indices.sorted() { reached[index, default: []].append(test) }
+                } else {
                     untrusted.append(test)
-                    done += 1
-                    progress(done)
-                    if next < tests.count {
-                        let test = tests[next]
-                        let worker = next % jobs
-                        group.addTask { [self] in
-                            (test, await self.indices(reachedBy: test, worker: worker))
-                        }
-                        next += 1
-                    }
-                    continue
                 }
-                reach[test] = indices
-                for index in indices.sorted() { reached[index, default: []].append(test) }
                 done += 1
                 progress(done)
+
                 guard next < tests.count else { continue }
-                let test = tests[next]
+                let waiting = tests[next]
                 let worker = next % jobs
                 group.addTask { [self] in
-                    (test, await self.indices(reachedBy: test, worker: worker))
+                    (waiting, await self.indices(reachedBy: waiting, worker: worker))
                 }
                 next += 1
             }

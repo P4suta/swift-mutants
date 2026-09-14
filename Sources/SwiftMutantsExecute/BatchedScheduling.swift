@@ -51,7 +51,8 @@ extension Scheduler {
                 verdict: Verdict(
                     outcome: killers[mutant.index] == nil ? .survived : .killed,
                     killedBy: killers[mutant.index] ?? [],
-                    firstFailure: killers[mutant.index] == nil ? nil : verdict.firstFailure,
+                    firstFailure: Self.message(
+                        of: mutant.index, killedBy: killers[mutant.index] ?? [], in: verdict),
                     startedTests: verdict.startedTests,
                     durationMilliseconds: verdict.durationMilliseconds,
                     termination: verdict.termination
@@ -59,6 +60,22 @@ extension Scheduler {
                 attempts: 1
             )
         }
+    }
+
+    /// The failure message that belongs to one mutant of a batch.
+    ///
+    /// A process that held several mutants recorded one first failure, and it is the first
+    /// failure of whichever of them was caught first. Giving it to every killed member
+    /// would put one mutant's words against another and send a reader to the wrong
+    /// assertion - so a member gets it only when the test that produced it is one of its
+    /// own, and nothing otherwise. The tests in `killedBy` are exact either way: no test
+    /// reaches two mutants of a batch, by construction.
+    static func message(of index: UInt32, killedBy: [String], in verdict: Verdict) -> String? {
+        guard !killedBy.isEmpty, let first = verdict.killedBy.first, killedBy.contains(first)
+        else {
+            return nil
+        }
+        return verdict.firstFailure
     }
 
     /// One unit of work: a batch when the coverage allows it, a mutant when it does not.

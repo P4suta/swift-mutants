@@ -199,3 +199,8 @@ enum Narration {
         return "\(tenths / 10).\(abs(tenths % 10))"
     }
 }
+
+extension Duration {
+    /// Whole seconds, for a line somebody reads rather than a number anything computes.
+    var seconds: Int { Int(components.seconds) }
+}

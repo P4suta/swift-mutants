@@ -242,6 +242,7 @@ public struct Run: Sendable {
         // What did not move does not have to be asked again.
         let observable = Array(Set(catalogue.files.values))
         let memory = recalled(observable, listing)
+            .reader(observable: observable, digests: listing.digests)
         let byIdentity = Dictionary(
             catalogue.identities.map { ($0.value.digest, $0.key) },
             uniquingKeysWith: { first, _ in first })
@@ -249,10 +250,7 @@ public struct Run: Sendable {
         var remembered: [String: Set<UInt32>] = [:]
         var toAsk: [String] = []
         for test in tests {
-            guard
-                let reach = memory.reach(
-                    of: test, observable: observable, digests: listing.digests)
-            else {
+            guard let reach = memory.reach(of: test) else {
                 toAsk.append(test)
                 continue
             }

@@ -186,3 +186,49 @@ struct ProbeMemoryStorageTests {
                 != ProbeMemory.location(for: URL(filePath: "/work/beta")))
     }
 }
+
+/// Answering many tests without re-deriving the same thing for each one.
+///
+/// What a memory checks before it answers is the same for every test in a run: the package
+/// has the same shape and the same files it cannot see into. Working that out once per test
+/// is `Θ(tests × files log files)` - unnoticeable here and not on a package with thousands
+/// of each.
+@Suite("Answering many tests")
+struct ProbeReaderTests {
+
+    static func reader(_ digests: [WorkspaceRelativePath: Digest]? = nil) -> ProbeMemory.Reader {
+        ProbeMemoryTests.remembered()
+            .reader(
+                observable: [ProbeMemoryTests.one, ProbeMemoryTests.two],
+                digests: digests ?? ProbeMemoryTests.digests()
+            )
+    }
+
+    @Test("gives the same answers as asking one at a time")
+    func agreesWithTheSlowWay() {
+        let reader = Self.reader()
+        #expect(reader.reach(of: "t") == [Digest.of("m1")])
+        #expect(reader.reach(of: "u") == [Digest.of("m2")])
+        #expect(reader.reach(of: "v") == nil)
+    }
+
+    @Test("throws an answer away when a file the test runs changed")
+    func relatedChangesLoseIt() {
+        let reader = Self.reader(ProbeMemoryTests.digests([ProbeMemoryTests.one: "A, edited"]))
+        #expect(reader.reach(of: "t") == nil)
+        #expect(reader.reach(of: "u") == [Digest.of("m2")])
+    }
+
+    /// A package that changed shape, or changed anywhere nothing can see into, answers
+    /// nothing at all - and answers it without looking at a single test.
+    @Test("answers nothing at all when the package itself changed")
+    func wholesaleChangesLoseEverything() {
+        let changed = Self.reader(ProbeMemoryTests.digests([ProbeMemoryTests.bare: "C, edited"]))
+        #expect(changed.reach(of: "t") == nil)
+        #expect(changed.reach(of: "u") == nil)
+
+        var grown = ProbeMemoryTests.digests()
+        grown[ProbeMemoryTests.path("D")] = Digest.of("D")
+        #expect(Self.reader(grown).reach(of: "t") == nil)
+    }
+}

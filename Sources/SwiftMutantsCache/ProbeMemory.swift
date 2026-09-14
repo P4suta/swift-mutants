@@ -45,15 +45,15 @@ public struct ProbeMemory: Codable, Sendable, Hashable {
     ///
     /// Kept so that a package which gained or lost a file with mutants in it is not read
     /// against a memory of a differently-shaped package.
-    private let observable: [String]
+    let observable: [String]
 
     /// A digest of every other file, together.
     ///
     /// One value rather than a list, because any change to any of them invalidates
     /// everything: a test might run one and nobody would see.
-    private let unobservable: String
+    let unobservable: String
 
-    private var byTest: [String: Entry]
+    private(set) var byTest: [String: Entry]
 
     /// Starts a memory of a package whose observable files are `observable`.
     public init(
@@ -117,8 +117,53 @@ public struct ProbeMemory: Codable, Sendable, Hashable {
         return kept
     }
 
+    /// A memory ready to answer about many tests.
+    ///
+    /// What it checks before answering is the same for every test in a run - the package
+    /// has the same shape, and the same files nothing can be seen into - so it is checked
+    /// once here rather than once per test. A run asks this several hundred times.
+    public struct Reader: Sendable {
+
+        private let memory: ProbeMemory
+        private let digests: [WorkspaceRelativePath: Digest]
+
+        /// Whether the package is the one this memory is about at all.
+        private let describesThisPackage: Bool
+
+        init(
+            memory: ProbeMemory,
+            observable: [WorkspaceRelativePath],
+            digests: [WorkspaceRelativePath: Digest]
+        ) {
+            self.memory = memory
+            self.digests = digests
+            self.describesThisPackage =
+                observable.map(\.rendered).sorted() == memory.observable
+                && ProbeMemory.remainder(observable: Set(observable), digests: digests)
+                    == memory.unobservable
+        }
+
+        /// The mutants a test was seen to reach, if what that rests on is unchanged.
+        public func reach(of test: String) -> [Digest]? {
+            guard describesThisPackage, let entry = memory.byTest[test] else { return nil }
+            for (path, digest) in entry.ran {
+                guard let named = WorkspaceRelativePath(path), digests[named] == digest else {
+                    return nil
+                }
+            }
+            return entry.reaching
+        }
+    }
+
+    /// A memory ready to answer about many tests of this package.
+    public func reader(
+        observable: [WorkspaceRelativePath], digests: [WorkspaceRelativePath: Digest]
+    ) -> Reader {
+        Reader(memory: self, observable: observable, digests: digests)
+    }
+
     /// A digest of every file nothing can be observed in, together.
-    private static func remainder(
+    static func remainder(
         observable: Set<WorkspaceRelativePath>, digests: [WorkspaceRelativePath: Digest]
     ) -> String {
         var builder = DigestBuilder().adding("swift-mutants-unobservable-v1")
