@@ -132,6 +132,14 @@ struct NarrationNumberTests {
         )
     }
 
+    /// A run that has nothing left to run says nothing about running. "running 0 mutants"
+    /// is a sentence about work that is not happening, printed directly under the line
+    /// that already explained why.
+    @Test("says nothing about running when there is nothing to run")
+    func nothingToRun() {
+        #expect(Narration.line(for: .running(total: 0, processes: 0)) == nil)
+    }
+
     /// With no coverage there is no saving, and claiming one would be a lie a reader has
     /// no way to catch.
     @Test("claims no saving when there is none")

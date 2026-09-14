@@ -79,10 +79,7 @@ enum Narration {
                 : "measuring only what changed since \(reference): \(files) files"
         case .remembered(let known, let total):
             "\(known) of \(total) were answered by an earlier run and are not run again"
-        case .running(let total, let processes):
-            processes == total
-                ? "running \(total) mutants"
-                : "running \(total) mutants in \(processes) processes"
+        case .running(let total, let processes): running(total, in: processes)
         default: nil
         }
     }
@@ -187,6 +184,18 @@ enum Narration {
     /// no path, and the person reading has a failure in front of them and nowhere to look.
     static func kept(_ workspace: URL) -> String {
         "the copy is kept at \(workspace.path)"
+    }
+
+    /// What a run says as the mutants start.
+    ///
+    /// Nothing at all when there are none to run: "running 0 mutants" is a sentence about
+    /// work that is not happening, printed directly under the line that already explained
+    /// why there is none.
+    static func running(_ total: Int, in processes: Int) -> String? {
+        guard total > 0 else { return nil }
+        return total == processes
+            ? "running \(total) mutants"
+            : "running \(total) mutants in \(processes) processes"
     }
 
     /// A number to one decimal place, without reaching for a variadic C function.

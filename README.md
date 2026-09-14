@@ -12,52 +12,77 @@ your package, then activates one mutant per test process through an environment 
 Your working tree is never modified, and the toolchain builds essentially once instead of
 once per mutant.
 
-## Status: it measures a package; it does not yet report one
+## Status: it measures a package, and reports one
 
 Built from the ground up, gate first, with every phase shipping its own diagnostics in the
-same change that introduces it. `swift-mutants run` works end to end on a real package:
+same change that introduces it. Measuring this repository with itself:
 
 ```console
 $ swift-mutants run
 copying the package
 reading the sources
-instrumenting 5 mutants across 1 files
-asking the compiler which ones it will accept
+building your package as you wrote it, once
+instrumenting 751 mutants across 84 files
+asking the compiler about all 751 mutants at once
+  the compiler refused 24
+  asking again, 727 left
+  the compiler refused 1
+  asking again, 726 left
 proving every mutant is in the tree
 building the tests, once
 running the tests with nothing awake
-running 5 mutants
-
-survived:
-  Sources/Cart/Cart.swift  4b4874975176fe2463e9  and-keep-lhs
-
-4 killed  1 survived  0 rejected  0 timed out  0 errored
-score 80.00%  of covered code 80.00%
+  giving each mutant 93 seconds, from how long that took
+asking each of 666 tests what it reaches
+  nothing reaches 78 of them; the rest face 50.3 tests each, not the whole suite
+running 726 mutants in 203 processes
+  ...
+420 killed  295 survived (78 of them unreached)  25 rejected  11 timed out  0 errored
+score 59.37%  of covered code 66.51%
+swift-mutants explain <id> says everything known about one of them.
 ```
 
-That survivor is `total >= threshold && isMember` with `&& isMember` dropped. It survives
-because no test passes a non-member — a real hole, found by reading nothing.
+## Being quick about it
 
-What works today, proven by tests that compile and run real code:
+A mutation run costs mutants times tests times launches, and each of the three is attacked
+with something you can check rather than believe. Every number below is printed by the run
+that made it, and every one is held by a test that fails when the saving stops happening.
+
+| | Naive | Here | How |
+| --- | --- | --- | --- |
+| Compiles to find what the compiler refuses | one per module layer — **19** on this package | **3** | every module asked at once, against the interfaces a pristine build produced |
+| Test executions | 726 x 666 ≈ **484,000** | **≈ 33,000** | a mutant faces the tests that reach it; 78 are answered with no process at all |
+| Processes started | **726** | **203** | mutants that share no test run in one process, and it stops when every one of them is decided |
+| A second run, unchanged | all of it | **none of it** | an answer is kept while the mutant, this build, and every file its tests were seen to run are unchanged |
+
+That last row is the one worth watching: the same package measured twice, back to back,
+gave the same score, the same survivors in the same order, and the second time it asked no
+test what it reaches and started no process for any mutant. The two runs took 41m51s and
+1m31s.
+
+## What is there
 
 | | |
 | --- | --- |
 | **Pure core** | byte spans, SHA-256, content-addressed mutant identities, catalogue, score, glob, interval forest |
-| **Observability** | always-on trace with a bounded ring, one choke point that records every subprocess, deterministic console renderer, diagnostics bundle |
+| **Observability** | always-on trace with a bounded ring, one choke point that records every subprocess, a diagnostics bundle written when a run fails |
 | **A scripted toolchain** | a `swift` and an `xcodebuild` that hang, print garbage or leave a red baseline on demand, so the unit tier can test what happens when a real one misbehaves |
 | **Configuration** | a TOML reader that refuses an unknown key with the line it was written on |
-| **Snapshot** | a disposable copy that refuses links and special files, and a second digest that notices a test writing into the tree |
+| **Snapshot** | a disposable copy that refuses links and special files, owned by the run that made it and swept when its owner is gone |
 | **Discovery** | comparisons, connectives and their operand prunes, boolean literals, arithmetic, compound assignment and bitwise — with precedence resolved, arid suppression, and comment pragmas |
 | **Instrumentation** | every mutant in one tree behind a runtime guard, the line count unchanged, and an activation proof |
-| **Validation** | one typecheck names every mutant the compiler refuses, in its own words; halving is the fallback, not the mechanism |
-| **Execution** | one build, one process per mutant, the event stream watched live so a mutant costs the time until a test notices rather than the time the suite takes |
+| **Validation** | every module asked at once, from SwiftPM's own plan, lowered rather than merely type-checked; halving is the fallback, not the mechanism |
+| **Coverage** | each test asked once what it reaches, so a mutant faces the handful that can catch it — and a test whose probe did not finish is offered to everything rather than treated as reaching nothing |
+| **Execution** | one build, the event stream watched live, mutants that share no test batched into one process that stops the moment all of them are decided |
+| **Remembering** | an answer kept between runs while everything it rests on is unchanged, including the test files |
+| **Reports** | `run --json`, a stored report, `report latest`, and `explain <id>` for one mutant's whole story |
 
 The instrumented file is known to compile, to behave exactly as the original when nothing
 is activated, to change exactly one thing when one mutant is woken, and to survive `-O`.
 
-What is missing is the report: `run --json`, the Stryker projection, the offline HTML,
-SARIF, coverage-driven test selection, the outcome cache, and the Xcode path. **Nothing is
-published, tagged, or released, and the command tree will change.**
+What is missing is the rest of the reporting and the second build system: the Stryker
+projection, the offline HTML, SARIF, `--shard`, `report merge`,
+trivial-compiler-equivalence, and the Xcode path. **Nothing is published, tagged, or
+released, and the command tree will change.**
 
 ## Trying it
 
@@ -67,7 +92,16 @@ swift build -c release
 .build/release/swift-mutants list          # what would it measure, without measuring
 .build/release/swift-mutants run           # measure it
 .build/release/swift-mutants run -- --skip SlowTests   # your arguments, verbatim
+.build/release/swift-mutants explain <id>  # one survivor's whole story
+.build/release/swift-mutants report latest # the last run, as JSON
 ```
+
+A mutant is answered from an earlier run only while everything that answer rests on is
+unchanged: the mutant itself, this build of swift-mutants, and every file the tests that
+reach it were seen to execute — the test files included. That assumes a test which runs a
+file evaluates a mutant's guard somewhere in it, which holds everywhere except a region
+where every statement was suppressed as arid. `--cache off` is the answer if you need the
+guarantee rather than the speed.
 
 Arguments after `--` go to your tests exactly as written and are never interpreted. They
 are a scope as well as a setting: narrowing the suite narrows what the score is about.
