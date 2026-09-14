@@ -123,27 +123,45 @@ struct RunnerTests {
     /// The stuck process is usually a grandchild: `swift test` starts `xctest`, which starts
     /// the binary under test. Killing only the immediate child leaves the tree running and
     /// the machine slowly filling up with them.
+    ///
+    /// Asked of the process table rather than of a clock. An earlier version gave a
+    /// grandchild a second to write a file and checked three seconds later, so the margin
+    /// had to cover *the deadline* being slow to fire rather than the grandchild being
+    /// fast - and under a loaded machine it did not. Whether a process exists is not a
+    /// question about timing.
     @Test("kills the whole tree, not only the process it started")
     func killsTheWholeTree() async throws {
-        let marker = FileManager.default.temporaryDirectory
-            .appending(path: "swift-mutants-tree-kill-\(UUID().uuidString)")
-        let recorder = TraceRecorder(retaining: 16)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appending(path: "swift-mutants-tree-kill-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
 
-        // The grandchild outlives its parent on purpose, and writes only if it survives.
-        let outcome = await Runner(recorder: recorder).run(
+        // The grandchild outlives its parent on purpose, and says who it is.
+        let outcome = await Runner(recorder: TraceRecorder(retaining: 16)).run(
             Self.shell(
-                "( sleep 1; : > '\(marker.path)' ) & sleep 30",
+                """
+                (while true; do sleep 0.2; done) & echo $! > '\(pidFile)'
+                sleep 30
+                """,
                 timeout: .milliseconds(200)
             )
         )
         #expect(outcome.timedOut)
 
-        try await Task.sleep(for: .seconds(3))
-        #expect(
-            !FileManager.default.fileExists(atPath: marker.path),
-            "a grandchild outlived the tree kill and wrote \(marker.path)"
+        let grandchild = try #require(
+            Int32(
+                try String(contentsOfFile: pidFile, encoding: .utf8)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)),
+            "the fixture did not record a grandchild"
         )
-        try? FileManager.default.removeItem(at: marker)
+
+        // A signal takes a moment to be delivered and reaped; existence does not take a
+        // moment to be true. Polling asks the right question and bounds the wrong one.
+        var alive = true
+        for _ in 0..<50 where alive {
+            alive = kill(grandchild, 0) == 0
+            if alive { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        #expect(!alive, "a grandchild outlived the tree kill")
     }
 
     /// Output is retained for diagnosis, but a run that printed a gigabyte should not make
