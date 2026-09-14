@@ -82,6 +82,24 @@ struct RunCommand: AsyncParsableCommand {
         ))
     var keepTemp = false
 
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Whether to reuse answers an earlier run established: auto, on, or off.",
+            discussion: """
+                A mutant is answered from an earlier run only while everything that answer \
+                rests on is unchanged: the mutant itself, this build of swift-mutants, and \
+                every file the tests that reach it were seen to execute - including the \
+                tests themselves.
+
+                That assumes a test which runs a file evaluates a mutant's guard in it, \
+                which holds everywhere except a region where every statement was suppressed \
+                as arid. `off` is the answer if you need the guarantee rather than the \
+                speed; it reads nothing and writes nothing.
+                """
+        ))
+    var cache: CacheMode = .auto
+
     @Flag(
         name: .long,
         help: ArgumentHelp(
@@ -124,6 +142,7 @@ struct RunCommand: AsyncParsableCommand {
 
         var configuration = Configuration()
         configuration.execution.jobs = jobs
+        configuration.cache.mode = cache
         if let timeout { configuration.test.timeout = .seconds(timeout) }
 
         let progress = RunProgress()
