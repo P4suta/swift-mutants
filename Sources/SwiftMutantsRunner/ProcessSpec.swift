@@ -159,4 +159,15 @@ public struct ProcessOutcome: Sendable {
     /// Handed back so that an error travelling up three layers can still say which
     /// recorded command it was about.
     public let traceSequence: Int
+
+    /// What it printed to standard output, as text.
+    ///
+    /// Read as UTF-8 with anything invalid replaced rather than refused: a command's output
+    /// is something to show a person, and a tool that could not report what a failing
+    /// command said because the bytes were not quite text would be a tool reporting nothing
+    /// exactly when there is something to report.
+    public var standardOutputText: String { String(decoding: standardOutput, as: UTF8.self) }
+
+    /// The same for standard error, which is where most tools put the reason.
+    public var standardErrorText: String { String(decoding: standardError, as: UTF8.self) }
 }

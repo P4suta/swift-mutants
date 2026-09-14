@@ -34,6 +34,15 @@ public struct Xctestrun: Sendable {
     /// The document, as a property list.
     private let document: [String: any Sendable]
 
+    /// Where xcodebuild wrote the document this came from.
+    ///
+    /// Kept because a copy has to live beside it. Every path inside a `.xctestrun` is
+    /// written relative to `__TESTROOT__`, which Xcode resolves against the directory the
+    /// document is in - so a copy written anywhere else names a bundle that is not there,
+    /// and `test-without-building` runs no tests and exits zero. A run built on that would
+    /// report every mutant surviving, silently, for an hour. Found exactly that way.
+    private let origin: URL
+
     /// Which format version xcodebuild wrote.
     public let formatVersion: Int
 
@@ -58,11 +67,11 @@ public struct Xctestrun: Sendable {
             throw Unreadable(
                 description: "\(file.lastPathComponent) is not a property list xcodebuild wrote")
         }
-        try self.init(document)
+        try self.init(document, from: file)
     }
 
     /// The same, for a document already in hand.
-    init(_ document: [String: any Sendable]) throws(Unreadable) {
+    init(_ document: [String: any Sendable], from origin: URL) throws(Unreadable) {
         let metadata = document["__xctestrun_metadata__"] as? [String: any Sendable]
         guard let version = metadata?["FormatVersion"] as? Int else {
             throw Unreadable(description: "this .xctestrun does not say which format it is")
@@ -84,6 +93,7 @@ public struct Xctestrun: Sendable {
         }
         self.document = document
         self.formatVersion = version
+        self.origin = origin
     }
 
     /// The environment one test target will be given, if the document has that target.
@@ -116,18 +126,25 @@ public struct Xctestrun: Sendable {
         // The document came from a readable one and gained only strings, so it is still
         // readable. Nothing here can make it otherwise, and a throwing accessor for a case
         // that cannot arise would be a second thing for a caller to get wrong.
-        guard let rebuilt = try? Self(copy) else { return self }
+        guard let rebuilt = try? Self(copy, from: origin) else { return self }
         return rebuilt
     }
 
-    /// Writes this document into `directory`, under `name`, and says where it went.
+    /// Writes this document beside the one it came from, under `name`, and says where.
     ///
-    /// A copy, never over the one xcodebuild wrote: one build serves every mutant, and a
-    /// document edited in place would leave the last mutant's variable set for whatever ran
-    /// next - including the baseline.
+    /// Beside, and nowhere else. Every path inside a `.xctestrun` is written relative to
+    /// `__TESTROOT__`, which Xcode resolves against the directory the document is in - so a
+    /// copy written to a scratch directory names a bundle that is not there, and
+    /// `test-without-building` then runs no tests **and exits zero**. A run built on that
+    /// reports every mutant surviving, silently, for an hour. There is no parameter for the
+    /// directory because there is no right answer other than this one.
+    ///
+    /// A copy, never over the original: one build serves every mutant, and a document
+    /// edited in place would leave the last mutant's variable set for whatever ran next -
+    /// including the baseline.
     @discardableResult
-    public func write(into directory: URL, named name: String) throws -> URL {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    public func write(named name: String) throws -> URL {
+        let directory = origin.deletingLastPathComponent()
         let file = directory.appending(path: "\(name).xctestrun")
         let data = try PropertyListSerialization.data(
             fromPropertyList: document, format: .xml, options: 0)

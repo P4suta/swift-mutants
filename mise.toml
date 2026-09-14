@@ -93,7 +93,13 @@ run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip IntegrationTests --sk
 
 [tasks."test:integration"]
 description = "Drives a real Swift toolchain against the fixture corpus"
-run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS"
+run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip XcodeIntegrationTests"
+
+[tasks."test:toolchain"]
+description = "Drives Xcode itself: schemes, .xctestrun, result bundles"
+# Apart from test:integration because it needs Xcode rather than a Swift toolchain, and
+# because one build-for-testing is slower than the whole integration tier.
+run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --filter XcodeIntegrationTests"
 
 [tasks.dogfood]
 description = "swift-mutants measures swift-mutants"

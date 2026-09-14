@@ -247,6 +247,12 @@ let package = Package(
             name: "SwiftMutantsTestKit",
             swiftSettings: strict
         ),
+        // Needs Xcode itself, and a real project to drive it over. Toolchain tier.
+        .testTarget(
+            name: "XcodeIntegrationTests",
+            dependencies: ["SwiftMutantsRunner", "SwiftMutantsTrace", "SwiftMutantsXcode"],
+            swiftSettings: strict
+        ),
         .testTarget(
             name: "SwiftMutantsXcodeTests",
             dependencies: ["SwiftMutantsTestKit", "SwiftMutantsXcode"],
