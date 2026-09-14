@@ -58,7 +58,7 @@ struct Remembering: Sendable {
             guard let identity = identities[index] else { continue }
             keys[index] =
                 CacheKey(
-                    mutant: identity, dependencies: resting, toolVersion: Version.current
+                    mutant: identity, dependencies: resting, toolVersion: ToolIdentity.current
                 ).digest
         }
         return Self(keys: keys, known: cache)

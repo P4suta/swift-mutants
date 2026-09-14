@@ -7,6 +7,56 @@ import SwiftMutantsExecute
 import SwiftMutantsInstrument
 import SwiftMutantsValidate
 
+/// Where every mutant of a run is, and what it is called.
+///
+/// Gathered once, because three different steps need the same two lookups - which file a
+/// mutant is in, and which identity it has - and each of them walking the validated files
+/// again would be three chances to walk them differently.
+struct MutantCatalogue: Sendable {
+
+    /// Which file each mutant is in.
+    let files: [UInt32: WorkspaceRelativePath]
+
+    /// What each mutant is called.
+    let identities: [UInt32: MutantIdentity]
+
+    /// Records a run's mutants directly, for a caller that has them already.
+    init(files: [UInt32: WorkspaceRelativePath], identities: [UInt32: MutantIdentity]) {
+        self.files = files
+        self.identities = identities
+    }
+
+    /// Reads a run's mutants.
+    init(_ work: Work) {
+        var files: [UInt32: WorkspaceRelativePath] = [:]
+        var identities: [UInt32: MutantIdentity] = [:]
+        for (file, subject) in zip(work.validated.files, work.subjects) {
+            guard let path = WorkspaceRelativePath(subject.name) else { continue }
+            for mutant in file.instrumented.mutants {
+                files[mutant.index] = path
+                identities[mutant.index] = mutant.identity
+            }
+        }
+        self.files = files
+        self.identities = identities
+    }
+}
+
+/// What a run knows about the package before it measures anything.
+///
+/// Two maps that always travel together: where every mutant is and what it is called, and
+/// what every file in the package digests to. Coverage, the probe memory and the outcome
+/// cache all need both, and each of them asking for them separately is each of them a
+/// chance to be given a pair that does not match.
+struct Known: Sendable {
+
+    /// Where every mutant of this run is, and what it is called.
+    let catalogue: MutantCatalogue
+
+    /// What the package held when it was read.
+    let listing: Listing
+}
+
 /// The files a run measures, each with the name the user knows it by.
 ///
 /// The two lists are the same length and are always read together - the instrumented file
@@ -49,11 +99,12 @@ extension Run {
         progress: @Sendable (RunStage) -> Void
     ) async -> (results: [MutantResult], remembered: Int) {
         let validated = work.validated
+        let catalogue = MutantCatalogue(work)
         let coverage = await cover(
             calibration,
+            probing: calibration.baseline.startedTests,
             in: pipes,
-            tests: calibration.baseline.startedTests,
-            indices: validated.files.flatMap { $0.instrumented.mutants.map(\.index) },
+            against: Known(catalogue: catalogue, listing: listing),
             progress: progress
         )
         let known = remembering(work, coverage: coverage, listing: listing)

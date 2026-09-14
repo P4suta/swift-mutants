@@ -10,6 +10,7 @@ import SwiftMutantsExecute
 import SwiftMutantsRunner
 import SwiftMutantsTestKit
 import SwiftMutantsTrace
+import Synchronization
 import Testing
 
 /// Answering a mutant without running it, and being right.
@@ -23,7 +24,9 @@ import Testing
 struct CacheIntegrationTests {
 
     static func run(
-        _ fixture: RunIntegrationTests.Fixture, mode: CacheMode = .auto
+        _ fixture: RunIntegrationTests.Fixture,
+        mode: CacheMode = .auto,
+        progress: @escaping @Sendable (RunStage) -> Void = { _ in }
     ) async throws -> RunOutcome {
         try? FileManager.default.removeItem(at: fixture.workspace)
         try FileManager.default.createDirectory(
@@ -37,7 +40,7 @@ struct CacheIntegrationTests {
             configuration: configuration,
             runner: Runner(recorder: TraceRecorder()),
             workspace: fixture.workspace
-        ).run(environment: RunIntegrationTests.environment())
+        ).run(environment: RunIntegrationTests.environment(), progress: progress)
     }
 
     /// Nothing of the user's is written to, so the answers live in their cache directory -
@@ -187,5 +190,100 @@ struct CacheIntegrationTests {
 
         _ = try await Self.run(fixture, mode: .disabled)
         #expect(OutcomeCache.read(from: OutcomeCache.location(for: fixture.root)).isEmpty)
+    }
+}
+
+/// Not asking a test what it reaches when nothing it reaches has changed.
+///
+/// The probe is one process per test, so on a package of any size it is hundreds of
+/// launches - and what a test runs changes only when the code it runs changes. The danger
+/// is the same as for outcomes and so is the answer: remember what it rests on, and check.
+@Suite("Remembering what a test runs, between runs")
+struct ProbeMemoryIntegrationTests {
+
+    static func forget(_ fixture: RunIntegrationTests.Fixture) {
+        try? FileManager.default.removeItem(at: OutcomeCache.location(for: fixture.root))
+        try? FileManager.default.removeItem(at: ProbeMemory.location(for: fixture.root))
+    }
+
+    /// Two runs, and the second asks nothing - then gives the same answers, which is the
+    /// only thing that makes the first half worth having.
+    @Test("asks nothing the second time, and answers the same", .tags(.integration))
+    func asksNothingTheSecondTime() async throws {
+        let fixture = try RunIntegrationTests.fixture()
+        defer {
+            fixture.cleanUp()
+            Self.forget(fixture)
+        }
+        Self.forget(fixture)
+
+        let first = try await CacheIntegrationTests.run(fixture)
+
+        let seen = Mutex<(known: Int, total: Int)?>(nil)
+        let second = try await CacheIntegrationTests.run(fixture) { stage in
+            if case .recalled(let known, let total) = stage {
+                seen.withLock { $0 = (known, total) }
+            }
+        }
+
+        let found = try #require(
+            seen.withLock { $0 }, "the second run never said what it recalled")
+        #expect(found.known == found.total, "asked \(found.total - found.known) again")
+        #expect(found.total > 0)
+        #expect(
+            CacheIntegrationTests.outcomes(second) == CacheIntegrationTests.outcomes(first))
+    }
+
+    /// The premise: the first run does ask, so the second one saving it is a difference.
+    @Test("asks everything the first time", .tags(.integration))
+    func asksEverythingTheFirstTime() async throws {
+        let fixture = try RunIntegrationTests.fixture()
+        defer {
+            fixture.cleanUp()
+            Self.forget(fixture)
+        }
+        Self.forget(fixture)
+
+        let seen = Mutex<(known: Int, total: Int)?>(nil)
+        _ = try await CacheIntegrationTests.run(fixture) { stage in
+            if case .recalled(let known, let total) = stage {
+                seen.withLock { $0 = (known, total) }
+            }
+        }
+        #expect(seen.withLock { $0 } == nil, "it recalled something on a clean machine")
+    }
+
+    /// And the direction that matters. The code a test runs changed, so what it runs has to
+    /// be established again.
+    @Test("asks again when the code a test runs changed", .tags(.integration))
+    func askingAgainAfterAChange() async throws {
+        let fixture = try RunIntegrationTests.fixture()
+        defer {
+            fixture.cleanUp()
+            Self.forget(fixture)
+        }
+        Self.forget(fixture)
+
+        _ = try await CacheIntegrationTests.run(fixture)
+        try RunIntegrationTests.write(
+            """
+            public func atLeast(_ value: Int, _ limit: Int) -> Bool {
+                return value >= limit
+            }
+
+            public func eitherWay(_ left: Bool, _ right: Bool) -> Bool {
+                return left && right
+            }
+            """ + "\npublic func third(_ value: Int) -> Int { value * 2 }\n",
+            to: fixture.root.appending(path: "Sources/Subject/Subject.swift"))
+
+        let seen = Mutex<(known: Int, total: Int)?>(nil)
+        _ = try await CacheIntegrationTests.run(fixture) { stage in
+            if case .recalled(let known, let total) = stage {
+                seen.withLock { $0 = (known, total) }
+            }
+        }
+        let recalled = seen.withLock { $0 }
+        #expect(recalled == nil, "it recalled \(recalled?.known ?? 0) after the code changed")
     }
 }

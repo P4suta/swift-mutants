@@ -122,6 +122,13 @@ public enum RunStage: Sendable, Hashable {
     /// to know it was bought rather than lost.
     case unmeasured(tests: Int)
 
+    /// How many tests did not have to be asked what they reach, out of how many there are.
+    ///
+    /// The probe is one process per test, so this is the other large saving a warm run
+    /// makes - and, like the first, one a reader deserves to be told about rather than to
+    /// infer from how quickly it went past.
+    case recalled(known: Int, total: Int)
+
     /// The run was narrowed to what changed, and to how many files.
     case scoped(since: String, files: Int)
 

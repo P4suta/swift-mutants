@@ -48,6 +48,7 @@ struct NarrationTests {
             .calibrated(.seconds(1)), .probing(tests: 1),
             .covered(uncovered: 1, averageTests: 1), .scoped(since: "HEAD", files: 1),
             .remembered(known: 1, total: 1), .unmeasured(tests: 1),
+            .recalled(known: 1, total: 1),
             .running(total: 1, processes: 1),
         ]
         for stage in stages {

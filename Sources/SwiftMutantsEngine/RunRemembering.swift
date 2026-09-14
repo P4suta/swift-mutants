@@ -55,18 +55,10 @@ extension Run {
     /// What may be remembered about this run's mutants.
     func remembering(_ work: Work, coverage: Coverage?, listing: Listing) -> Remembering {
         guard configuration.cache.mode != .disabled else { return .nothing }
-        var files: [UInt32: WorkspaceRelativePath] = [:]
-        var identities: [UInt32: MutantIdentity] = [:]
-        for (file, subject) in zip(work.validated.files, work.subjects) {
-            guard let path = WorkspaceRelativePath(subject.name) else { continue }
-            for mutant in file.instrumented.mutants {
-                files[mutant.index] = path
-                identities[mutant.index] = mutant.identity
-            }
-        }
+        let catalogue = MutantCatalogue(work)
         return Remembering.of(
-            files: files,
-            identities: identities,
+            files: catalogue.files,
+            identities: catalogue.identities,
             coverage: coverage,
             digests: listing.digests,
             cache: OutcomeCache.read(from: OutcomeCache.location(for: root))

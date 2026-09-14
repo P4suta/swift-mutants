@@ -229,21 +229,51 @@ public struct Run: Sendable {
     /// hundred tests goes from a quarter of a million test executions to a few thousand.
     func cover(
         _ calibration: Calibration,
+        probing tests: [String],
         in pipes: URL,
-        tests: [String],
-        indices: [UInt32],
+        against known: Known,
         progress: @Sendable (RunStage) -> Void
     ) async -> Coverage? {
+        let (catalogue, listing) = (known.catalogue, known.listing)
+        let indices = Array(catalogue.files.keys)
         guard !tests.isEmpty else { return nil }
         progress(.probing(tests: tests.count))
 
-        let coverage = await Prober(
-            plan: calibration.plan,
-            runner: runner,
-            scratch: pipes,
-            timeout: configuration.test.timeout ?? Self.calibrationBudget,
-            jobs: calibration.jobs
-        ).probe(tests)
+        // What did not move does not have to be asked again.
+        let observable = Array(Set(catalogue.files.values))
+        let memory = recalled(observable, listing)
+        let byIdentity = Dictionary(
+            catalogue.identities.map { ($0.value.digest, $0.key) },
+            uniquingKeysWith: { first, _ in first })
+
+        var remembered: [String: Set<UInt32>] = [:]
+        var toAsk: [String] = []
+        for test in tests {
+            guard
+                let reach = memory.reach(
+                    of: test, observable: observable, digests: listing.digests)
+            else {
+                toAsk.append(test)
+                continue
+            }
+            remembered[test] = Set(reach.compactMap { byIdentity[$0] })
+        }
+        if !remembered.isEmpty {
+            progress(.recalled(known: remembered.count, total: tests.count))
+        }
+
+        let asked =
+            toAsk.isEmpty
+            ? nil
+            : await Prober(
+                plan: calibration.plan,
+                runner: runner,
+                scratch: pipes,
+                timeout: configuration.test.timeout ?? Self.calibrationBudget,
+                jobs: calibration.jobs
+            ).probe(toAsk)
+        let coverage = Self.merged(remembered: remembered, asked: asked, tests: tests)
+        remember(coverage, observable: observable, catalogue: catalogue, listing: listing)
 
         let covered = indices.compactMap { coverage.tests(reaching: $0)?.count }
         let average =

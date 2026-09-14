@@ -69,6 +69,8 @@ enum Narration {
         case .covered(let uncovered, let average):
             "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "
                 + "tests each, not the whole suite"
+        case .recalled(let known, let total):
+            "  \(known) of \(total) had not changed since last time and were not asked again"
         case .unmeasured(let tests):
             "  \(tests) of them did not finish, so every mutant is offered them"
         case .scoped(let reference, let files):
