@@ -38,12 +38,28 @@ struct NarrationSummaryTests {
         #expect(!lines.contains("these ran and nothing noticed:"))
     }
 
-    @Test("names each survivor by file, identity and rule")
+    /// Everything a reader needs to act, on one line: where to open, what changed, and
+    /// the name to type into `explain`. A list of file names and rule names sends somebody
+    /// hunting through a file for the thing this already knows.
+    @Test("says where each survivor is and what it did")
     func namesEachSurvivor() {
         let result = NarrationFixture.result(.survived, tests: [])
-        let line = Narration.describe(result)
-        #expect(line.contains("Sources/Codec/Header.swift"))
+        let line = Narration.describe(result, at: NarrationFixture.positions[result.path])
+        #expect(line.contains("Sources/Codec/Header.swift:2:3"))
         #expect(line.contains(result.identity.shortForm))
+        #expect(line.contains("lt-to-le"))
+        #expect(line.contains("< -> <="))
+    }
+
+    /// A file it has no line index for still gets a usable row. Losing a survivor from the
+    /// list because its position could not be worked out would be losing a finding to a
+    /// formatting detail.
+    @Test("still names a survivor whose line it could not work out")
+    func namesOneWithoutALine() {
+        let result = NarrationFixture.result(.survived, tests: [])
+        let line = Narration.describe(result, at: nil)
+        #expect(line.contains("Sources/Codec/Header.swift"))
+        #expect(!line.contains(":0:0"))
         #expect(line.contains("lt-to-le"))
     }
 
@@ -89,6 +105,11 @@ struct NarrationSummaryTests {
 enum NarrationFixture {
 
     static let path: WorkspaceRelativePath = build("Sources/Codec/Header.swift")
+
+    /// A file whose byte 10 is on line 2, column 3 - the `<` this mutant is about.
+    static let positions: [WorkspaceRelativePath: LineIndex] = [
+        path: LineIndex("let a=1\nab< b\n")
+    ]
 
     static let rule: RuleIdentifier = build("lt-to-le@1")
 
@@ -149,6 +170,8 @@ enum NarrationFixture {
             path: path,
             rule: rule,
             span: span,
+            original: "<",
+            replacement: "<=",
             verdict: verdict(outcome, tests: tests),
             attempts: 1
         )

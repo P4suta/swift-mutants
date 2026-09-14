@@ -85,12 +85,23 @@ enum Narration {
         }
     }
 
-    /// One survivor, in the words a fix needs: where it is, what it is called, what it did.
-    static func describe(_ result: MutantResult) -> String {
-        [
-            "\(result.path)",
+    /// One survivor, in the words a fix needs: where it is, what it did, what to type.
+    ///
+    /// Everything a reader needs to act, on one line. A list of file names and rule names
+    /// sends somebody hunting through a file for the thing this already knows - and the
+    /// identity is there because `explain` takes it.
+    ///
+    /// A file with no line index still gets a usable row, named by the file alone rather
+    /// than by an invented `:0:0` that an editor would take somewhere wrong.
+    static func describe(_ result: MutantResult, at index: LineIndex?) -> String {
+        let place =
+            index?.position(of: result.span.start).map { "\(result.path):\($0)" }
+            ?? "\(result.path)"
+        return [
+            place,
             result.identity.shortForm,
             result.rule.name,
+            "\(result.original) -> \(result.replacement)",
         ].joined(separator: "  ")
     }
 
@@ -108,12 +119,14 @@ enum Narration {
 
         var lines: [String] = []
         if !unreached.isEmpty {
-            lines += ["", "no test reaches these:"] + unreached.map { "  \(describe($0))" }
+            lines +=
+                ["", "no test reaches these:"]
+                + unreached.map { "  \(describe($0, at: outcome.positions[$0.path]))" }
         }
         if !unnoticed.isEmpty {
             lines +=
                 ["", "these ran and nothing noticed:"]
-                + unnoticed.map { "  \(describe($0))" }
+                + unnoticed.map { "  \(describe($0, at: outcome.positions[$0.path]))" }
         }
         lines += [
             "",
