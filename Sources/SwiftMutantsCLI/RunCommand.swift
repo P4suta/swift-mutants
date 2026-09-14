@@ -100,6 +100,22 @@ struct RunCommand: AsyncParsableCommand {
         ))
     var cache: CacheMode = .auto
 
+    @Flag(
+        name: .long,
+        help: ArgumentHelp(
+            "Ask the compiler which survivors could never have been caught.",
+            discussion: """
+                A survivor is either a hole in your tests or a mutant that should never \
+                have been made. `x * 1` and `x` compile to the same instructions, so no \
+                test can tell them apart - and reporting one tells you to go and look for a \
+                hole that is not there, which costs your afternoon rather than a machine's.
+
+                Off by default because it costs one compile of one module per survivor. \
+                What it buys is an answer no amount of test-writing would ever change.
+                """
+        ))
+    var tce = false
+
     @Option(
         name: .long,
         help: ArgumentHelp(
@@ -228,6 +244,7 @@ struct RunCommand: AsyncParsableCommand {
         var configuration = Configuration()
         configuration.execution.jobs = jobs
         configuration.execution.shard = shard
+        configuration.execution.provesEquivalence = tce
         configuration.cache.mode = cache
         if let timeout { configuration.test.timeout = .seconds(timeout) }
         return configuration

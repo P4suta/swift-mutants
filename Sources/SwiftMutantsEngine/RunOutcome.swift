@@ -166,6 +166,13 @@ public enum RunStage: Sendable, Hashable {
     /// Said out loud because a score from one share is a score about that share, and a
     /// reader who was handed the number without the sentence would quote it as the
     /// package's.
+    /// Asking the compiler which of these survivors it turns into the original program.
+    case provingEquivalence(survivors: Int)
+
+    /// What it said: how many could never have been caught, and how many are another
+    /// mutant written twice.
+    case proved(equivalent: Int, duplicates: Int)
+
     case sharded(Shard, mine: Int, total: Int)
 
     case remembered(known: Int, total: Int)

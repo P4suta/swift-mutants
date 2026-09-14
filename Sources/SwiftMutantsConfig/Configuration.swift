@@ -96,6 +96,13 @@ public struct Configuration: Sendable, Hashable {
         /// How many mutants to measure at once. Unset derives one from the machine.
         public var jobs: Int?
 
+        /// Whether to ask the compiler which survivors could never have been caught.
+        ///
+        /// Off by default, because it costs one compile per survivor. On, it removes the
+        /// findings no amount of test-writing would ever change - which is the most
+        /// expensive kind of wrong a mutation report can be.
+        public var provesEquivalence = false
+
         /// Which share of the catalogue this machine takes, when it takes one.
         ///
         /// Unset means all of it. A share is decided from each mutant's identity, so every

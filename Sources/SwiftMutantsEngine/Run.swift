@@ -90,13 +90,10 @@ public struct Run: Sendable {
         let calibration = try await calibrate(plan, in: pipes, progress: progress)
         let baseline = calibration.baseline
         let measured = await ask(
-            Work(
-                validated: validated,
-                subjects: subjects
-            ),
+            Work(validated: validated, subjects: subjects),
             calibration,
+            at: Site(tree: tree, pipes: pipes, plan: built, environment: environment),
             listing: listing,
-            in: pipes,
             progress: progress
         )
 

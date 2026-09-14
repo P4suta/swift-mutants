@@ -69,6 +69,18 @@ enum Narration {
         case .covered(let uncovered, let average):
             "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "
                 + "tests each, not the whole suite"
+        default: proportions(for: stage)
+        }
+    }
+
+    /// The lines that say how much of something there was.
+    static func proportions(for stage: RunStage) -> String? {
+        switch stage {
+        case .provingEquivalence(let survivors):
+            "asking the compiler whether any of \(survivors) survivors could ever be caught"
+        case .proved(let equivalent, let duplicates):
+            "  \(equivalent) compile to the original and can never be caught; "
+                + "\(duplicates) are another mutant again"
         case .sharded(let shard, let mine, let total):
             "this is share \(shard) of the catalogue: \(mine) of \(total) mutants"
         case .recalled(let known, let total):

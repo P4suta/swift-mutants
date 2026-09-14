@@ -281,3 +281,53 @@ extension TypecheckArgumentsTests {
         #expect(asked.suffix(2) == ["-module-cache-path", "/pkg/.build/V"])
     }
 }
+
+extension TypecheckArgumentsTests {
+
+    static func lowering(_ arguments: [String]) -> [String] {
+        BuildManifest.Module(name: "M", arguments: arguments)
+            .loweringArguments(cachingModulesIn: nil)
+    }
+
+    /// Optimised, because the whole question is whether a change makes any difference to
+    /// the program - and at `-Onone` every change makes a difference to the text.
+    @Test("asks for the lowered program, optimised")
+    func lowersOptimised() {
+        let asked = Self.lowering(["/usr/bin/swiftc", "-c"])
+        #expect(asked.contains("-emit-sil"))
+        #expect(asked.contains("-O"))
+    }
+
+    /// The plan's own level has to go rather than be overridden. A debug build carries
+    /// `-Onone`, it arrives after anything put at the front, and the last one wins - so the
+    /// compiler would be asked to optimise and told not to, and every mutant would look
+    /// like a change to the program. Which is exactly what happened.
+    @Test(
+        "removes the optimisation level the plan came with",
+        arguments: ["-Onone", "-Osize", "-Ounchecked"]
+    )
+    func removesTheInheritedLevel(_ level: String) {
+        let asked = Self.lowering(["/usr/bin/swiftc", level, "-c"])
+        #expect(!asked.contains(level))
+        #expect(asked.count { $0.hasPrefix("-O") } == 1)
+        #expect(asked.last == "-O")
+    }
+
+    /// Printed rather than thrown away: the text is the thing being compared.
+    @Test("keeps the answer instead of discarding it")
+    func keepsTheAnswer() {
+        let asked = Self.lowering(["/usr/bin/swiftc", "-c"])
+        #expect(!asked.contains("/dev/null"))
+        #expect(asked.firstIndex(of: "-o").map { asked[$0 + 1] } == "-")
+    }
+
+    /// Everything else the module needs to compile at all comes along unchanged.
+    @Test("keeps what the module needs to be understood")
+    func keepsTheRest() {
+        let asked = Self.lowering([
+            "/usr/bin/swiftc", "-module-name", "Core", "-I", "/pkg/.build/debug/Modules",
+        ])
+        #expect(asked.contains("-module-name"))
+        #expect(asked.contains("/pkg/.build/debug/Modules"))
+    }
+}

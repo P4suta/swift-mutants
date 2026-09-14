@@ -89,7 +89,7 @@ let package = Package(
         .target(
             name: "SwiftMutantsEngine",
             dependencies: [
-                "SwiftMutantsCache",
+                "SwiftMutantsCache", "SwiftMutantsTCE",
                 "SwiftMutantsBuild", "SwiftMutantsConfig", "SwiftMutantsConsole",
                 "SwiftMutantsCore", "SwiftMutantsDiscover", "SwiftMutantsExecute",
                 "SwiftMutantsInstrument", "SwiftMutantsRunner", "SwiftMutantsSnapshot",
@@ -99,6 +99,13 @@ let package = Package(
         ),
 
         // The command tree, and nothing else.
+        // Mutants the compiler itself proves cannot be caught.
+        .target(
+            name: "SwiftMutantsTCE",
+            dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
         // Who owns a temporary directory, and what to do with the ones nobody does.
         .target(
             name: "SwiftMutantsTempOwner",
@@ -310,6 +317,16 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsRunnerTests",
             dependencies: ["SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsTCEIntegrationTests",
+            dependencies: ["SwiftMutantsTCE", "SwiftMutantsTestKit"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsTCETests",
+            dependencies: ["SwiftMutantsTCE", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
         .testTarget(

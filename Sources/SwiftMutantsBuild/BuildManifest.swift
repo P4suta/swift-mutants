@@ -133,6 +133,28 @@ public struct BuildManifest: Sendable, Hashable {
             "-Xcc", "-Xfrontend", "-Xllvm", "-Xclang-linker", "-Xswiftc",
         ]
 
+        /// Arguments that make the compiler lower this module and print the result.
+        ///
+        /// The same question as ``diagnosingArguments(cachingModulesIn:)`` with the answer
+        /// kept: optimised, so that a change which makes no difference to the program makes
+        /// no difference to the text, and printed rather than thrown away, because the text
+        /// is the thing being compared.
+        public func loweringArguments(cachingModulesIn cache: String?) -> [String] {
+            // The plan's own optimisation level has to go, not merely be overridden. A
+            // debug build carries `-Onone`, it arrives after anything inserted at the
+            // front, and the last one wins - so the compiler would be asked to optimise
+            // and told not to, and every mutant would look like a change to the program.
+            diagnosingArguments(cachingModulesIn: cache)
+                .filter { !Self.optimisation.contains($0) }
+                .map { $0 == "/dev/null" ? "-" : $0 }
+                + ["-O"]
+        }
+
+        /// Every spelling of "how hard to optimise".
+        private static let optimisation: Set<String> = [
+            "-Onone", "-O", "-Osize", "-Ounchecked", "-Oplayground",
+        ]
+
         /// Flags that produce a file and take no argument.
         private static let writesAFile: Set<String> = [
             "-c", "-emit-module", "-emit-dependencies", "-emit-objc-header",

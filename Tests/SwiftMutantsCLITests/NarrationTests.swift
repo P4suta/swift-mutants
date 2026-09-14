@@ -20,6 +20,12 @@ import Testing
 @Suite("Narration")
 struct NarrationTests {
 
+    /// One share of three, for the stage that carries one.
+    static var share: Shard {
+        guard let shard = Shard(1, of: 3) else { fatalError("malformed fixture share") }
+        return shard
+    }
+
     @Test("names each phase it passes through")
     func namesEachPhase() {
         #expect(Narration.line(for: .snapshotting) == "copying the package")
@@ -48,7 +54,8 @@ struct NarrationTests {
             .calibrated(.seconds(1)), .probing(tests: 1),
             .covered(uncovered: 1, averageTests: 1), .scoped(since: "HEAD", files: 1),
             .remembered(known: 1, total: 1), .unmeasured(tests: 1),
-            .recalled(known: 1, total: 1),
+            .recalled(known: 1, total: 1), .sharded(Self.share, mine: 1, total: 1),
+            .provingEquivalence(survivors: 1), .proved(equivalent: 1, duplicates: 0),
             .running(total: 1, processes: 1),
         ]
         for stage in stages {

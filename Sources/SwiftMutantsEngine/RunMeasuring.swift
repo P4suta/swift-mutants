@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsBuild
 import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsExecute
 import SwiftMutantsInstrument
+import SwiftMutantsTCE
 import SwiftMutantsValidate
 
 /// Where every mutant of a run is, and what it is called.
@@ -41,6 +43,27 @@ struct MutantCatalogue: Sendable {
         self.files = files
         self.identities = identities
     }
+}
+
+/// Where a run is working, and what it was given to work with.
+///
+/// Four things that always travel together and are never chosen separately: the copy, the
+/// pipes it watches its tests through, the plan SwiftPM made for that copy, and the
+/// environment every child of it gets. A step that took them one at a time would be a step
+/// that could be handed the pipes of one run and the tree of another.
+struct Site: Sendable {
+
+    /// The copy the run happens in.
+    let tree: URL
+
+    /// Where the named pipes it watches its tests through are made.
+    let pipes: URL
+
+    /// The plan SwiftPM made for that copy, if it could be read.
+    let plan: BuildManifest?
+
+    /// What every child of this run is given.
+    let environment: [String: String]
 }
 
 /// What a run knows about the package before it measures anything.
@@ -131,8 +154,8 @@ extension Run {
     func ask(
         _ work: Work,
         _ calibration: Calibration,
+        at site: Site,
         listing: Listing,
-        in pipes: URL,
         progress: @Sendable (RunStage) -> Void
     ) async -> (results: [MutantResult], remembered: Int) {
         let validated = work.validated
@@ -140,7 +163,7 @@ extension Run {
         let coverage = await cover(
             calibration,
             probing: calibration.baseline.startedTests,
-            in: pipes,
+            in: site.pipes,
             against: Known(catalogue: catalogue, listing: listing),
             progress: progress
         )
@@ -153,7 +176,57 @@ extension Run {
             progress: progress
         )
         keep(measured.results, validated, remembering: known)
-        return measured
+
+        guard
+            let proved = await equivalence(
+                among: measured.results, work, at: site, progress: progress)
+        else {
+            return measured
+        }
+        progress(
+            .proved(equivalent: proved.equivalent.count, duplicates: proved.duplicates.count))
+        return (Self.applying(proved, to: measured.results, work), measured.remembered)
+    }
+
+    /// The results again, with what the compiler proved written into them.
+    ///
+    /// A mutant the compiler turned into the original is `equivalent` rather than
+    /// `survived`, which takes it out of the score's denominator: it is not a hole in
+    /// anybody's tests and counting it as one makes every score a little wrong and one
+    /// person's afternoon a lot wrong.
+    ///
+    /// A duplicate stays a survivor. It is a real finding written twice, and the report
+    /// says which one it is the same as rather than hiding it - hiding a finding because
+    /// another one is like it is how a tool loses the one somebody would have acted on.
+    static func applying(
+        _ proved: Equivalence, to results: [MutantResult], _ work: Work
+    ) -> [MutantResult] {
+        var indices: [MutantIdentity: UInt32] = [:]
+        for file in work.validated.files {
+            for mutant in file.instrumented.mutants { indices[mutant.identity] = mutant.index }
+        }
+        return results.map { result in
+            guard let index = indices[result.identity], proved.equivalent.contains(index) else {
+                return result
+            }
+            return MutantResult(
+                identity: result.identity,
+                path: result.path,
+                rule: result.rule,
+                span: result.span,
+                original: result.original,
+                replacement: result.replacement,
+                verdict: Verdict(
+                    outcome: .equivalent,
+                    killedBy: [],
+                    firstFailure: nil,
+                    startedTests: result.verdict.startedTests,
+                    durationMilliseconds: result.verdict.durationMilliseconds,
+                    termination: result.verdict.termination
+                ),
+                attempts: result.attempts
+            )
+        }
     }
 
     func measure(
