@@ -106,7 +106,10 @@ extension RunReportTests {
         }
 
         static func outcome(
-            results: [MutantResult], summary: RunSummary?, scope: RunScope
+            results: [MutantResult],
+            summary: RunSummary? = nil,
+            scope: RunScope = .everything,
+            expectations: Expectations.Verdict = .unasked
         ) -> RunOutcome {
             let derived = counts(
                 killed: results.count { $0.verdict.outcome == .killed },
@@ -124,7 +127,8 @@ extension RunReportTests {
                 filesInstrumented: 1,
                 scope: scope,
                 positions: positions,
-                digests: digests
+                digests: digests,
+                expectations: expectations
             )
         }
     }

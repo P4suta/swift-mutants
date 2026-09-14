@@ -52,6 +52,13 @@ public struct RunOutcome: Sendable {
     /// about a different line of code would be worse than one that showed no code.
     public let digests: [WorkspaceRelativePath: Digest]
 
+    /// What the project's `[[mutation.expect]]` rows amounted to.
+    ///
+    /// Carried rather than folded into the summary, because "three expectations were met"
+    /// and "one of them names a mutant that no longer exists" are different news and only
+    /// the second one is somebody's to fix. The summary counts; this says what to do.
+    public let expectations: Expectations.Verdict
+
     /// Which share of the catalogue this machine took, when it took one.
     ///
     /// Apart from ``scope`` because it is a different kind of narrowing and the two
@@ -71,6 +78,7 @@ public struct RunOutcome: Sendable {
         scope: RunScope,
         positions: [WorkspaceRelativePath: LineIndex] = [:],
         digests: [WorkspaceRelativePath: Digest] = [:],
+        expectations: Expectations.Verdict = .unasked,
         shard: Shard? = nil
     ) {
         self.results = results
@@ -82,6 +90,7 @@ public struct RunOutcome: Sendable {
         self.scope = scope
         self.positions = positions
         self.digests = digests
+        self.expectations = expectations
         self.shard = shard
     }
 }

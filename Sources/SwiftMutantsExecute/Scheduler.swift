@@ -355,8 +355,12 @@ extension RunSummary {
     /// `cached` likewise: an answer taken from a previous run is indistinguishable from a
     /// fresh one in the row it produces, which is the point - and a reader still has to be
     /// able to see how much of a report was measured this afternoon.
+    ///
+    /// `expected` is passed in because it is a fact about the configuration rather than
+    /// about the results: a survivor is expected when somebody wrote it down, and nothing
+    /// in the row distinguishes it from a survivor nobody did.
     public static func of(
-        _ results: [MutantResult], rejected: Int = 0, cached: Int = 0
+        _ results: [MutantResult], rejected: Int = 0, cached: Int = 0, expected: Int = 0
     ) -> RunSummary? {
         var counts: [Outcome: Int] = [:]
         for result in results { counts[result.verdict.outcome, default: 0] += 1 }
@@ -379,7 +383,7 @@ extension RunSummary {
             equivalent: counts[.equivalent] ?? 0,
             uncovered: uncovered,
             cached: cached,
-            expectedSurvivors: 0
+            expectedSurvivors: expected
         )
     }
 }

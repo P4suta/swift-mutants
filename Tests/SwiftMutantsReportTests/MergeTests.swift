@@ -150,3 +150,81 @@ struct MergeTests {
         #expect(Merge.of([one, other]) == nil)
     }
 }
+
+/// Putting back together what each share said about the project's expectations.
+///
+/// Every share sees the whole catalogue - another machine's mutants come back as `not-run`
+/// rows - so staleness is the same finding in all of them and has to be said once. Which
+/// expectation was *met* or *contradicted* is only knowable by the share that measured it,
+/// so those are disjoint and add up.
+@Suite("Merging expectations")
+struct MergeExpectationTests {
+
+    static func row(_ name: String, disagreement: String? = nil) -> RunReport.ExpectationRow {
+        RunReport.ExpectationRow(
+            identity: String(repeating: name, count: 64),
+            reason: "unreachable",
+            disagreement: disagreement
+        )
+    }
+
+    /// One verdict, spelled once. Every test here is about one of its fields, and naming
+    /// the other four at each call site would bury which one it is about.
+    static func expectations(
+        met: Int = 0,
+        contradicted: [RunReport.ExpectationRow] = [],
+        stale: [RunReport.ExpectationRow] = [],
+        superseded: [RunReport.ExpectationRow] = []
+    ) -> RunReport.Expectations {
+        RunReport.Expectations(
+            met: met,
+            contradicted: contradicted,
+            stale: stale,
+            superseded: superseded,
+            isSatisfied: contradicted.isEmpty && stale.isEmpty
+        )
+    }
+
+    static func share(_ expectations: RunReport.Expectations) -> RunReport {
+        RunReportTests.report(results: []).replacing(
+            mutants: [], tests: [], shard: "1/2", expectations: expectations)
+    }
+
+    @Test("adds up what each share met")
+    func addsUpMet() throws {
+        let merged = try #require(
+            Merge.of([
+                Self.share(Self.expectations(met: 2)),
+                Self.share(Self.expectations(met: 3)),
+            ]))
+        #expect(merged.expectations.met == 5)
+        #expect(merged.expectations.isSatisfied)
+    }
+
+    /// Said once, not twice. Every share saw the same absence, and a reader counting rows
+    /// would otherwise be told five machines found five problems.
+    @Test("says a stale expectation once however many shares saw it")
+    func staleSaidOnce() throws {
+        let stale = Self.expectations(stale: [Self.row("a")])
+        let merged = try #require(Merge.of([Self.share(stale), Self.share(stale)]))
+        #expect(merged.expectations.stale.count == 1)
+        #expect(!merged.expectations.isSatisfied)
+    }
+
+    /// A contradiction one machine found is a contradiction of the whole run. A merge that
+    /// let a satisfied share overwrite it would turn five machines into a way to lose a
+    /// finding.
+    @Test("keeps a contradiction only one share found")
+    func keepsOneShareContradiction() throws {
+        let merged = try #require(
+            Merge.of([
+                Self.share(Self.expectations(met: 1)),
+                Self.share(
+                    Self.expectations(
+                        contradicted: [Self.row("b", disagreement: "this was caught")])),
+            ]))
+        #expect(merged.expectations.contradicted.count == 1)
+        #expect(merged.expectations.contradicted.first?.disagreement.value == "this was caught")
+        #expect(!merged.expectations.isSatisfied)
+    }
+}

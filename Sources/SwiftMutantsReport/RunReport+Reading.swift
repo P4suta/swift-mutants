@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 public import Foundation
+import SwiftMutantsConfig
 public import SwiftMutantsCore
 public import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -21,7 +22,7 @@ extension RunReport {
         version: String = Version.current
     ) {
         let positions = override ?? outcome.positions
-        self.schemaVersion = 1
+        self.schemaVersion = 2
         self.tool = Tool(name: "swift-mutants", version: version)
         self.scope = Scope(of: outcome.scope, shard: outcome.shard?.description)
         self.summary = Summary(of: outcome.summary)
@@ -70,6 +71,7 @@ extension RunReport {
                 }
             )
         }
+        self.expectations = Expectations(of: outcome.expectations)
     }
 
     /// Every test any mutant started, written once, with where each one is.
@@ -138,6 +140,30 @@ extension RunReport.Summary {
             expectedSurvivors: summary.expectedSurvivors,
             score: .init(summary.score.value),
             scoreOfCoveredCode: .init(summary.score.ofCoveredCode)
+        )
+    }
+}
+
+extension RunReport.Expectations {
+    init(of verdict: SwiftMutantsEngine.Expectations.Verdict) {
+        self.init(
+            met: verdict.met,
+            contradicted: verdict.contradicted.map {
+                RunReport.ExpectationRow(
+                    identity: $0.expectation.identity,
+                    reason: $0.expectation.reason,
+                    disagreement: $0.reason
+                )
+            },
+            stale: verdict.stale.map {
+                RunReport.ExpectationRow(
+                    identity: $0.identity, reason: $0.reason, disagreement: nil)
+            },
+            superseded: verdict.superseded.map {
+                RunReport.ExpectationRow(
+                    identity: $0.identity, reason: $0.reason, disagreement: nil)
+            },
+            isSatisfied: verdict.isSatisfied
         )
     }
 }

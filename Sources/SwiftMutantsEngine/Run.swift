@@ -97,14 +97,8 @@ public struct Run: Sendable {
             progress: progress
         )
 
-        let tally = RunSummary.of(
-            measured.results,
-            rejected: validated.rejected.count,
-            cached: measured.remembered
-        )
-        guard let summary = tally else {
-            throw RunError("the counts did not add up, which is a defect in swift-mutants")
-        }
+        let (summary, expectations) = try account(
+            measured, rejecting: validated.rejected.count, about: scope)
         return RunOutcome(
             results: measured.results,
             rejected: validated.rejected,
@@ -115,6 +109,7 @@ public struct Run: Sendable {
             scope: scope,
             positions: listing.positions,
             digests: listing.digests,
+            expectations: expectations,
             shard: configuration.execution.shard
         )
     }

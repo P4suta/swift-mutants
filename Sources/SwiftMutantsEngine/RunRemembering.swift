@@ -55,13 +55,12 @@ extension Run {
     /// What may be remembered about this run's mutants.
     func remembering(_ work: Work, coverage: Coverage?, listing: Listing) -> Remembering {
         guard configuration.cache.mode != .disabled else { return .nothing }
-        let catalogue = MutantCatalogue(work)
         return Remembering.of(
-            files: catalogue.files,
-            identities: catalogue.identities,
+            MutantCatalogue(work),
             coverage: coverage,
             digests: listing.digests,
-            cache: OutcomeCache.read(from: OutcomeCache.location(for: root))
+            cache: OutcomeCache.read(from: OutcomeCache.location(for: root)),
+            expecting: Set(configuration.mutation.expect.map(\.identity))
         )
     }
 

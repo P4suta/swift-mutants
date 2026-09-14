@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -31,10 +32,14 @@ struct RunReportTests {
         )
     }
 
+    /// Two rather than one since the report began carrying what a project's expectations
+    /// amounted to. A reader of the older shape would find a key it does not know about,
+    /// and one written by the older tool is missing a key this one requires - so the number
+    /// moves rather than the field being made optional and quietly absent.
     @Test("says which shape it is")
     func saysItsShape() {
         let report = Self.report()
-        #expect(report.schemaVersion == 1)
+        #expect(report.schemaVersion == 2)
         #expect(report.tool.name == "swift-mutants")
         #expect(report.tool.version == Version.current)
     }
@@ -248,5 +253,112 @@ struct ReportDeterminismTests {
         let text = String(
             decoding: try RunReport.encoded(RunReportTests.report()), as: UTF8.self)
         #expect(text.contains("\n"))
+    }
+}
+
+/// What a report says about the survivors a project wrote down.
+///
+/// In the report and not only on stdout, because the report is what a build reads. A CI job
+/// that had to parse a summary line to find out which expectation went wrong would be a job
+/// that breaks the next time a sentence is reworded.
+@Suite("Expectations in a report")
+struct ReportExpectationTests {
+
+    static let identity = String(repeating: "a", count: 64)
+
+    static func expectation(_ reason: String = "unreachable") -> Configuration.Expectation {
+        Configuration.Expectation(identity: Self.identity, reason: reason)
+    }
+
+    /// One verdict, spelled once. Every test here is about one of its four fields, and
+    /// naming the other three at each call site would bury which one it is about.
+    static func verdict(
+        met: Int = 0,
+        contradicted: [Expectations.Contradiction] = [],
+        stale: [Configuration.Expectation] = [],
+        superseded: [Configuration.Expectation] = []
+    ) -> Expectations.Verdict {
+        Expectations.Verdict(
+            met: met, contradicted: contradicted, stale: stale, superseded: superseded)
+    }
+
+    static func report(_ verdict: Expectations.Verdict) -> RunReport {
+        RunReport(of: RunReportTests.Fixture.outcome(results: [], expectations: verdict))
+    }
+
+    @Test("carries how many were met")
+    func carriesMet() {
+        let report = Self.report(Self.verdict(met: 2))
+        #expect(report.expectations.met == 2)
+        #expect(report.expectations.contradicted.isEmpty)
+    }
+
+    /// The identity and the reason both, because the fix is an edit to that exact line of
+    /// their configuration and the reason is how they recognise it.
+    @Test("names each expectation the run disagreed with")
+    func carriesContradictions() throws {
+        let report = Self.report(
+            Self.verdict(
+                contradicted: [
+                    Expectations.Contradiction(
+                        expectation: Self.expectation("guarded by the caller"),
+                        reason: "this was caught"
+                    )
+                ]
+            )
+        )
+        let row = try #require(report.expectations.contradicted.first)
+        #expect(row.identity == Self.identity)
+        #expect(row.reason == "guarded by the caller")
+        #expect(row.disagreement.value == "this was caught")
+    }
+
+    @Test("names each expectation whose mutant is gone")
+    func carriesStale() throws {
+        let report = Self.report(Self.verdict(stale: [Self.expectation("was unreachable")]))
+        let row = try #require(report.expectations.stale.first)
+        #expect(row.identity == Self.identity)
+        #expect(row.reason == "was unreachable")
+    }
+
+    @Test("says whether anything in the configuration is wrong")
+    func carriesSatisfaction() {
+        #expect(
+            Self.report(
+                Expectations.Verdict(met: 1, contradicted: [], stale: [], superseded: [])
+            )
+            .expectations.isSatisfied)
+        #expect(
+            !Self.report(
+                Expectations.Verdict(
+                    met: 0, contradicted: [], stale: [Self.expectation()], superseded: [])
+            )
+            .expectations.isSatisfied)
+    }
+
+    /// Every key every time, zeroes included - the report's first rule. A block that
+    /// vanished when a project had no expectations would leave a reader unable to tell
+    /// "none" from "this version does not say".
+    @Test("says so even when the project expected nothing")
+    func presentWhenEmpty() throws {
+        let encoded = try RunReport.encoded(Self.report(.unasked))
+        let document = try #require(
+            try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let block = try #require(document["expectations"] as? [String: Any])
+        #expect(block["met"] as? Int == 0)
+        #expect((block["contradicted"] as? [Any])?.isEmpty == true)
+    }
+
+    /// A report from a version that did not carry them is not a report with none.
+    @Test("refuses a document that does not say")
+    func refusesADocumentWithout() throws {
+        let encoded = try RunReport.encoded(Self.report(.unasked))
+        var document = try #require(
+            try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        document.removeValue(forKey: "expectations")
+        let without = try JSONSerialization.data(withJSONObject: document)
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(RunReport.self, from: without)
+        }
     }
 }

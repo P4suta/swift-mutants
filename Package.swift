@@ -125,8 +125,8 @@ let package = Package(
         .target(
             name: "SwiftMutantsReport",
             dependencies: [
-                "SwiftMutantsCore", "SwiftMutantsEngine", "SwiftMutantsExecute",
-                "SwiftMutantsValidate",
+                "SwiftMutantsConfig", "SwiftMutantsCore", "SwiftMutantsEngine",
+                "SwiftMutantsExecute", "SwiftMutantsValidate",
             ],
             swiftSettings: strict
         ),

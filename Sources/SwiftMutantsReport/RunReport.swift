@@ -62,6 +62,13 @@ public struct RunReport: Codable, Sendable, Hashable {
     /// What the compiler refused, in its own words.
     public let rejected: [Refusal]
 
+    /// What the project's `[[mutation.expect]]` rows amounted to.
+    ///
+    /// Here rather than only on stdout, because the report is what a build reads. A job
+    /// that had to parse a summary line to learn which expectation went wrong is a job that
+    /// breaks the next time a sentence is reworded.
+    public let expectations: Expectations
+
     /// Records a report directly, for a caller that has the pieces already.
     public init(
         schemaVersion: Int,
@@ -74,7 +81,8 @@ public struct RunReport: Codable, Sendable, Hashable {
         files: [String: String],
         tests: [String],
         mutants: [Mutant],
-        rejected: [Refusal]
+        rejected: [Refusal],
+        expectations: Expectations
     ) {
         self.schemaVersion = schemaVersion
         self.tool = tool
@@ -87,6 +95,7 @@ public struct RunReport: Codable, Sendable, Hashable {
         self.tests = tests
         self.mutants = mutants
         self.rejected = rejected
+        self.expectations = expectations
     }
 
     /// Which build made a report.

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -153,7 +154,51 @@ enum Narration {
             "score \(summary.score.rendered)"
                 + "  of covered code \(summary.score.renderedForCoveredCode)",
         ]
+        return lines + expectations(outcome.expectations)
+    }
+
+    /// What a project's `[[mutation.expect]]` rows amounted to.
+    ///
+    /// Three different sentences, because they are three different pieces of news and only
+    /// two of them are somebody's to fix. A single count - "3 expectations" - would hide
+    /// the two that mean the configuration has become untrue, and those are the whole
+    /// reason an expectation is not a skip list.
+    ///
+    /// Nothing at all when nothing was expected: a tool that printed "0 expectations" on
+    /// every run would be teaching people to skip the line that matters on the run where
+    /// it is not zero.
+    static func expectations(_ verdict: Expectations.Verdict) -> [String] {
+        guard !verdict.isEmpty else { return [] }
+        var lines: [String] = [""]
+        if verdict.met > 0 {
+            let noun = verdict.met == 1 ? "expected survivor" : "expected survivors"
+            lines.append("\(verdict.met) \(noun) did survive, as written down")
+        }
+        if !verdict.contradicted.isEmpty {
+            lines += ["these were expected to survive, and did not:"]
+            lines += verdict.contradicted.map {
+                "  \(short($0.expectation.identity))  \($0.reason)"
+            }
+        }
+        if !verdict.stale.isEmpty {
+            lines += ["these are expected, and are no longer in the catalogue:"]
+            lines += verdict.stale.map {
+                "  \(short($0.identity))  \"\($0.reason)\" - the code moved, or the rule did"
+            }
+        }
+        if !verdict.superseded.isEmpty {
+            lines += ["these were proved equivalent, so the expectation can go:"]
+            lines += verdict.superseded.map { "  \(short($0.identity))  \"\($0.reason)\"" }
+        }
         return lines
+    }
+
+    /// As much of an identity as a person types, and no more.
+    ///
+    /// The configuration holds all sixty-four characters, because that is what a stable
+    /// name is. A line somebody reads holds the twenty they would type.
+    private static func short(_ identity: String) -> String {
+        String(identity.prefix(Digest.shortFormLength))
     }
 
     /// Where a document a run was asked for went.

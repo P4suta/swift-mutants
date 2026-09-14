@@ -32,20 +32,25 @@ struct Remembering: Sendable {
     /// Works out what may be remembered about each mutant of this run.
     ///
     /// - Parameters:
-    ///   - files: which file each mutant is in.
-    ///   - identities: each mutant's identity.
+    ///   - catalogue: which file each mutant is in, and what each one is called.
     ///   - coverage: what the probe found, or nothing if there was no probe - in which case
     ///     nothing is remembered, because a dependency set nobody observed is not one.
     ///   - digests: a digest of every file the package has.
     ///   - cache: what previous runs wrote down.
+    ///   - expected: identities a `[[mutation.expect]]` row asked to be checked, which get
+    ///     no key at all - so nothing is looked up for them and nothing is written down
+    ///     about them. An expectation answered from last week's cache is a claim nobody
+    ///     tested, which is the one thing an expectation must not be.
     /// - Returns: what may be remembered about this run's mutants.
     static func of(
-        files: [UInt32: WorkspaceRelativePath],
-        identities: [UInt32: MutantIdentity],
+        _ catalogue: MutantCatalogue,
         coverage: Coverage?,
         digests: [WorkspaceRelativePath: Digest],
-        cache: OutcomeCache
+        cache: OutcomeCache,
+        expecting expected: Set<String>
     ) -> Self {
+        let files = catalogue.files
+        let identities = catalogue.identities
         guard let coverage else { return .nothing }
         let dependencies = Dependencies.map(
             reach: coverage.reach,
@@ -56,6 +61,7 @@ struct Remembering: Sendable {
         var keys: [UInt32: Digest] = [:]
         for (index, resting) in dependencies {
             guard let identity = identities[index] else { continue }
+            guard !expected.contains(identity.rendered) else { continue }
             keys[index] =
                 CacheKey(
                     mutant: identity, dependencies: resting, toolVersion: ToolIdentity.current
@@ -63,6 +69,9 @@ struct Remembering: Sendable {
         }
         return Self(keys: keys, known: cache)
     }
+
+    /// The key one mutant's answer is filed under, when it has one.
+    func key(for index: UInt32) -> Digest? { keys[index] }
 
     /// The answer to this mutant that needs no process, if there is one.
     func answer(for index: UInt32) -> CachedAnswer? {

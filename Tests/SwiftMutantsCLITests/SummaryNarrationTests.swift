@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -178,7 +179,11 @@ enum NarrationFixture {
     }
 
     /// A finished run whose counts follow from its results, unless given otherwise.
-    static func outcome(results: [MutantResult], summary: RunSummary? = nil) -> RunOutcome {
+    static func outcome(
+        results: [MutantResult],
+        summary: RunSummary? = nil,
+        expectations: Expectations.Verdict = .unasked
+    ) -> RunOutcome {
         let derived = counts(
             killed: results.count { $0.verdict.outcome == .killed },
             survived: results.count { $0.verdict.outcome == .survived },
@@ -193,7 +198,8 @@ enum NarrationFixture {
             baseline: verdict(.survived, tests: []),
             contendedBaseline: verdict(.survived, tests: []),
             filesInstrumented: 1,
-            scope: .everything
+            scope: .everything,
+            expectations: expectations
         )
     }
 
@@ -237,5 +243,91 @@ extension NarrationNumberTests {
             Narration.line(for: .remembered(known: 612, total: 671))
                 == "612 of 671 were answered by an earlier run and are not run again"
         )
+    }
+}
+
+/// How a run reports on what a project wrote down about it.
+///
+/// The three cases are three different sentences, and only two of them are somebody's to
+/// fix. Printing one number for all three - "3 expectations" - would hide the two that
+/// mean the configuration has become untrue.
+@Suite("Narrating expectations")
+struct ExpectationNarrationTests {
+
+    static func expectation(
+        _ reason: String
+    ) -> Configuration.Expectation {
+        Configuration.Expectation(identity: String(repeating: "a", count: 64), reason: reason)
+    }
+
+    /// One verdict, spelled once. Every test here is about one of its four fields, and
+    /// naming the other three at each call site would bury which one it is about.
+    static func verdict(
+        met: Int = 0,
+        contradicted: [Expectations.Contradiction] = [],
+        stale: [Configuration.Expectation] = [],
+        superseded: [Configuration.Expectation] = []
+    ) -> Expectations.Verdict {
+        Expectations.Verdict(
+            met: met, contradicted: contradicted, stale: stale, superseded: superseded)
+    }
+
+    static func lines(_ verdict: Expectations.Verdict) -> [String] {
+        Narration.summary(of: NarrationFixture.outcome(results: [], expectations: verdict))
+    }
+
+    /// A configuration with nothing in it gets no line at all. A tool that printed
+    /// "0 expectations" every run would be teaching people to skip the line that matters.
+    @Test("says nothing when nothing was expected")
+    func silentWithoutExpectations() {
+        #expect(!Self.lines(.unasked).contains { $0.contains("expect") })
+    }
+
+    @Test("says how many were met")
+    func saysHowManyWereMet() {
+        let lines = Self.lines(Self.verdict(met: 2))
+        #expect(lines.contains { $0 == "2 expected survivors did survive, as written down" })
+    }
+
+    @Test("says it in the singular when there is one")
+    func singular() {
+        let lines = Self.lines(Self.verdict(met: 1))
+        #expect(lines.contains { $0 == "1 expected survivor did survive, as written down" })
+    }
+
+    /// Named, not counted. The fix is an edit to one line of their configuration, and they
+    /// can only make it if they are told which line.
+    @Test("names each expectation the run disagreed with")
+    func namesContradictions() {
+        let lines = Self.lines(
+            Self.verdict(
+                contradicted: [
+                    Expectations.Contradiction(
+                        expectation: Self.expectation("guarded by the caller"),
+                        reason: "this was caught"
+                    )
+                ]
+            )
+        )
+        #expect(lines.contains { $0.contains("expected to survive, and did not:") })
+        #expect(lines.contains { $0.contains(String(repeating: "a", count: 20)) })
+        #expect(lines.contains { $0.contains("this was caught") })
+    }
+
+    @Test("names each expectation whose mutant is gone")
+    func namesStale() {
+        let lines = Self.lines(Self.verdict(stale: [Self.expectation("was unreachable")]))
+        #expect(lines.contains { $0.contains("no longer in the catalogue") })
+        #expect(lines.contains { $0.contains("was unreachable") })
+    }
+
+    /// News rather than a mistake, so it is said in a different sentence from the two that
+    /// fail the run - somebody can delete the note, and nothing is broken until they do.
+    @Test("says which expectations are no longer needed")
+    func namesSuperseded() {
+        let lines = Self.lines(
+            Self.verdict(superseded: [Self.expectation("cannot be observed")]))
+        #expect(lines.contains { $0.contains("proved equivalent") })
+        #expect(!lines.contains { $0.contains("expected to survive, and did not:") })
     }
 }

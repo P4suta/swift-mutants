@@ -218,25 +218,34 @@ struct RunCommand: AsyncParsableCommand {
             throw error
         }
 
+        try publish(outcome, at: root)
+        if let code = Gate.exitCode(
+            survivors: Gate.survivors(of: outcome.summary),
+            expectations: outcome.expectations,
+            strict: strict
+        ) {
+            throw ExitCode(code)
+        }
+    }
+
+    /// Writes the run down, and says what it found.
+    ///
+    /// The report is kept before anything is printed, so a run whose output somebody
+    /// scrolled past is still a run `explain` can answer about. Failing to keep it is a
+    /// warning rather than a failure: the run answered the question it was asked.
+    private func publish(_ outcome: RunOutcome, at root: URL) throws {
         let account = RunReport(of: outcome)
-        // Kept before it is printed, so that a run whose output somebody scrolled past is
-        // still a run `explain` can answer about. Failing to keep it is a warning rather
-        // than a failure: the run answered the question it was asked.
         try? ReportStore.write(account, to: ReportStore.location(for: root))
         let published = (try? Publishing.write(account, formats: Set(report), into: root)) ?? []
 
         if json {
             print(String(decoding: try RunReport.encoded(account), as: UTF8.self))
-        } else {
-            Self.summarise(outcome)
-            for file in published { print(Narration.published(file, relativeTo: root)) }
-            print(Narration.explainable(outcome.summary.survived))
-            Self.annotate(account, in: Ambient.environment)
+            return
         }
-        // Exit 1 is reserved for a policy somebody asked for. A run that completed and
-        // found survivors has not failed - it has answered - and a tool that exited
-        // non-zero for answering would be a tool people stop running.
-        if strict, outcome.summary.survived > 0 { throw ExitCode(1) }
+        Self.summarise(outcome)
+        for file in published { print(Narration.published(file, relativeTo: root)) }
+        print(Narration.explainable(outcome.summary.survived))
+        Self.annotate(account, in: Ambient.environment)
     }
 
     /// What the flags on this invocation amount to.

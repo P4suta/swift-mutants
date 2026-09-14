@@ -53,7 +53,33 @@ public enum Merge {
             mutants: mutants,
             tests: names,
             shard: nil,
-            summary: Self.counted(mutants, rejected: first.summary.rejected)
+            summary: Self.counted(mutants, rejected: first.summary.rejected),
+            expectations: Self.combined(shares.map(\.expectations))
+        )
+    }
+
+    /// What every share together said about the project's expectations.
+    ///
+    /// Every share sees the whole catalogue - another machine's mutants come back as
+    /// `not-run` rows - so staleness is the same finding in all of them and is said once.
+    /// Which expectation was met or contradicted is only knowable by the share that
+    /// measured it, so those are disjoint and add up.
+    ///
+    /// A contradiction one machine found is a contradiction of the whole run. Merging by
+    /// letting a satisfied share win would turn five machines into a way to lose a finding.
+    static func combined(_ shares: [RunReport.Expectations]) -> RunReport.Expectations {
+        func once(_ rows: [RunReport.ExpectationRow]) -> [RunReport.ExpectationRow] {
+            var seen: Set<String> = []
+            return rows.filter { seen.insert($0.identity).inserted }
+        }
+        let contradicted = once(shares.flatMap(\.contradicted))
+        let stale = once(shares.flatMap(\.stale))
+        return RunReport.Expectations(
+            met: shares.reduce(0) { $0 + $1.met },
+            contradicted: contradicted,
+            stale: stale,
+            superseded: once(shares.flatMap(\.superseded)),
+            isSatisfied: contradicted.isEmpty && stale.isEmpty
         )
     }
 
@@ -126,7 +152,8 @@ extension RunReport {
         tests: [String],
         shard: String?,
         summary: Summary? = nil,
-        files: [String: String]? = nil
+        files: [String: String]? = nil,
+        expectations: Expectations? = nil
     ) -> Self {
         Self(
             schemaVersion: schemaVersion,
@@ -140,7 +167,8 @@ extension RunReport {
             files: files ?? self.files,
             tests: tests,
             mutants: mutants,
-            rejected: rejected
+            rejected: rejected,
+            expectations: expectations ?? self.expectations
         )
     }
 }
