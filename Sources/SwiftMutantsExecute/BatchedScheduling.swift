@@ -62,7 +62,7 @@ extension Scheduler {
         for unit: Unit, in path: WorkspaceRelativePath, worker: Int
     ) async -> [MutantResult] {
         switch unit {
-        case .alone(let mutant):
+        case .alone(let mutant), .unreached(let mutant):
             return [await result(of: mutant, in: path, worker: worker)]
         case .together(let batch):
             if let shared = await results(of: batch, in: path, worker: worker) { return shared }
@@ -78,15 +78,26 @@ extension Scheduler {
     }
 
     /// What a worker is handed.
+    ///
+    /// Three kinds rather than two, so that the count of processes a run will take is the
+    /// count of processes it starts. A mutant nothing reaches is answered without starting
+    /// anything, and calling it a unit of work would make the saving invisible in exactly
+    /// the number that was supposed to show it.
     enum Unit: Sendable {
         case alone(InstrumentedMutant)
         case together(Batch)
+        case unreached(InstrumentedMutant)
 
         var mutants: [InstrumentedMutant] {
             switch self {
-            case .alone(let mutant): [mutant]
+            case .alone(let mutant), .unreached(let mutant): [mutant]
             case .together(let batch): batch.mutants
             }
+        }
+
+        /// Whether answering it costs a process.
+        var startsSomething: Bool {
+            if case .unreached = self { false } else { true }
         }
     }
 
@@ -99,7 +110,10 @@ extension Scheduler {
 
         let batched = Batch.group(mutants, using: coverage)
         let inBatches = Set(batched.flatMap { $0.mutants.map(\.index) })
-        return mutants.filter { !inBatches.contains($0.index) }.map { Unit.alone($0) }
-            + batched.map { Unit.together($0) }
+        let rest = mutants.filter { !inBatches.contains($0.index) }.map { mutant in
+            (coverage.tests(reaching: mutant.index)?.isEmpty ?? true)
+                ? Unit.unreached(mutant) : Unit.alone(mutant)
+        }
+        return rest + batched.map { Unit.together($0) }
     }
 }

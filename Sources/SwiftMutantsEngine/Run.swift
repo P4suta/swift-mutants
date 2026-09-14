@@ -309,8 +309,10 @@ public struct Run: Sendable {
         with scheduler: Scheduler,
         progress: @Sendable (RunStage) -> Void
     ) async -> [MutantResult] {
+        let everyMutant = validated.files.flatMap { $0.instrumented.mutants }
         progress(
-            .running(total: validated.files.reduce(0) { $0 + $1.instrumented.mutants.count }))
+            .running(
+                total: everyMutant.count, processes: scheduler.processes(for: everyMutant)))
         var results: [MutantResult] = []
         for (file, subject) in zip(validated.files, subjects) {
             guard let path = WorkspaceRelativePath(subject.name) else { continue }

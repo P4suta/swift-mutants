@@ -31,6 +31,23 @@ public struct MutantResult: Sendable, Hashable {
     /// quiet machine. That is worth seeing: a deadline met under load says nothing about
     /// a mutant, and a report that hid the retry would look like an answer it is not.
     public let attempts: Int
+
+    /// Records what became of one mutant.
+    public init(
+        identity: MutantIdentity,
+        path: WorkspaceRelativePath,
+        rule: RuleIdentifier,
+        span: SourceSpan,
+        verdict: Verdict,
+        attempts: Int
+    ) {
+        self.identity = identity
+        self.path = path
+        self.rule = rule
+        self.span = span
+        self.verdict = verdict
+        self.attempts = attempts
+    }
 }
 
 /// Runs every mutant, a bounded number at a time.
@@ -84,6 +101,14 @@ public struct Scheduler: Sendable {
             jobs: jobs,
             coverage: coverage
         )
+    }
+
+    /// How many processes a catalogue will take, before any of them start.
+    ///
+    /// The saving, countable in advance: a mutant nothing reaches takes none, and mutants
+    /// no test shares take one between them.
+    public func processes(for mutants: [InstrumentedMutant]) -> Int {
+        units(for: mutants).count { $0.startsSomething }
     }
 
     /// Runs the instrumented baseline: the same tree, nothing awake.

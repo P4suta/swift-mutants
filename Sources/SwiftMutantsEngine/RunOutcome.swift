@@ -36,6 +36,25 @@ public struct RunOutcome: Sendable {
     /// the number's meaning: "seventy per cent" about four files somebody just wrote is a
     /// different sentence from "seventy per cent" about a package.
     public let scope: RunScope
+
+    /// Records everything one run established.
+    public init(
+        results: [MutantResult],
+        rejected: [Rejection],
+        summary: RunSummary,
+        baseline: Verdict,
+        contendedBaseline: Verdict,
+        filesInstrumented: Int,
+        scope: RunScope
+    ) {
+        self.results = results
+        self.rejected = rejected
+        self.summary = summary
+        self.baseline = baseline
+        self.contendedBaseline = contendedBaseline
+        self.filesInstrumented = filesInstrumented
+        self.scope = scope
+    }
 }
 
 /// What a run was asked to measure.
@@ -81,6 +100,11 @@ public enum RunStage: Sendable, Hashable {
     /// The run was narrowed to what changed, and to how many files.
     case scoped(since: String, files: Int)
 
-    case running(total: Int)
+    /// How many mutants there are, and how many processes they will take.
+    ///
+    /// The saving, said out loud. A mutant nothing reaches takes none at all, and mutants
+    /// no test shares take one between them - so the gap between these two numbers is what
+    /// the coverage bought.
+    case running(total: Int, processes: Int)
     case finished(MutantResult)
 }
