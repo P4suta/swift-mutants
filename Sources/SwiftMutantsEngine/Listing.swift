@@ -35,6 +35,22 @@ public struct Listing: Sendable {
     /// How many files were read.
     public let filesRead: Int
 
+    /// The same listing, holding only the files that pass `isKept`.
+    ///
+    /// The catalogue is rebuilt rather than filtered in place, because a catalogue checks
+    /// that no two mutants share a display prefix - and a smaller catalogue is a different
+    /// question with a different answer.
+    public func keeping(_ isKept: (WorkspaceRelativePath) -> Bool) -> Self {
+        Self(
+            catalog: (try? Catalog(catalog.mutants.filter { isKept($0.path) }))
+                ?? catalog,
+            skips: skips.filter { isKept($0.path) },
+            unknownSuppressions: unknownSuppressions.filter { isKept($0.path) },
+            positions: positions.filter { isKept($0.key) },
+            filesRead: filesRead
+        )
+    }
+
     /// The files that hold at least one mutant, in catalogue order.
     ///
     /// A file with nothing to mutate is not instrumented, not compiled a second time, and

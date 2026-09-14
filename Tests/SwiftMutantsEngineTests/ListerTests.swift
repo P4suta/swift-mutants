@@ -211,3 +211,98 @@ struct ListerTests {
         #expect(listing.filesRead == 0)
     }
 }
+
+/// Narrowing a listing to some of its files.
+///
+/// A listing that kept the skips, the positions or the suppression warnings of files it
+/// had excluded would be describing a run nobody asked for - and `list --explain` would
+/// name places the run never looked at.
+@Suite("Narrowing a listing")
+struct NarrowingTests {
+
+    static func path(_ name: String) -> WorkspaceRelativePath {
+        guard let path = WorkspaceRelativePath("Sources/\(name).swift") else {
+            fatalError("malformed fixture path")
+        }
+        return path
+    }
+
+    static func listing() throws -> Listing {
+        let kept = Self.path("Kept")
+        let dropped = Self.path("Dropped")
+        let sources = [
+            kept: "func f(_ a: Int, _ b: Int) -> Bool { a < b }",
+            dropped: """
+            func g(_ a: Int, _ b: Int) {
+                // swift-mutants disable next-line comparisons: a typo
+                print(a > b)
+            }
+            """,
+        ]
+
+        var mutants: [Mutant] = []
+        var skips: [(path: WorkspaceRelativePath, skip: Skip)] = []
+        var unknown: [(path: WorkspaceRelativePath, suppression: UnknownSuppression)] = []
+        var positions: [WorkspaceRelativePath: LineIndex] = [:]
+        for (path, source) in sources {
+            let found = Discover.candidates(in: source, at: path)
+            positions[path] = LineIndex(source)
+            for skip in found.skips { skips.append((path, skip)) }
+            for one in found.unknownSuppressions { unknown.append((path, one)) }
+            for candidate in found.candidates {
+                mutants.append(
+                    Mutant(
+                        path: path,
+                        enclosingDeclaration: candidate.enclosingDeclaration,
+                        rule: candidate.rule,
+                        span: candidate.span,
+                        sourceDigest: found.sourceDigest,
+                        original: candidate.original,
+                        replacement: candidate.replacement
+                    ))
+            }
+        }
+        return Listing(
+            catalog: try Catalog(mutants),
+            skips: skips,
+            unknownSuppressions: unknown,
+            positions: positions,
+            filesRead: sources.count
+        )
+    }
+
+    @Test("keeps everything about the files it kept and nothing about the rest")
+    func keepsOnlyWhatItKept() throws {
+        let narrowed = try Self.listing().keeping { $0 == Self.path("Kept") }
+
+        #expect(narrowed.filesWithMutants == [Self.path("Kept")])
+        #expect(narrowed.skips.allSatisfy { $0.path == Self.path("Kept") })
+        #expect(narrowed.unknownSuppressions.isEmpty)
+        #expect(Array(narrowed.positions.keys) == [Self.path("Kept")])
+    }
+
+    /// The premise: the listing really did hold something about the file that goes.
+    @Test("had something to drop")
+    func hadSomethingToDrop() throws {
+        let whole = try Self.listing()
+        #expect(whole.skips.contains { $0.path == Self.path("Dropped") })
+        #expect(whole.unknownSuppressions.contains { $0.path == Self.path("Dropped") })
+        #expect(whole.positions.keys.contains(Self.path("Dropped")))
+    }
+
+    @Test("keeps everything when everything passes")
+    func keepsEverything() throws {
+        let whole = try Self.listing()
+        let same = whole.keeping { _ in true }
+        #expect(same.catalog.mutants.count == whole.catalog.mutants.count)
+        #expect(same.skips.count == whole.skips.count)
+    }
+
+    @Test("holds an empty result")
+    func keepsNothing() throws {
+        let none = try Self.listing().keeping { _ in false }
+        #expect(none.catalog.mutants.isEmpty)
+        #expect(none.skips.isEmpty)
+        #expect(none.positions.isEmpty)
+    }
+}
