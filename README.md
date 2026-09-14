@@ -78,6 +78,7 @@ test what it reaches and started no process for any mutant. The two runs took 41
 | **Expectations** | survivors a project wrote down are measured every run and never answered from the cache; one that is caught, or whose identity has left the catalogue, fails the run |
 | **Reports** | a canonical run report, the Stryker and SARIF projections, a single-file offline HTML page, GitHub annotations, `report latest`, `report merge`, and `explain <id>` for one mutant's whole story |
 | **Promises kept** | every document is checked against the schema shipped beside it before it is written, by a validator that refuses a schema using a keyword it cannot check |
+| **Watching it** | a screen that redraws on a terminal and lines into a pipe, the same closing block either way; `browse` walks the survivors afterwards |
 
 The instrumented file is known to compile, to behave exactly as the original when nothing
 is activated, to change exactly one thing when one mutant is woken, and to survive `-O`.
@@ -100,6 +101,7 @@ swift build -c release
 .build/release/swift-mutants run           # measure it
 .build/release/swift-mutants run -- --skip SlowTests   # your arguments, verbatim
 .build/release/swift-mutants explain <id>  # one survivor's whole story, and how to run it
+.build/release/swift-mutants browse        # walk the survivors, one at a time
 .build/release/swift-mutants apply <id>    # the same mutant as a patch, to step through
 .build/release/swift-mutants report latest # the last run, as JSON
 ```
@@ -116,6 +118,7 @@ swift build -c release
 | `--strict` | exit 1 when anything survived that was not written down |
 | `-v`, `-vv` | say how long each phase took; say what the run started, as it happens |
 | `--quiet` | say nothing but errors — the exit code is the answer |
+| `--no-tui` | print lines rather than drawing, even on a terminal |
 | `--keep-temp` | keep the copy the run happened in, so `explain`'s command is one you can paste |
 
 ### Survivors you have accounted for
