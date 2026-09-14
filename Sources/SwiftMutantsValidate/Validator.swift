@@ -37,20 +37,40 @@ public struct Validator: Sendable {
         self.directory = directory
     }
 
+    /// What a validation is doing, for somebody watching it.
+    ///
+    /// Each round is a build, and a build of somebody's package is the slowest thing this
+    /// tool does. A person watching twenty silent minutes cannot tell a second round from
+    /// a hang, and the difference matters: one is progress and the other is a bug.
+    public enum Progress: Sendable, Hashable {
+
+        /// A round is starting, with this many mutants still in the tree.
+        case compiling(round: Int, mutants: Int)
+
+        /// A round finished and the compiler refused these.
+        case refused(round: Int, count: Int)
+
+        /// The compile would not say what it was unhappy about, so halving has begun.
+        case halving(mutants: Int)
+    }
+
     /// Narrows each file to the mutants the compiler accepts.
     public func validate(
-        _ files: [FileUnderValidation]
+        _ files: [FileUnderValidation],
+        progress: @Sendable (Progress) -> Void = { _ in }
     ) async throws(ValidationError) -> Validation {
         var discoveries = files.map(\.discovery)
         var rejected: [Rejection] = []
         var rounds = 0
-        var bisected = false
 
         // At most one round per candidate, because a round that changes nothing ends the
         // loop and a round that changes something removes a candidate.
         let ceiling = discoveries.reduce(1) { $0 + $1.candidates.count }
         while rounds < ceiling {
             rounds += 1
+            progress(
+                .compiling(
+                    round: rounds, mutants: discoveries.reduce(0) { $0 + $1.candidates.count }))
             let instrumented = try Self.instrument(files, as: discoveries)
             let paths = try write(instrumented, for: files)
             let output = await compiler.typecheck(paths)
@@ -61,7 +81,7 @@ public struct Validator: Sendable {
                     },
                     rejected: rejected,
                     rounds: rounds,
-                    bisected: bisected
+                    bisected: false
                 )
             }
 
@@ -70,33 +90,23 @@ public struct Validator: Sendable {
                 to: Dictionary(uniqueKeysWithValues: zip(paths, instrumented))
             )
             if !attribution.rejected.isEmpty {
-                // Act on what the compiler explained, even when it did not explain
-                // everything. Dropping the placed refusals first is strictly cheaper than
-                // halving for all of them, and it often removes the cause of the errors
-                // that could not be placed - a compile the loop then does not have to
-                // spend. Whatever is still wrong comes back on the next round with a
-                // smaller catalogue behind it.
+                progress(.refused(round: rounds, count: attribution.rejected.count))
                 rejected += attribution.rejected
-                let refused = Set(attribution.rejected.map { Key($0.span, $0.rule) })
-                discoveries = discoveries.map { discovery in
-                    discovery.keeping { !refused.contains(Key($0.span, $0.rule)) }
-                }
+                discoveries = Self.dropping(attribution.rejected, from: discoveries)
                 continue
             }
 
             // The compile failed while naming nothing this tool put there. Guessing from
             // here is how a tool starts rejecting mutants at positions nobody reported, so
             // it stops guessing and pays for halving instead.
-            bisected = true
+            progress(.halving(mutants: discoveries.reduce(0) { $0 + $1.candidates.count }))
             let found = try await bisect(files, discoveries: discoveries)
-            rejected += found.rejected
-            discoveries = found.discoveries
-            let confirmed = try await confirm(files, discoveries: discoveries)
+            let confirmed = try await confirm(files, discoveries: found.discoveries)
             return Validation(
                 files: confirmed.files,
-                rejected: rejected,
+                rejected: rejected + found.rejected,
                 rounds: rounds + found.rounds + confirmed.rounds,
-                bisected: bisected
+                bisected: true
             )
         }
         throw ValidationError(
@@ -105,6 +115,22 @@ public struct Validator: Sendable {
             least one mutant, so this means the compiler refused the same tree twice.
             """
         )
+    }
+
+    /// Every discovery with the refused candidates taken out of it.
+    ///
+    /// Acting on what the compiler explained, even when it did not explain everything.
+    /// Dropping the placed refusals is strictly cheaper than halving for all of them, and
+    /// it often removes the cause of the errors that could not be placed - a compile the
+    /// loop then does not have to spend. Whatever is still wrong comes back on the next
+    /// round with a smaller catalogue behind it.
+    private static func dropping(
+        _ rejections: [Rejection], from discoveries: [FileDiscovery]
+    ) -> [FileDiscovery] {
+        let refused = Set(rejections.map { Key($0.span, $0.rule) })
+        return discoveries.map { discovery in
+            discovery.keeping { !refused.contains(Key($0.span, $0.rule)) }
+        }
     }
 
     /// What identifies a candidate inside one file: the bytes it edits and the rule.

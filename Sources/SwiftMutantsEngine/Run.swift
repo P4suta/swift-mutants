@@ -47,7 +47,7 @@ public enum RunStage: Sendable, Hashable {
     case snapshotting
     case discovering
     case instrumenting(files: Int, mutants: Int)
-    case validating
+    case validating(Validator.Progress)
     case building
     case proving
     case baseline
@@ -120,8 +120,8 @@ public struct Run: Sendable {
             .instrumenting(
                 files: subjects.count, mutants: listing.catalog.mutants.count))
 
-        progress(.validating)
-        let validated = try await validate(subjects, in: tree, environment: environment)
+        let validated = try await validate(
+            subjects, in: tree, environment: environment, progress: progress)
 
         progress(.proving)
         try prove(validated.files.map(\.instrumented))
@@ -280,7 +280,10 @@ public struct Run: Sendable {
     }
 
     private func validate(
-        _ subjects: [FileUnderValidation], in tree: URL, environment: [String: String]
+        _ subjects: [FileUnderValidation],
+        in tree: URL,
+        environment: [String: String],
+        progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Validation {
         // SwiftPM rather than a bare `swiftc`, because a package is not a pile of files:
         // each target compiles on its own, against its own dependencies and search paths.
@@ -297,7 +300,7 @@ public struct Run: Sendable {
             directory: tree
         )
         do {
-            return try await validator.validate(subjects)
+            return try await validator.validate(subjects) { progress(.validating($0)) }
         } catch {
             throw RunError("the instrumented copy could not be validated: \(error)")
         }

@@ -7,6 +7,7 @@ import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
+import SwiftMutantsValidate
 import SwiftMutantsRunner
 import SwiftMutantsTrace
 import Synchronization
@@ -162,6 +163,25 @@ private final class RunProgress: @unchecked Sendable {
         }
     }
 
+    /// One line for each step of validation.
+    ///
+    /// Each round is a build of somebody's package, which is the slowest thing this tool
+    /// does. A person watching twenty silent minutes cannot tell a second round from a
+    /// hang, and the difference matters: one is progress and the other is a bug.
+    private static func announce(_ step: Validator.Progress) {
+        switch step {
+        case .compiling(let round, let mutants):
+            print(
+                round == 1
+                    ? "building with all \(mutants) mutants in, to see which compile"
+                    : "  building again, \(mutants) left")
+        case .refused(_, let count):
+            print("  the compiler refused \(count)")
+        case .halving(let mutants):
+            print("  the compiler would not say which, so halving \(mutants) mutants")
+        }
+    }
+
     /// One line for each phase a run passes through.
     private func announce(_ stage: RunStage) {
         switch stage {
@@ -169,7 +189,7 @@ private final class RunProgress: @unchecked Sendable {
         case .discovering: print("reading the sources")
         case .instrumenting(let files, let mutants):
             print("instrumenting \(mutants) mutants across \(files) files")
-        case .validating: print("asking the compiler which ones it will accept")
+        case .validating(let step): Self.announce(step)
         case .proving: print("proving every mutant is in the tree")
         case .building: print("building the tests, once")
         case .baseline: print("running the tests with nothing awake")
