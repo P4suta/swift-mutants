@@ -155,6 +155,13 @@ enum Narration {
             : "swift-mutants explain <id> says everything known about one of them."
     }
 
+    /// What was forgotten about a package.
+    static func forgotten(_ count: Int) -> String {
+        count == 0
+            ? "nothing was being kept about this package."
+            : "forgot \(count) of the things being kept about this package."
+    }
+
     /// Where everything known about a failure was written down.
     ///
     /// Said, because a bundle nobody was told about is a bundle nobody has - and the moment

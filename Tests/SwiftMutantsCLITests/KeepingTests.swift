@@ -37,3 +37,24 @@ struct KeepingTests {
         )
     }
 }
+
+/// Forgetting what is kept about a package.
+///
+/// Everything this tool remembers lives outside the repository, which means nobody can
+/// delete it by deleting a directory they can see. So there is a command, and it says how
+/// much there was rather than claiming to have done something when there was nothing.
+@Suite("Forgetting a package")
+struct ForgettingTests {
+
+    @Test("says nothing was kept when nothing was")
+    func nothingKept() {
+        #expect(Narration.forgotten(0) == "nothing was being kept about this package.")
+    }
+
+    @Test("says how much it forgot")
+    func saysHowMuch() {
+        #expect(
+            Narration.forgotten(3)
+                == "forgot 3 of the things being kept about this package.")
+    }
+}
