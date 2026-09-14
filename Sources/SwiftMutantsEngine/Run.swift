@@ -116,7 +116,8 @@ public struct Run: Sendable {
             contendedBaseline: calibration.contended,
             filesInstrumented: validated.files.count,
             scope: scope,
-            positions: listing.positions
+            positions: listing.positions,
+            digests: listing.digests
         )
     }
 

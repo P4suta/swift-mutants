@@ -100,6 +100,24 @@ struct RunCommand: AsyncParsableCommand {
         ))
     var cache: CacheMode = .auto
 
+    @Option(
+        name: .long,
+        parsing: .upToNextOption,
+        help: ArgumentHelp(
+            "Documents to write into the package: json, html, sarif.",
+            discussion: """
+                Written to `reports/mutation/`, which is the one place this tool writes \
+                into your repository - and only when you ask. `json` is the projection the \
+                Stryker ecosystem reads; `html` is one self-contained page that asks the \
+                network for nothing; `sarif` is what a code host takes to annotate a pull \
+                request and to remember which survivors you have already dismissed.
+
+                The canonical account of a run is `--json`, which prints it, and `report \
+                latest`, which reads the one the last run left behind.
+                """
+        ))
+    var report: [ReportFormat] = []
+
     @Flag(
         name: .long,
         help: ArgumentHelp(
@@ -167,16 +185,18 @@ struct RunCommand: AsyncParsableCommand {
             throw error
         }
 
-        let report = RunReport(of: outcome)
+        let account = RunReport(of: outcome)
         // Kept before it is printed, so that a run whose output somebody scrolled past is
         // still a run `explain` can answer about. Failing to keep it is a warning rather
         // than a failure: the run answered the question it was asked.
-        try? ReportStore.write(report, to: ReportStore.location(for: root))
+        try? ReportStore.write(account, to: ReportStore.location(for: root))
+        let published = (try? Publishing.write(account, formats: Set(report), into: root)) ?? []
 
         if json {
-            print(String(decoding: try RunReport.encoded(report), as: UTF8.self))
+            print(String(decoding: try RunReport.encoded(account), as: UTF8.self))
         } else {
             Self.summarise(outcome)
+            for file in published { print(Narration.published(file, relativeTo: root)) }
             print(Narration.explainable(outcome.summary.survived))
         }
         // Exit 1 is reserved for a policy somebody asked for. A run that completed and

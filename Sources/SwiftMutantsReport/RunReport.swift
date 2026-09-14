@@ -42,6 +42,13 @@ public struct RunReport: Codable, Sendable, Hashable {
     /// How many files were instrumented.
     public let filesInstrumented: Int
 
+    /// What every file of the package digested to when it was read.
+    ///
+    /// Every file, not only the ones with mutants in them, because the score rests on all
+    /// of them. Anything that reads the sources afterwards - a projection that has to show
+    /// the code beside the verdict - can tell whether it is reading what was measured.
+    public let files: [String: String]
+
     /// Every test any mutant was offered, in a fixed order.
     ///
     /// Written once and referred to by position, because the names repeat: a package with

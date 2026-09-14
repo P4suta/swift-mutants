@@ -45,6 +45,13 @@ public struct RunOutcome: Sendable {
     /// not the same files by then: the copy is gone and the workspace may have moved on.
     public let positions: [WorkspaceRelativePath: LineIndex]
 
+    /// What every file of the package digested to when it was read.
+    ///
+    /// Carried so that anything reading the sources afterwards can tell whether it is
+    /// reading what was measured. A report that showed a line of code beside a verdict
+    /// about a different line of code would be worse than one that showed no code.
+    public let digests: [WorkspaceRelativePath: Digest]
+
     /// Records everything one run established.
     public init(
         results: [MutantResult],
@@ -54,7 +61,8 @@ public struct RunOutcome: Sendable {
         contendedBaseline: Verdict,
         filesInstrumented: Int,
         scope: RunScope,
-        positions: [WorkspaceRelativePath: LineIndex] = [:]
+        positions: [WorkspaceRelativePath: LineIndex] = [:],
+        digests: [WorkspaceRelativePath: Digest] = [:]
     ) {
         self.results = results
         self.rejected = rejected
@@ -64,6 +72,7 @@ public struct RunOutcome: Sendable {
         self.filesInstrumented = filesInstrumented
         self.scope = scope
         self.positions = positions
+        self.digests = digests
     }
 }
 

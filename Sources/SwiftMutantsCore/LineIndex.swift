@@ -44,6 +44,16 @@ public struct LineIndex: Sendable {
     /// The byte offset each line starts at.
     private let lineStarts: [Int]
 
+    /// For each line, the byte offset each character of it begins at, and one more entry
+    /// for where the line ends.
+    ///
+    /// Kept because the two units cannot be converted without the text: `é` is two bytes
+    /// and one character, `🙂` is four, and a family of scalars is more still. Everything
+    /// inside this tool counts bytes, because that is what a span is and what the compiler
+    /// reports; everything outside it counts characters - the Stryker schema, SARIF, and
+    /// every editor that opens a file at `line:column`.
+    private let characterStarts: [[Int]]
+
     /// How long the file is, in bytes.
     private let byteCount: Int
 
@@ -57,6 +67,23 @@ public struct LineIndex: Sendable {
         }
         lineStarts = starts
         byteCount = offset
+
+        // One pass over the characters, recording where each begins, with a final entry
+        // per line for where the line ends. The sentinel is what makes the lookup a plain
+        // search: one past the last character is one column past it, with no special case.
+        var characters: [[Int]] = Array(repeating: [], count: starts.count)
+        var line = 0
+        var byte = 0
+        for character in source {
+            while line + 1 < starts.count, byte >= starts[line + 1] { line += 1 }
+            characters[line].append(byte)
+            byte += character.utf8.count
+        }
+        for line in characters.indices {
+            let end = line + 1 < starts.count ? starts[line + 1] : offset
+            characters[line].append(end)
+        }
+        characterStarts = characters
     }
 
     /// Where `offset` is, or nothing when it is not in the file.
@@ -78,6 +105,32 @@ public struct LineIndex: Sendable {
             }
         }
         return SourcePosition(line: low + 1, column: offset - lineStarts[low] + 1)
+    }
+
+    /// Where `offset` is, counted in characters rather than in bytes.
+    ///
+    /// The unit everything outside this tool uses. A byte in the middle of a character
+    /// belongs to that character rather than to the next one: rounding forward would put a
+    /// position after something that has not ended, and a report that points past a mutant
+    /// is a report that sends somebody to the wrong expression.
+    public func characterPosition(of offset: Int) -> SourcePosition? {
+        guard let place = position(of: offset) else { return nil }
+        let starts = characterStarts[place.line - 1]
+
+        // The last entry at or before the offset. The row ends with where the line ends,
+        // so a byte one past the last character lands on that and counts as one column
+        // past it.
+        var low = 0
+        var high = starts.count - 1
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if starts[middle] <= offset {
+                low = middle
+            } else {
+                high = middle - 1
+            }
+        }
+        return SourcePosition(line: place.line, column: low + 1)
     }
 
     /// Where `position` is, or nothing when the file has no such place.

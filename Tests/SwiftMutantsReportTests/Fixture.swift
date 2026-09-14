@@ -20,10 +20,14 @@ extension RunReportTests {
         static let rule: RuleIdentifier = build("lt-to-le@1")
         static let span: SourceSpan = build(start: 10, end: 11)
 
-        /// A file whose byte 10 is on line 2, column 3 - the `<` this mutant is about.
-        static let positions: [WorkspaceRelativePath: LineIndex] = [
-            path: LineIndex("let a=1\nab< b\n")
-        ]
+        /// The file this mutant is in. Byte 10 is on line 2, column 3 - the `<`.
+        static let source = "let a=1\nab< b\n"
+
+        static let positions: [WorkspaceRelativePath: LineIndex] = [path: LineIndex(source)]
+
+        /// What that file digests to, so a projection can tell it is reading what was
+        /// measured.
+        static let digests: [WorkspaceRelativePath: Digest] = [path: Digest.of(source)]
 
         private static func build(_ spelling: String) -> WorkspaceRelativePath {
             guard let path = WorkspaceRelativePath(spelling) else {
@@ -118,7 +122,9 @@ extension RunReportTests {
                 baseline: verdict(.survived, tests: ["P.S/a()"]),
                 contendedBaseline: verdict(.survived, tests: ["P.S/a()"]),
                 filesInstrumented: 1,
-                scope: scope
+                scope: scope,
+                positions: positions,
+                digests: digests
             )
         }
     }

@@ -142,6 +142,16 @@ enum Narration {
         return lines
     }
 
+    /// Where a document a run was asked for went.
+    ///
+    /// Relative to the package, because that is how somebody will refer to it afterwards -
+    /// in a commit, in a CI step, in a sentence to a colleague.
+    static func published(_ file: URL, relativeTo root: URL) -> String {
+        let prefix = root.standardizedFileURL.path + "/"
+        let path = file.standardizedFileURL.path
+        return "wrote \(path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : path)"
+    }
+
     /// How to turn a list of survivors into something to do.
     ///
     /// Printed only when there is something to explain. A tool that told somebody to run a

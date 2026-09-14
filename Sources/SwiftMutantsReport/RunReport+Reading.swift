@@ -29,6 +29,8 @@ extension RunReport {
         self.contendedBaseline = Behaviour(of: outcome.contendedBaseline)
         self.filesInstrumented = outcome.filesInstrumented
 
+        self.files = Dictionary(
+            uniqueKeysWithValues: outcome.digests.map { ($0.key.rendered, $0.value.hexadecimal) })
         let named = Self.naming(outcome.results)
         let seen = named.positions
         self.tests = named.names

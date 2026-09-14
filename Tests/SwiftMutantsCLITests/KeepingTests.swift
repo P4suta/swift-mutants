@@ -29,6 +29,27 @@ struct KeepingTests {
                 == "cleared up 7 copies left behind by runs that were interrupted")
     }
 
+    /// Relative to the package, because that is how somebody refers to it afterwards - in
+    /// a commit, in a CI step, in a sentence to a colleague.
+    @Test("says where a document it wrote went, as the repository names it")
+    func saysWhereADocumentWent() {
+        #expect(
+            Narration.published(
+                URL(filePath: "/work/pkg/reports/mutation/mutation.html"),
+                relativeTo: URL(filePath: "/work/pkg")
+            ) == "wrote reports/mutation/mutation.html")
+    }
+
+    /// And plainly when it is somewhere else entirely, rather than by a path that starts
+    /// with several `..`.
+    @Test("says where a document outside the package went")
+    func saysWhereAnOutsideDocumentWent() {
+        #expect(
+            Narration.published(
+                URL(filePath: "/elsewhere/mutation.html"), relativeTo: URL(filePath: "/work/pkg")
+            ) == "wrote /elsewhere/mutation.html")
+    }
+
     @Test("says where the copy is when it is asked to keep it")
     func saysWhereItIs() {
         let workspace = URL(filePath: "/tmp/swift-mutants-1234")
