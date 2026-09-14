@@ -167,6 +167,66 @@ struct RunIntegrationTests {
         return found
     }
 
+    /// A test that reaches for something the build produced looks in `.build` relative to
+    /// its own package. Building the instrumented copy anywhere else leaves it looking at
+    /// nothing - and the run then stops at a baseline that failed for a reason having
+    /// nothing to do with the package. Measured on this repository: twelve tests failed
+    /// that way, because the scripted toolchain they drive was built off to one side.
+    @Test("builds where a test that looks for the build will find it", .tags(.integration))
+    func buildsWhereTestsLook() async throws {
+        let fixture = try Self.fixture()
+        defer { fixture.cleanUp() }
+        try Self.write(
+            """
+            // swift-tools-version: 6.0
+            import PackageDescription
+            let package = Package(
+                name: "Subject",
+                targets: [
+                    .target(name: "Subject"),
+                    .executableTarget(name: "helper"),
+                    .testTarget(name: "SubjectTests", dependencies: ["Subject"]),
+                ]
+            )
+            """, to: fixture.root.appending(path: "Package.swift"))
+        try Self.write(
+            "print(\"helping\")", to: fixture.root.appending(path: "Sources/helper/main.swift"))
+        try Self.write(
+            """
+            import Foundation
+            import Testing
+            @testable import Subject
+
+            @Suite("Subject")
+            struct SubjectTests {
+                /// Looks for a product of its own build, the way a test with a fixture
+                /// binary or a generated resource does.
+                @Test("finds what the build made") func findsTheHelper() throws {
+                    let root = URL(filePath: #filePath)
+                        .deletingLastPathComponent()
+                        .deletingLastPathComponent()
+                        .deletingLastPathComponent()
+                    let candidates = ["debug", "release"].map {
+                        root.appending(path: ".build/\\($0)/helper").path
+                    }
+                    #expect(
+                        candidates.contains { FileManager.default.isExecutableFile(atPath: $0) },
+                        "looked in \\(candidates)"
+                    )
+                }
+
+                @Test("holds at the boundary") func boundary() {
+                    #expect(atLeast(3, 3))
+                    #expect(!atLeast(2, 3))
+                }
+            }
+            """, to: fixture.root.appending(path: "Tests/SubjectTests/SubjectTests.swift"))
+
+        let outcome = try await Self.run(fixture)
+        #expect(outcome.baseline.outcome == .survived, "\(outcome.baseline)")
+        #expect(outcome.summary.killed > 0)
+    }
+
     /// A score is an answer about a program, so a tree that does not behave like the one
     /// the user wrote must stop the run rather than produce one.
     @Test("refuses to score a package whose own tests fail", .tags(.integration))

@@ -232,6 +232,21 @@ public struct Run: Sendable {
         return results
     }
 
+    /// Where the instrumented copy is built.
+    ///
+    /// Inside the copy, where the package expects to be built, rather than off to one
+    /// side. A test that reaches for something the build produced - a helper executable, a
+    /// generated resource, a fixture binary - looks in `.build` relative to its package,
+    /// and a build placed anywhere else leaves it looking at nothing. Measured on this
+    /// repository: twelve tests failed with nothing awake because the scripted toolchain
+    /// they drive was built somewhere they do not look.
+    ///
+    /// Nothing is polluted by this. The copy is disposable and the tree the user pointed
+    /// at is never written to at all.
+    private static func buildDirectory(in tree: URL) -> URL {
+        tree.appending(path: ".build")
+    }
+
     // MARK: - Steps
 
     private func snapshot(_ progress: @Sendable (RunStage) -> Void) throws(RunError) -> URL {
@@ -287,14 +302,14 @@ public struct Run: Sendable {
     ) async throws(RunError) -> Validation {
         // SwiftPM rather than a bare `swiftc`, because a package is not a pile of files:
         // each target compiles on its own, against its own dependencies and search paths.
-        // The same scratch directory the tests are built into, so the build that proves
-        // the mutants compile *is* the build that produces them.
+        // The same place the tests are built into, so the build that proves the mutants
+        // compile *is* the build that produces them.
         let validator = Validator(
             compiler: SwiftBuildDriver(
                 runner: runner,
                 executable: executable,
                 root: tree.path,
-                scratch: workspace.appending(path: "build").path,
+                scratch: Self.buildDirectory(in: tree).path,
                 environment: environment
             ),
             directory: tree
@@ -334,7 +349,7 @@ public struct Run: Sendable {
             let plan = try await SwiftPackageManager(
                 root: tree, runner: runner, executable: executable
             ).buildForTesting(
-                scratch: workspace.appending(path: "build").path,
+                scratch: Self.buildDirectory(in: tree).path,
                 environment: environment,
                 timeout: .seconds(1800)
             )
