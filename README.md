@@ -72,6 +72,38 @@ swift build -c release
 Arguments after `--` go to your tests exactly as written and are never interpreted. They
 are a scope as well as a setting: narrowing the suite narrows what the score is about.
 
+### Tests that look at your source files
+
+A test that asserts something about your *source* rather than about your *program* will
+fail under instrumentation, because instrumentation changes those files by design. Lint
+gates, import checks, golden files of source text, "no `print` in this module" rules — all
+of them see a file with a guard in it and a runtime appended.
+
+swift-mutants stops when that happens rather than reporting a score about a program nobody
+has, and it names the tests:
+
+```console
+$ swift-mutants run
+running the tests with nothing awake
+Error: the instrumented tree does not behave like the one you wrote: with no mutant awake
+the tests came back killed. Every later answer would be about a program nobody has, so the
+run stops here.
+
+These tests failed with nothing awake:
+  RepositoryGateTests.AmbientGateTests/oneDoorway()
+  RepositoryGateTests.PurityGateTests/importsAreConfined(module:)
+  ... and 14 more
+```
+
+Exclude them and run again:
+
+```sh
+swift-mutants run -- --skip RepositoryGateTests
+```
+
+This repository's own gates are exactly this kind of test, which is how the message came
+to exist.
+
 ## Requirements
 
 - Swift 6.3 or newer
