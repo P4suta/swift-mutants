@@ -130,6 +130,17 @@ enum Narration {
         return lines
     }
 
+    /// What was cleared up before this run started.
+    ///
+    /// Said rather than done quietly: deleting hundreds of megabytes of somebody's disk is
+    /// a thing to mention, and a reader who did not know these were piling up should find
+    /// out from the tool that made them.
+    static func swept(_ count: Int) -> String {
+        count == 1
+            ? "cleared up 1 copy left behind by a run that was interrupted"
+            : "cleared up \(count) copies left behind by runs that were interrupted"
+    }
+
     /// Where the copy a run happened in was left.
     ///
     /// Printed rather than merely not deleted: a path nobody was told about is the same as

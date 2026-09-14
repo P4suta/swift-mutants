@@ -99,6 +99,13 @@ let package = Package(
         ),
 
         // The command tree, and nothing else.
+        // Who owns a temporary directory, and what to do with the ones nobody does.
+        .target(
+            name: "SwiftMutantsTempOwner",
+            dependencies: ["SwiftMutantsCore"],
+            swiftSettings: strict
+        ),
+
         // Answering a mutant from a previous run, when nothing it depends on has changed.
         .target(
             name: "SwiftMutantsCache",
@@ -120,7 +127,7 @@ let package = Package(
             name: "SwiftMutantsCLI",
             dependencies: [
                 "SwiftMutantsEngine", "SwiftMutantsExecute", "SwiftMutantsReport",
-                "SwiftMutantsValidate",
+                "SwiftMutantsTempOwner", "SwiftMutantsValidate",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: strict
@@ -303,6 +310,11 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsRunnerTests",
             dependencies: ["SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsTempOwnerTests",
+            dependencies: ["SwiftMutantsTempOwner", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
         .testTarget(

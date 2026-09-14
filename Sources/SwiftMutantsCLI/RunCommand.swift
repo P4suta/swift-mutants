@@ -9,6 +9,7 @@ import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsValidate
 import SwiftMutantsReport
+import SwiftMutantsTempOwner
 import SwiftMutantsRunner
 import SwiftMutantsTrace
 import Synchronization
@@ -103,8 +104,8 @@ struct RunCommand: AsyncParsableCommand {
         _ = unsafe setvbuf(stdout, nil, _IOLBF, 0)
 
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
-        let workspace = FileManager.default.temporaryDirectory
-            .appending(path: "swift-mutants-\(UUID().uuidString)")
+        let temporary = FileManager.default.temporaryDirectory
+        let workspace = temporary.appending(path: "swift-mutants-\(UUID().uuidString)")
         defer {
             if keepTemp {
                 print(Narration.kept(workspace))
@@ -113,6 +114,13 @@ struct RunCommand: AsyncParsableCommand {
             }
         }
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        // This one is ours, and the ones nobody is running in any more are nobody's. A run
+        // works inside a copy of the whole package, build directory included, so an
+        // interrupted run leaves hundreds of megabytes behind - and interrupting a
+        // mutation run is an ordinary thing to do.
+        try? TempOwner.claim(workspace)
+        let swept = TempOwner.sweep(in: temporary, besides: workspace)
+        if swept > 0 { print(Narration.swept(swept)) }
 
         var configuration = Configuration()
         configuration.execution.jobs = jobs

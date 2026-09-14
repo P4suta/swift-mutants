@@ -19,6 +19,16 @@ import Testing
 @Suite("Keeping the copy")
 struct KeepingTests {
 
+    /// Deleting hundreds of megabytes of somebody's disk is a thing to mention.
+    @Test("says how many abandoned copies it cleared up")
+    func saysWhatItCleared() {
+        #expect(
+            Narration.swept(1) == "cleared up 1 copy left behind by a run that was interrupted")
+        #expect(
+            Narration.swept(7)
+                == "cleared up 7 copies left behind by runs that were interrupted")
+    }
+
     @Test("says where the copy is when it is asked to keep it")
     func saysWhereItIs() {
         let workspace = URL(filePath: "/tmp/swift-mutants-1234")
