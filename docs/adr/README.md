@@ -16,3 +16,4 @@ projects and, where swift-mutants departs from them, why.
 | [0003](0003-tests-are-launched-through-the-swiftpm-helper.md) | Tests are launched through the SwiftPM testing helper, not through `swift test` |
 | [0004](0004-validation-asks-each-module-separately.md) | Validation asks each module separately, using SwiftPM's own plan |
 | [0005](0005-an-answer-may-be-remembered-while-what-it-rests-on-is-unchanged.md) | An answer may be remembered while everything it rests on is unchanged |
+| [0006](0006-the-xcode-path-goes-through-the-xctestrun.md) | The Xcode path wakes a mutant through the `.xctestrun`, beside the original |

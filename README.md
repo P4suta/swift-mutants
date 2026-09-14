@@ -74,15 +74,21 @@ test what it reaches and started no process for any mutant. The two runs took 41
 | **Coverage** | each test asked once what it reaches, so a mutant faces the handful that can catch it — and a test whose probe did not finish is offered to everything rather than treated as reaching nothing |
 | **Execution** | one build, the event stream watched live, mutants that share no test batched into one process that stops the moment all of them are decided |
 | **Remembering** | an answer kept between runs while everything it rests on is unchanged, including the test files |
-| **Reports** | `run --json`, a stored report, `report latest`, and `explain <id>` for one mutant's whole story |
+| **Equivalence** | the compiler asked which survivors could never have been caught, by fingerprinting each one's optimised SIL against the original's |
+| **Expectations** | survivors a project wrote down are measured every run and never answered from the cache; one that is caught, or whose identity has left the catalogue, fails the run |
+| **Reports** | a canonical run report, the Stryker and SARIF projections, a single-file offline HTML page, GitHub annotations, `report latest`, `report merge`, and `explain <id>` for one mutant's whole story |
+| **Promises kept** | every document is checked against the schema shipped beside it before it is written, by a validator that refuses a schema using a keyword it cannot check |
 
 The instrumented file is known to compile, to behave exactly as the original when nothing
 is activated, to change exactly one thing when one mutant is woken, and to survive `-O`.
 
-What is missing is the rest of the reporting and the second build system: the Stryker
-projection, the offline HTML, SARIF, `--shard`, `report merge`,
-trivial-compiler-equivalence, and the Xcode path. **Nothing is published, tagged, or
-released, and the command tree will change.**
+The Xcode path has its building blocks and not its wiring: reading a project's schemes,
+building once with `build-for-testing`, waking a mutant through a copy of the `.xctestrun`,
+and reading the result bundle are all built and tested against a real Xcode. `run` cannot
+use them yet, because validation on that path has no equivalent of SwiftPM's build plan.
+[ADR 0006](docs/adr/0006-the-xcode-path-goes-through-the-xctestrun.md) says what was
+measured and what remains. **Nothing is published, tagged, or released, and the command
+tree will change.**
 
 ## Trying it
 
@@ -90,11 +96,44 @@ released, and the command tree will change.**
 swift build -c release
 .build/release/swift-mutants doctor        # can this machine run it
 .build/release/swift-mutants list          # what would it measure, without measuring
+.build/release/swift-mutants why-skipped   # and what it passed over, with the reason
 .build/release/swift-mutants run           # measure it
 .build/release/swift-mutants run -- --skip SlowTests   # your arguments, verbatim
-.build/release/swift-mutants explain <id>  # one survivor's whole story
+.build/release/swift-mutants explain <id>  # one survivor's whole story, and how to run it
+.build/release/swift-mutants apply <id>    # the same mutant as a patch, to step through
 .build/release/swift-mutants report latest # the last run, as JSON
 ```
+
+### Flags worth knowing
+
+| | |
+| --- | --- |
+| `--report json,html,sarif` | write the documents a dashboard, a browser or code scanning reads |
+| `--changed[=REF]` | measure only what differs from a reference, uncommitted work included |
+| `--shard K/N` | take one machine's share of the catalogue; `report merge` puts the shares back together |
+| `--tce` | ask the compiler which survivors could never have been caught, and say so rather than listing them |
+| `--cache off` | measure everything, however little changed |
+| `--strict` | exit 1 when anything survived that was not written down |
+| `-v`, `-vv` | say how long each phase took; say what the run started, as it happens |
+| `--quiet` | say nothing but errors — the exit code is the answer |
+| `--keep-temp` | keep the copy the run happened in, so `explain`'s command is one you can paste |
+
+### Survivors you have accounted for
+
+Some survivors are not holes. A mutant in code unreachable by construction survives every
+suite anybody writes, and a list that never shrinks below those is a list nobody reads.
+
+```toml
+[[mutation.expect]]
+id = "4fcc205c…"            # the full sixty-four characters a report prints
+reason = "unreachable by construction: the caller checks this first"
+```
+
+This is not a skip list, and the difference is the whole design. An expected mutant is
+measured on every run and never answered from the cache. If it survives, the expectation is
+met and it leaves the score's denominator. If something catches it, somebody wrote the
+assertion and the note has become untrue. If its identity is no longer in the catalogue,
+the code moved and nobody updated the note. The last two exit 2.
 
 A mutant is answered from an earlier run only while everything that answer rests on is
 unchanged: the mutant itself, this build of swift-mutants, and every file the tests that
