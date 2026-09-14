@@ -37,6 +37,14 @@ public struct RunOutcome: Sendable {
     /// different sentence from "seventy per cent" about a package.
     public let scope: RunScope
 
+    /// Where each file's bytes fall in the lines a person reads.
+    ///
+    /// Carried because every way of naming a place to somebody - a report, a warning, an
+    /// editor - needs it, and it is worked out once while the sources are being read. A run
+    /// that dropped it would have every later consumer open the files again, and they are
+    /// not the same files by then: the copy is gone and the workspace may have moved on.
+    public let positions: [WorkspaceRelativePath: LineIndex]
+
     /// Records everything one run established.
     public init(
         results: [MutantResult],
@@ -45,7 +53,8 @@ public struct RunOutcome: Sendable {
         baseline: Verdict,
         contendedBaseline: Verdict,
         filesInstrumented: Int,
-        scope: RunScope
+        scope: RunScope,
+        positions: [WorkspaceRelativePath: LineIndex] = [:]
     ) {
         self.results = results
         self.rejected = rejected
@@ -54,6 +63,7 @@ public struct RunOutcome: Sendable {
         self.contendedBaseline = contendedBaseline
         self.filesInstrumented = filesInstrumented
         self.scope = scope
+        self.positions = positions
     }
 }
 

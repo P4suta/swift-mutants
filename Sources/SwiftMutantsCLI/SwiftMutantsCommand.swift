@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 public import ArgumentParser
+import SwiftMutantsCore
 
 /// The command tree.
 ///
@@ -29,10 +30,4 @@ public struct SwiftMutantsCommand: AsyncParsableCommand {
 
     /// Creates the top-level command. `ArgumentParser` calls this.
     public init() {}
-}
-
-/// What this build calls itself.
-enum Version {
-    /// Read from the VERSION file at release time; a development build says so.
-    static let current = "0.0.0-dev"
 }

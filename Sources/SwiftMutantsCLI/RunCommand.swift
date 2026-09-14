@@ -8,6 +8,7 @@ import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsValidate
+import SwiftMutantsReport
 import SwiftMutantsRunner
 import SwiftMutantsTrace
 import Synchronization
@@ -80,6 +81,19 @@ struct RunCommand: AsyncParsableCommand {
         ))
     var keepTemp = false
 
+    @Flag(
+        name: .long,
+        help: ArgumentHelp(
+            "Write the run's own report to standard output instead of a summary.",
+            discussion: """
+                The whole account of the run: every mutant by its full identity, where it \
+                is, what became of it and what noticed it, beside the counts and both \
+                scores. Every key is present every time, and a number nobody measured is \
+                null rather than zero.
+                """
+        ))
+    var json = false
+
     func run() async throws {
         // A line at a time, even when nobody is watching a terminal. Output to a file or a
         // pipe is buffered in blocks by default, so a run that takes an hour writes a CI
@@ -114,7 +128,11 @@ struct RunCommand: AsyncParsableCommand {
             changedSince: changed
         ).run(environment: Ambient.environment) { progress.report($0) }
 
-        Self.summarise(outcome)
+        if json {
+            print(String(decoding: try RunReport.encoded(RunReport(of: outcome)), as: UTF8.self))
+        } else {
+            Self.summarise(outcome)
+        }
         // Exit 1 is reserved for a policy somebody asked for. A run that completed and
         // found survivors has not failed - it has answered - and a tool that exited
         // non-zero for answering would be a tool people stop running.

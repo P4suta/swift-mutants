@@ -98,10 +98,21 @@ let package = Package(
         ),
 
         // The command tree, and nothing else.
+        // The canonical account of a run: what it measured, what became of each mutant,
+        // and the counts every other artefact is a projection of.
+        .target(
+            name: "SwiftMutantsReport",
+            dependencies: [
+                "SwiftMutantsCore", "SwiftMutantsEngine", "SwiftMutantsExecute",
+                "SwiftMutantsValidate",
+            ],
+            swiftSettings: strict
+        ),
         .target(
             name: "SwiftMutantsCLI",
             dependencies: [
-                "SwiftMutantsEngine", "SwiftMutantsExecute", "SwiftMutantsValidate",
+                "SwiftMutantsEngine", "SwiftMutantsExecute", "SwiftMutantsReport",
+                "SwiftMutantsValidate",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: strict
@@ -229,7 +240,10 @@ let package = Package(
         ),
         .testTarget(
             name: "RunIntegrationTests",
-            dependencies: ["SwiftMutantsEngine", "SwiftMutantsTestKit", "SwiftMutantsTrace"],
+            dependencies: [
+                "SwiftMutantsEngine", "SwiftMutantsReport", "SwiftMutantsTestKit",
+                "SwiftMutantsTrace",
+            ],
             swiftSettings: strict
         ),
         .testTarget(
@@ -281,6 +295,11 @@ let package = Package(
         .testTarget(
             name: "SwiftMutantsRunnerTests",
             dependencies: ["SwiftMutantsRunner"],
+            swiftSettings: strict
+        ),
+        .testTarget(
+            name: "SwiftMutantsReportTests",
+            dependencies: ["SwiftMutantsReport", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
         .testTarget(
