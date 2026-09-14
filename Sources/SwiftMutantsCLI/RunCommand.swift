@@ -40,6 +40,18 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "How long one mutant may take, in seconds.")
     var timeout: Int?
 
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Measure only what changed since this git reference.",
+            discussion: """
+                Work you have not committed counts, which is the point: the change most \
+                worth measuring is the one you just made. The score is then about what \
+                you changed, and the report says so.
+                """
+        ))
+    var changed: String?
+
     @Flag(name: .long, help: "Exit non-zero if any mutant survived.")
     var strict = false
 
@@ -79,7 +91,8 @@ struct RunCommand: AsyncParsableCommand {
             configuration: configuration,
             runner: Runner(recorder: TraceRecorder()),
             workspace: workspace,
-            testArguments: testArguments
+            testArguments: testArguments,
+            changedSince: changed
         ).run(environment: Ambient.environment) { progress.report($0) }
 
         Self.summarise(outcome)
@@ -89,22 +102,41 @@ struct RunCommand: AsyncParsableCommand {
         if strict, outcome.summary.survived > 0 { throw ExitCode(1) }
     }
 
+    /// One survivor, in the words a fix needs: where it is, what it is called, what it did.
+    private static func describe(_ result: MutantResult) -> String {
+        [
+            "\(result.path)",
+            result.identity.shortForm,
+            result.rule.name,
+        ].joined(separator: "  ")
+    }
+
     private static func summarise(_ outcome: RunOutcome) {
         let summary = outcome.summary
         let survivors = outcome.results.filter { $0.verdict.outcome == .survived }
-        if !survivors.isEmpty {
+
+        // Split, because they are different news and want different work. A mutant no test
+        // reaches is usually the cheaper thing to deal with - often by deleting the code
+        // rather than by writing an assertion - so it is listed first and separately.
+        let unreached = survivors.filter { $0.verdict.startedTests.isEmpty }
+        let unnoticed = survivors.filter { !$0.verdict.startedTests.isEmpty }
+
+        if !unreached.isEmpty {
             print("")
-            print("survived:")
-            for result in survivors {
-                print("  \(result.path)  \(result.identity.shortForm)  \(result.rule.name)")
-            }
+            print("no test reaches these:")
+            for result in unreached { print("  \(Self.describe(result))") }
+        }
+        if !unnoticed.isEmpty {
+            print("")
+            print("these ran and nothing noticed:")
+            for result in unnoticed { print("  \(Self.describe(result))") }
         }
 
         print("")
         print(
             [
                 "\(summary.killed) killed",
-                "\(summary.survived) survived",
+                "\(summary.survived) survived (\(summary.uncovered) of them unreached)",
                 "\(summary.rejected) rejected",
                 "\(summary.timedOut) timed out",
                 "\(summary.errored) errored",
@@ -168,43 +200,69 @@ private final class RunProgress: @unchecked Sendable {
     /// Each round is a build of somebody's package, which is the slowest thing this tool
     /// does. A person watching twenty silent minutes cannot tell a second round from a
     /// hang, and the difference matters: one is progress and the other is a bug.
-    private static func announce(_ step: Validator.Progress) {
+    private static func validating(_ step: Validator.Progress) -> String {
         switch step {
         case .compiling(let round, let mutants):
-            print(
-                round == 1
-                    ? "building with all \(mutants) mutants in, to see which compile"
-                    : "  building again, \(mutants) left")
+            round == 1
+                ? "building with all \(mutants) mutants in, to see which compile"
+                : "  building again, \(mutants) left"
         case .refused(_, let count):
-            print("  the compiler refused \(count)")
+            "  the compiler refused \(count)"
         case .halving(let mutants, let unplaceable):
-            print("  the compiler would not say which, so halving \(mutants) mutants")
-            if let unplaceable {
-                print(
-                    "  it said: \(unplaceable.file):\(unplaceable.position): "
-                        + unplaceable.message)
-            }
+            "  the compiler would not say which, so halving \(mutants) mutants"
+                + (unplaceable.map {
+                    "\n  it said: \($0.file):\($0.position): \($0.message)"
+                } ?? "")
         }
     }
 
     /// One line for each phase a run passes through.
     private func announce(_ stage: RunStage) {
+        if case .running(let total) = stage { lock.withLock { $0.total = total } }
+        if let line = Self.line(for: stage) { print(line) }
+    }
+
+    /// What each phase says, or nothing for the ones that say it themselves.
+    private static func line(for stage: RunStage) -> String? {
         switch stage {
-        case .snapshotting: print("copying the package")
-        case .discovering: print("reading the sources")
+        case .snapshotting: "copying the package"
+        case .discovering: "reading the sources"
         case .instrumenting(let files, let mutants):
-            print("instrumenting \(mutants) mutants across \(files) files")
-        case .validating(let step): Self.announce(step)
-        case .proving: print("proving every mutant is in the tree")
-        case .building: print("building the tests, once")
-        case .baseline: print("running the tests with nothing awake")
-        case .calibrated(let budget):
-            print("  giving each mutant \(budget.seconds) seconds, from how long that took")
-        case .running(let total):
-            lock.withLock { $0.total = total }
-            print("running \(total) mutants")
-        case .finished: break
+            "instrumenting \(mutants) mutants across \(files) files"
+        case .proving: "proving every mutant is in the tree"
+        case .building: "building the tests, once"
+        case .baseline: "running the tests with nothing awake"
+        case .validating(let step): Self.validating(step)
+        default: Self.measurement(for: stage)
         }
+    }
+
+    /// The lines that carry a number somebody will want to reason about.
+    private static func measurement(for stage: RunStage) -> String? {
+        switch stage {
+        case .calibrated(let budget):
+            "  giving each mutant \(budget.seconds) seconds, from how long that took"
+        case .probing(let tests): "asking each of \(tests) tests what it reaches"
+        case .covered(let uncovered, let average):
+            "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "
+                + "tests each, not the whole suite"
+        case .scoped(let reference, let files):
+            files == 0
+                ? "nothing has changed since \(reference)"
+                : "measuring only what changed since \(reference): \(files) files"
+        case .running(let total): "running \(total) mutants"
+        default: nil
+        }
+    }
+
+    /// A number to one decimal place, without reaching for a variadic C function.
+    ///
+    /// `String(format:)` is `vsnprintf` underneath, which a package built with
+    /// -strict-memory-safety will not let through unmarked - and marking it would be
+    /// claiming a safety argument for printing a number.
+    private static func oneDecimal(_ value: Double) -> String {
+        let tenths = Int((value * 10).rounded())
+        return "\(tenths / 10).\(abs(tenths % 10))"
     }
 
     /// Counts one answer, and says how it is going every so often.

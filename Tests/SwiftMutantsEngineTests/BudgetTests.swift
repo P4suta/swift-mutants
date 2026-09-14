@@ -27,7 +27,7 @@ struct BudgetTests {
             outcome: .survived,
             killedBy: [],
             firstFailure: nil,
-            testsStarted: 10,
+            startedTests: (1...10).map { "P.S/t\($0)()" },
             durationMilliseconds: milliseconds,
             termination: .exited(0)
         )

@@ -22,6 +22,23 @@ public struct RunOutcome: Sendable {
 
     /// How many files were instrumented.
     public let filesInstrumented: Int
+
+    /// What the run was about, when it was not about everything.
+    ///
+    /// A scoped run's score is a score about the scope. Saying so is not a caveat, it is
+    /// the number's meaning: "seventy per cent" about four files somebody just wrote is a
+    /// different sentence from "seventy per cent" about a package.
+    public let scope: RunScope
+}
+
+/// What a run was asked to measure.
+public enum RunScope: Sendable, Hashable {
+
+    /// Every file the package has.
+    case everything
+
+    /// Only the files that differ from a reference, including work not yet committed.
+    case changed(since: String, files: Int)
 }
 
 /// A run could not be carried out.
@@ -45,6 +62,17 @@ public enum RunStage: Sendable, Hashable {
 
     /// How long each mutant will be given, and where that came from.
     case calibrated(Duration)
+
+    /// Asking each test what it reaches, so a mutant can be offered only the tests that
+    /// matter rather than the whole suite.
+    case probing(tests: Int)
+
+    /// What the probe found: how many mutants nothing reaches, and how many tests an
+    /// average mutant will actually face.
+    case covered(uncovered: Int, averageTests: Double)
+
+    /// The run was narrowed to what changed, and to how many files.
+    case scoped(since: String, files: Int)
 
     case running(total: Int)
     case finished(MutantResult)

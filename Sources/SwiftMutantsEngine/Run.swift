@@ -28,6 +28,7 @@ public struct Run: Sendable {
     let executable: String
     let workspace: URL
     let testArguments: [String]
+    let changedSince: String?
 
     /// Prepares a run of the package at `root`, working inside `workspace`.
     ///
@@ -42,7 +43,8 @@ public struct Run: Sendable {
         runner: Runner,
         workspace: URL,
         executable: String = "/usr/bin/swift",
-        testArguments: [String] = []
+        testArguments: [String] = [],
+        changedSince reference: String? = nil
     ) {
         self.root = root
         self.configuration = configuration
@@ -50,6 +52,7 @@ public struct Run: Sendable {
         self.executable = executable
         self.workspace = workspace
         self.testArguments = testArguments
+        self.changedSince = reference
     }
 
     /// Carries out the run.
@@ -64,15 +67,7 @@ public struct Run: Sendable {
         let tree = try snapshot(progress)
 
         progress(.discovering)
-        let listing = try await list(environment: environment)
-        guard !listing.catalog.mutants.isEmpty else {
-            throw RunError(
-                """
-                nothing to mutate in \(root.path). `swift-mutants list --explain` says what \
-                was passed over and why.
-                """
-            )
-        }
+        let (listing, scope) = try await catalogue(environment: environment, progress: progress)
 
         let subjects = try subjectsToValidate(listing, in: tree)
         progress(
@@ -98,10 +93,15 @@ public struct Run: Sendable {
 
         let calibration = try await calibrate(plan, in: pipes, progress: progress)
         let baseline = calibration.baseline
-        let scheduler = calibration.scheduler
+        let scheduler = calibration.scheduler.offering(
+            await cover(
+                calibration,
+                in: pipes,
+                tests: baseline.startedTests,
+                indices: validated.files.flatMap { $0.instrumented.mutants.map(\.index) },
+                progress: progress
+            ))
 
-        let total = validated.files.reduce(0) { $0 + $1.instrumented.mutants.count }
-        progress(.running(total: total))
         let results = await measure(validated, subjects, with: scheduler, progress: progress)
 
         guard let summary = RunSummary.of(results, rejected: validated.rejected.count) else {
@@ -112,8 +112,54 @@ public struct Run: Sendable {
             rejected: validated.rejected,
             summary: summary,
             baseline: baseline,
-            filesInstrumented: validated.files.count
+            filesInstrumented: validated.files.count,
+            scope: scope
         )
+    }
+
+    /// Reads the package and narrows what was found to what the run was asked about.
+    private func catalogue(
+        environment: [String: String],
+        progress: @Sendable (RunStage) -> Void
+    ) async throws(RunError) -> (Listing, RunScope) {
+        let everything = try await list(environment: environment)
+        let (listing, scope) = try await narrow(
+            everything, environment: environment, progress: progress)
+        guard !listing.catalog.mutants.isEmpty else {
+            throw RunError(
+                """
+                nothing to mutate in \(root.path). `swift-mutants list --explain` says what \
+                was passed over and why.
+                """
+            )
+        }
+        return (listing, scope)
+    }
+
+    /// Narrows the catalogue to what changed, when a run asked for that.
+    ///
+    /// A whole-package run is `Θ(mutants)` however clever the scheduling, and on a package
+    /// of any size that is not something anybody puts in a pre-push hook. A run scoped to
+    /// the files somebody just touched is `Θ(mutants in those files)`.
+    ///
+    /// Preferred over caching verdicts across runs, and for soundness rather than effort:
+    /// a mutant's verdict depends on which tests reach it, and which tests reach it can
+    /// change because some *other* file changed. A cache key honest about that has to
+    /// include the whole tree. A scope makes no claim about what it did not run, and the
+    /// report says what it was about.
+    private func narrow(
+        _ listing: Listing,
+        environment: [String: String],
+        progress: @Sendable (RunStage) -> Void
+    ) async throws(RunError) -> (Listing, RunScope) {
+        guard let reference = changedSince else { return (listing, .everything) }
+
+        let changed = try await ChangedFiles(root: root, runner: runner)
+            .since(reference, environment: environment)
+        let narrowed = listing.keeping { changed.contains($0) }
+        progress(
+            .scoped(since: reference, files: narrowed.filesWithMutants.count))
+        return (narrowed, .changed(since: reference, files: narrowed.filesWithMutants.count))
     }
 
     /// Measures the suite with nothing awake, then works out what one mutant may cost.
@@ -123,7 +169,7 @@ public struct Run: Sendable {
     /// package whose tests are simply long.
     private func calibrate(
         _ plan: TestPlan, in pipes: URL, progress: @Sendable (RunStage) -> Void
-    ) async throws(RunError) -> (baseline: Verdict, scheduler: Scheduler) {
+    ) async throws(RunError) -> Calibration {
         let jobs = configuration.execution.jobs ?? 4
         let calibrating = Scheduler(
             plan: plan,
@@ -152,10 +198,54 @@ public struct Run: Sendable {
         let slowest = crowd.max { $0.durationMilliseconds < $1.durationMilliseconds } ?? baseline
         let budget = configuration.test.timeout ?? Self.budget(from: slowest, jobs: jobs)
         progress(.calibrated(budget))
-        return (
-            baseline,
-            Scheduler(plan: plan, runner: runner, scratch: pipes, timeout: budget, jobs: jobs)
+        return Calibration(
+            baseline: baseline,
+            scheduler: Scheduler(
+                plan: plan, runner: runner, scratch: pipes, timeout: budget, jobs: jobs),
+            plan: plan,
+            jobs: jobs
         )
+    }
+
+    /// What measuring the suite established, and what it lets the rest of the run do.
+    struct Calibration {
+        let baseline: Verdict
+        let scheduler: Scheduler
+        let plan: TestPlan
+        let jobs: Int
+    }
+
+    /// Asks each test what it reaches.
+    ///
+    /// One process per test, which sounds expensive and is not: a launch costs about what
+    /// a handful of tests cost, and running *one* test is cheap even when running all of
+    /// them is not. The phase is `Θ(tests)` and it replaces a per-mutant term of
+    /// `Θ(tests)` with `Θ(the tests that matter)` - six hundred mutants against four
+    /// hundred tests goes from a quarter of a million test executions to a few thousand.
+    private func cover(
+        _ calibration: Calibration,
+        in pipes: URL,
+        tests: [String],
+        indices: [UInt32],
+        progress: @Sendable (RunStage) -> Void
+    ) async -> Coverage? {
+        guard !tests.isEmpty else { return nil }
+        progress(.probing(tests: tests.count))
+
+        let coverage = await Prober(
+            plan: calibration.plan,
+            runner: runner,
+            scratch: pipes,
+            timeout: configuration.test.timeout ?? Self.calibrationBudget,
+            jobs: calibration.jobs
+        ).probe(tests)
+
+        let covered = indices.compactMap { coverage.tests(reaching: $0)?.count }
+        let average =
+            covered.isEmpty ? 0 : Double(covered.reduce(0, +)) / Double(covered.count)
+        progress(
+            .covered(uncovered: coverage.uncovered(among: indices), averageTests: average))
+        return coverage
     }
 
     /// Runs the instrumented tree with nothing awake, and insists that it passes.
@@ -216,6 +306,8 @@ public struct Run: Sendable {
         with scheduler: Scheduler,
         progress: @Sendable (RunStage) -> Void
     ) async -> [MutantResult] {
+        progress(
+            .running(total: validated.files.reduce(0) { $0 + $1.instrumented.mutants.count }))
         var results: [MutantResult] = []
         for (file, subject) in zip(validated.files, subjects) {
             guard let path = WorkspaceRelativePath(subject.name) else { continue }
