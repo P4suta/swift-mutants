@@ -8,6 +8,7 @@ import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsRunner
 import SwiftMutantsTrace
+import Synchronization
 import Testing
 
 /// The tool's one claim, put to a real package end to end.
@@ -165,6 +166,36 @@ struct RunIntegrationTests {
             found[path] = bytes.hashValue
         }
         return found
+    }
+
+    /// The deadline a run uses has to be the one it worked out, not a number written
+    /// into the pipeline beside the code that works it out. This existed as a function
+    /// with its own tests while the pipeline went on using a constant, which no test
+    /// noticed because every test of it called the function directly.
+    @Test("uses the deadline it derived from the baseline", .tags(.integration))
+    func usesTheDerivedDeadline() async throws {
+        let fixture = try Self.fixture()
+        defer { fixture.cleanUp() }
+
+        let seen = Mutex<Duration?>(nil)
+        try FileManager.default.createDirectory(
+            at: fixture.workspace, withIntermediateDirectories: true)
+        var configuration = Configuration()
+        configuration.execution.jobs = 2
+
+        let outcome = try await Run(
+            root: fixture.root,
+            configuration: configuration,
+            runner: Runner(recorder: TraceRecorder()),
+            workspace: fixture.workspace
+        ).run(environment: Self.environment()) { stage in
+            if case .calibrated(let budget) = stage { seen.withLock { $0 = budget } }
+        }
+
+        let budget = try #require(
+            seen.withLock { $0 }, "the run never said what deadline it chose")
+        #expect(budget == Run.budget(from: outcome.baseline, jobs: 2))
+        #expect(budget >= .seconds(30))
     }
 
     /// A test that reaches for something the build produced looks in `.build` relative to

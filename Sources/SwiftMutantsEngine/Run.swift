@@ -6,58 +6,13 @@ import SwiftMutantsDiscover
 import SwiftMutantsSnapshot
 
 public import Foundation
-public import SwiftMutantsValidate
+import SwiftMutantsValidate
 
 public import SwiftMutantsConfig
-public import SwiftMutantsCore
+import SwiftMutantsCore
 public import SwiftMutantsExecute
 import SwiftMutantsInstrument
 public import SwiftMutantsRunner
-
-/// Everything one mutation run established.
-public struct RunOutcome: Sendable {
-
-    /// What became of each mutant, file by file, in catalogue order.
-    public let results: [MutantResult]
-
-    /// What the compiler refused, in its own words.
-    public let rejected: [Rejection]
-
-    /// The counts, and the score derived from them.
-    public let summary: RunSummary
-
-    /// How the instrumented tree behaved with nothing awake.
-    public let baseline: Verdict
-
-    /// How many files were instrumented.
-    public let filesInstrumented: Int
-}
-
-/// A run could not be carried out.
-public struct RunError: Error, Hashable, CustomStringConvertible {
-
-    /// What went wrong, in the words a fix needs.
-    public let description: String
-
-    init(_ description: String) { self.description = description }
-}
-
-/// What a run is doing, for somebody watching it.
-public enum RunStage: Sendable, Hashable {
-    case snapshotting
-    case discovering
-    case instrumenting(files: Int, mutants: Int)
-    case validating(Validator.Progress)
-    case building
-    case proving
-    case baseline
-
-    /// How long each mutant will be given, and where that came from.
-    case calibrated(Duration)
-
-    case running(total: Int)
-    case finished(MutantResult)
-}
 
 /// The whole pipeline, from a package on disk to an answer about its tests.
 ///
@@ -141,15 +96,9 @@ public struct Run: Sendable {
             throw RunError("\(pipes.path) could not be made, so the tests cannot be watched")
         }
 
-        let scheduler = Scheduler(
-            plan: plan,
-            runner: runner,
-            scratch: pipes,
-            timeout: configuration.test.timeout ?? .seconds(120),
-            jobs: configuration.execution.jobs ?? 4
-        )
-        progress(.baseline)
-        let baseline = try await provedBaseline(scheduler)
+        let calibration = try await calibrate(plan, in: pipes, progress: progress)
+        let baseline = calibration.baseline
+        let scheduler = calibration.scheduler
 
         let total = validated.files.reduce(0) { $0 + $1.instrumented.mutants.count }
         progress(.running(total: total))
@@ -164,6 +113,33 @@ public struct Run: Sendable {
             summary: summary,
             baseline: baseline,
             filesInstrumented: validated.files.count
+        )
+    }
+
+    /// Measures the suite with nothing awake, then works out what one mutant may cost.
+    ///
+    /// In that order, because the second comes from the first. The baseline gets a
+    /// generous budget of its own: it is spent once, and the alternative is giving up on a
+    /// package whose tests are simply long.
+    private func calibrate(
+        _ plan: TestPlan, in pipes: URL, progress: @Sendable (RunStage) -> Void
+    ) async throws(RunError) -> (baseline: Verdict, scheduler: Scheduler) {
+        let jobs = configuration.execution.jobs ?? 4
+        progress(.baseline)
+        let baseline = try await provedBaseline(
+            Scheduler(
+                plan: plan,
+                runner: runner,
+                scratch: pipes,
+                timeout: configuration.test.timeout ?? Self.calibrationBudget,
+                jobs: jobs
+            ))
+
+        let budget = configuration.test.timeout ?? Self.budget(from: baseline, jobs: jobs)
+        progress(.calibrated(budget))
+        return (
+            baseline,
+            Scheduler(plan: plan, runner: runner, scratch: pipes, timeout: budget, jobs: jobs)
         )
     }
 
@@ -240,7 +216,7 @@ public struct Run: Sendable {
     ///
     /// Generous, because it is spent once and the alternative is a run that gives up on a
     /// package whose tests are simply long.
-    static let calibrationBudget: Duration = .seconds(1800)
+    public static let calibrationBudget: Duration = .seconds(1800)
 
     /// How long one mutant gets, derived from how long the suite takes when nothing is
     /// wrong with it.
@@ -256,7 +232,7 @@ public struct Run: Sendable {
     /// one slow mutant while the cost of being too tight is a survivor reported as a kill.
     /// Measured on this repository before any of this existed: 592 mutants, 82 deadlines,
     /// 0 survivors, and a score of 100% that was not true of anything.
-    static func budget(from baseline: Verdict, jobs: Int) -> Duration {
+    public static func budget(from baseline: Verdict, jobs: Int) -> Duration {
         let solitary = max(baseline.durationMilliseconds, 1)
         let allowed = solitary * 5 * max(1, jobs)
         return max(.seconds(30), .milliseconds(allowed))
