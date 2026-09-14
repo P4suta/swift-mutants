@@ -49,6 +49,13 @@ public struct Skip: Sendable, Hashable {
 
     /// How many candidates this reason hid.
     public let candidatesHidden: Int
+
+    /// Records a region that was passed over.
+    public init(reason: SkipReason, span: SourceSpan, candidatesHidden: Int) {
+        self.reason = reason
+        self.span = span
+        self.candidatesHidden = candidatesHidden
+    }
 }
 
 /// The named reasons a region is passed over.

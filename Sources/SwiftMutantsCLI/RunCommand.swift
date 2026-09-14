@@ -198,6 +198,7 @@ struct RunCommand: AsyncParsableCommand {
             Self.summarise(outcome)
             for file in published { print(Narration.published(file, relativeTo: root)) }
             print(Narration.explainable(outcome.summary.survived))
+            Self.annotate(account, in: Ambient.environment)
         }
         // Exit 1 is reserved for a policy somebody asked for. A run that completed and
         // found survivors has not failed - it has answered - and a tool that exited
@@ -212,6 +213,24 @@ struct RunCommand: AsyncParsableCommand {
         configuration.cache.mode = cache
         if let timeout { configuration.test.timeout = .seconds(timeout) }
         return configuration
+    }
+
+    /// Says it again where the person who caused it is looking, if anything is.
+    ///
+    /// Appended to the summary rather than written over it: a workflow has other steps and
+    /// each of them owns part of that page.
+    private static func annotate(_ report: RunReport, in environment: [String: String]) {
+        guard Annotations.wanted(in: environment) else { return }
+        for line in Annotations.workflowCommands(for: report) { print(line) }
+        guard let file = Annotations.summaryFile(in: environment) else { return }
+        let text = Annotations.stepSummary(for: report) + "\n"
+        guard let handle = try? FileHandle(forWritingTo: file) else {
+            try? Data(text.utf8).write(to: file)
+            return
+        }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: Data(text.utf8))
+        try? handle.close()
     }
 
     private static func summarise(_ outcome: RunOutcome) {
