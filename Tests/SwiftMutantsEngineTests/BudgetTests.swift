@@ -38,15 +38,14 @@ struct BudgetTests {
         #expect(Run.budget(from: Self.baseline(taking: 20_000), jobs: 1) == .seconds(100))
     }
 
-    /// Workers share a machine. Running eight suites at once does not make each one eight
-    /// times slower, but it certainly does not leave them at their solitary speed either -
-    /// and the cost of being too generous is one slow mutant, while the cost of being too
-    /// tight is a survivor reported as a kill.
-    @Test("allows for the workers sharing a machine")
-    func scalesWithJobs() {
+    /// Not multiplied by the workers. A deadline is no longer the last word - a mutant
+    /// that misses one is run again, alone - and a budget that allowed for every worker
+    /// slowing every other one made a genuine hang cost sixteen minutes of a run.
+    @Test("does not stretch for the number of workers")
+    func doesNotScaleWithJobs() {
         let alone = Run.budget(from: Self.baseline(taking: 20_000), jobs: 1)
         let crowded = Run.budget(from: Self.baseline(taking: 20_000), jobs: 8)
-        #expect(crowded > alone)
+        #expect(crowded == alone)
     }
 
     /// A suite that takes no time at all still needs a deadline a loaded machine can meet.
@@ -63,6 +62,6 @@ struct BudgetTests {
         let short = Run.budget(from: Self.baseline(taking: 10_000), jobs: 4)
         let long = Run.budget(from: Self.baseline(taking: 60_000), jobs: 4)
         #expect(long > short)
-        #expect(long >= .seconds(60 * 5))
+        #expect(long == .seconds(300))
     }
 }

@@ -221,21 +221,24 @@ public struct Run: Sendable {
     /// How long one mutant gets, derived from how long the suite takes when nothing is
     /// wrong with it.
     ///
-    /// Five times the baseline, and never less than thirty seconds. A number picked out
-    /// of the air is either so tight that a loaded machine reports a working suite as a
-    /// hang, or so loose that a mutant which really does hang costs the whole budget - and
-    /// the only thing that tells the two apart is how long this suite takes.
+    /// Five times the baseline, and never less than thirty seconds. A number picked out of
+    /// the air is either so tight that a loaded machine reports a working suite as a hang,
+    /// or so loose that a mutant which really does hang costs the whole budget - and the
+    /// only thing that tells the two apart is how long this suite takes.
     ///
-    /// Multiplied by the number of workers, because they share a machine. Running eight
-    /// suites at once does not make each one eight times slower, but it certainly does not
-    /// leave them at their solitary speed either, and the cost of being too generous is
-    /// one slow mutant while the cost of being too tight is a survivor reported as a kill.
-    /// Measured on this repository before any of this existed: 592 mutants, 82 deadlines,
-    /// 0 survivors, and a score of 100% that was not true of anything.
+    /// Five, and not five times the number of workers, because a deadline is no longer the
+    /// last word: a mutant that misses one is run again, alone. That retry is what makes a
+    /// tight budget safe, and a budget allowing for every worker to slow every other one
+    /// made a genuine hang cost sixteen minutes. Measured here: a solitary suite of
+    /// twenty-five seconds gave a budget of a thousand seconds, and the run spent them.
+    ///
+    /// The asymmetry still sets the direction. A deadline met under load costs one serial
+    /// retry; a deadline set too tight *without* a retry reports a survivor as a kill,
+    /// which is the mistake nobody ever finds out about.
     public static func budget(from baseline: Verdict, jobs: Int) -> Duration {
+        _ = jobs
         let solitary = max(baseline.durationMilliseconds, 1)
-        let allowed = solitary * 5 * max(1, jobs)
-        return max(.seconds(30), .milliseconds(allowed))
+        return max(.seconds(30), .milliseconds(solitary * 5))
     }
 
     /// Where the instrumented copy is built.
