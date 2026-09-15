@@ -27,29 +27,34 @@
 /// deadline set too tight reports a survivor as a detection, which is the mistake nobody
 /// ever finds out about. So every unknown here resolves towards more time.
 ///
-/// ## What this does not do
+/// ## What this used to not do, and why it no longer has to
 ///
-/// Both terms are measured once, at the start, and a machine that gets busier afterwards
-/// makes every one of them an underestimate for the rest of the run. Reported from a real
-/// package: a baseline of 898 seconds became 1767 because somebody started a full build in
-/// another window, and every deadline after that point was derived from the wrong number.
-/// A user with anything else running gets a budget their package did not earn, silently.
+/// Both terms were measured once, at the start, in wall time - and a machine that got busier
+/// afterwards made every one of them an underestimate for the rest of the run. Reported from
+/// a real package: a baseline of 898 seconds became 1767 because somebody started a full
+/// build in another window, and every deadline after that point came from the wrong number.
+/// Mutants met deadlines they should not have, were retried, met them again, and were
+/// recorded as detections.
 ///
-/// The fix needs no extra measurement, which is what makes it worth writing down rather
-/// than guessing at. Every trial already reports how long it took and this already predicts
-/// one, so a run that finds the last several trials all taking twice what was predicted
-/// knows the model has drifted — without asking anything, and without a second baseline.
+/// The obvious answer was to notice the drift: every trial reports what it cost and this
+/// predicts one, so a run whose last several trials all took several times what was
+/// predicted knows the model is wrong. It was written down here and deliberately not built,
+/// on the grounds that the state it needs is shared across concurrent workers.
 ///
-/// The part that makes it safe to act on is not obvious and came from somebody who had
-/// caused the drift themselves: "the machine got busier" and "the model is wrong" are
-/// indistinguishable from inside, and they do not need to be told apart, because the safe
-/// reading of both is that the deadline is too tight. Widening on a busy machine costs a
-/// little time; not widening when the model is wrong costs a false detection. Only one of
-/// those is ever noticed.
+/// It was never built because the right answer was to stop measuring the wrong thing. A
+/// process doing the same work consumes the same *processor* seconds however busy the
+/// machine is, so an allowance derived from ``Terms/cpu`` does not drift at all - and the
+/// kernel enforces it, so nothing has to watch for anything.
 ///
-/// It is not built. The state it needs is shared across workers that run concurrently, and
-/// this repository has already had one crash from mutable state carried across an `await` -
-/// so it wants a considered shape rather than a variable added at the end of a long day.
+/// What is left is the clock, and it does still drift. It no longer costs a false detection,
+/// because it is no longer the limit: ``forTrial(bundles:tests:)`` widens it to twenty times
+/// the allowance, which is past any oversubscription a real machine has. A trial that has
+/// not spent its allowance is working slowly; a trial that goes twenty times past it is not
+/// working at all, which is a deadlock, and a deadlock is the only thing the clock is here
+/// to catch.
+///
+/// A run that could not measure its own processor time has no allowance, and the clock is
+/// the limit again - which is where this tool was, and where the drift above would apply.
 public enum Budget: Sendable, Hashable {
 
     /// What somebody asked for, for every mutant alike.
@@ -142,9 +147,31 @@ public enum Budget: Sendable, Hashable {
             let processes = max(bundles, 1)
             let work =
                 terms.fixedMilliseconds * processes + terms.perTestMilliseconds * facing
-            return max(terms.floor, .milliseconds(work * max(terms.slack, 1)))
+            let clock = max(terms.floor, .milliseconds(work * max(terms.slack, 1)))
+            // And well past the allowance, when there is one. The deadline is no longer
+            // deciding anything a healthy trial could trip over - the allowance is - so it
+            // only has to be finite, and a deadline still tuned to be the limit would go on
+            // producing exactly the false detections the allowance removes.
+            //
+            // A trial that has not spent its allowance is a trial that is *working*, slowly,
+            // on a machine somebody else is using. Twenty times is past any oversubscription
+            // a real machine has: with one worker per core a trial gets about a core, so
+            // wall time and processor time are close, and another tenant taking most of the
+            // machine is a factor of a few.
+            guard let allowance = cpuForTrial(bundles: bundles, tests: tests) else {
+                return clock
+            }
+            return max(clock, allowance * Self.backstop)
         }
     }
+
+    /// How far past its allowance a trial may run before the clock stops it.
+    ///
+    /// The number is a statement about machines rather than about suites: how badly
+    /// oversubscribed one can plausibly be while a trial is still making progress. Past
+    /// that, a trial which has not spent its allowance is not working at all, which is a
+    /// deadlock - and a deadlock is the only thing this is here to catch.
+    public static let backstop = 20
 
     /// Splits a measured suite into what a trial costs and what its tests cost.
     ///
