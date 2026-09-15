@@ -17,6 +17,26 @@ public enum Termination: Sendable, Hashable {
 
     /// It never became a process.
     case couldNotStart(String)
+
+    /// Whether the process reached the end of what it was asked to do.
+    ///
+    /// The question a batch turns on. Several mutants run in one process and the answer is
+    /// shared out by which test failed, so a process that stopped part way has nothing to
+    /// say about the mutants whose tests had not run yet - and "no test failed for you" is
+    /// exactly what surviving looks like.
+    ///
+    /// A trap is the case that matters. Bounds arithmetic is where mutation testing earns
+    /// its keep, and a mutation to bounds arithmetic traps: the process dies on a signal
+    /// with no failure event, because there is no assertion, only a trap. Measured on a
+    /// package of two hand-written binary codecs, where a batch that died that way reported
+    /// every mutant in it as surviving a program it had destroyed.
+    public var settled: Bool {
+        switch self {
+        case .stopped: true
+        case .exited(let status): status == 0
+        case .timedOut, .couldNotStart: false
+        }
+    }
 }
 
 /// What one mutant amounted to, and what led there.

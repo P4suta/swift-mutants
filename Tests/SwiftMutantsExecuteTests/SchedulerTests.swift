@@ -24,13 +24,15 @@ struct SchedulerTests {
         failingFor failing: Set<UInt32>,
         failingBaselineTests: [String] = [],
         slowUntilRetried: Set<UInt32> = [],
-        alwaysSlow: Set<UInt32> = []
+        alwaysSlow: Set<UInt32> = [],
+        trapping: Set<UInt32> = []
     ) throws -> Fake {
         try ScriptedBundle.fake(
             failingFor: failing,
             failingBaselineTests: failingBaselineTests,
             slowUntilRetried: slowUntilRetried,
-            alwaysSlow: alwaysSlow
+            alwaysSlow: alwaysSlow,
+            trapping: trapping
         )
     }
 

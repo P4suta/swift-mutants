@@ -29,6 +29,22 @@ enum ScriptedBundle {
     /// with eight of them is a thing nobody can read at a call site.
     struct Script {
         var failing: Set<UInt32> = []
+
+        /// Mutants that take the process down with them, the way a trap does.
+        ///
+        /// A test bundle that traps dies on a signal *without writing a failure event*:
+        /// there is no assertion, there is no `issueRecorded`, the stream simply stops.
+        /// That is the strongest kill there is - the mutant did not change an answer, it
+        /// destroyed the program - and it is the one shape a fixture built out of failure
+        /// events cannot produce by scripting a failure.
+        var trapping: Set<UInt32> = []
+
+        /// The same script, with these mutants taking the process down.
+        func trapping(_ mutants: Set<UInt32>) -> Self {
+            var copy = self
+            copy.trapping = mutants
+            return copy
+        }
         var failingBaselineTests: [String] = []
         var slowUntilRetried: Set<UInt32> = []
         var alwaysSlow: Set<UInt32> = []
@@ -46,7 +62,8 @@ enum ScriptedBundle {
         slowBaseline: Bool = false,
         failingTests: [String: String] = [:],
         failingWhatever: String? = nil,
-        neverStarting: Bool = false
+        neverStarting: Bool = false,
+        trapping: Set<UInt32> = []
     ) throws -> Fake {
         try Self.fake(
             Script(
@@ -58,7 +75,7 @@ enum ScriptedBundle {
                 failingTests: failingTests,
                 failingWhatever: failingWhatever,
                 neverStarting: neverStarting
-            ))
+            ).trapping(trapping))
     }
 
     static func fake(_ script: Script) throws -> Fake {
@@ -100,6 +117,7 @@ enum ScriptedBundle {
             ? Self.silent
             : Self.script(
                 failingFor: script.failing,
+                trapping: script.trapping,
                 slowUntilRetried: script.slowUntilRetried,
                 alwaysSlow: script.alwaysSlow,
                 slowBaseline: script.slowBaseline,
@@ -144,6 +162,7 @@ enum ScriptedBundle {
 
     static func script(
         failingFor failing: Set<UInt32>,
+        trapping: Set<UInt32> = [],
         slowUntilRetried: Set<UInt32> = [],
         alwaysSlow: Set<UInt32> = [],
         slowBaseline: Bool = false,
@@ -153,6 +172,7 @@ enum ScriptedBundle {
     ) -> String {
         let named = Self.namedTests(failingTests) + Self.stranger(failingWhatever)
         let failures = failing.map(String.init).sorted().joined(separator: " ")
+        let traps = trapping.map(String.init).sorted().joined(separator: " ")
         let slowness = Self.slowness(
             once: slowUntilRetried, always: alwaysSlow, baseline: slowBaseline, in: scratch)
         return """
@@ -182,6 +202,7 @@ enum ScriptedBundle {
               '{"kind":"event","payload":{"kind":"runStarted"}}' \\
               '{"kind":"event","payload":{"kind":"testStarted","testID":"P.S/f()"}}' > "$STREAM"
             \(slowness)
+            \(Self.trapping(traps))
             for bad in \(failures); do
               if [ "$MUTANT" = "$bad" ]; then
                 printf '%s\\n' \\
@@ -198,6 +219,33 @@ enum ScriptedBundle {
               '{"kind":"event","payload":{"kind":"runEnded"}}' > "$STREAM"
             rm -f "$LIVE/$MUTANT"
             exit 0
+            """
+    }
+
+    /// Shell that takes the process down, the way a trapping mutant does.
+    ///
+    /// A test bundle that traps dies on a signal *without writing a failure event*: there
+    /// is no assertion, so there is no `issueRecorded`; the stream simply stops. That is
+    /// the strongest kill there is - the mutant did not change an answer, it destroyed the
+    /// program - and it is the one shape a fixture built out of failure events cannot
+    /// produce by scripting a failure.
+    ///
+    /// Matched inside the list, because a batch wakes several at once and spells them
+    /// `0,1,2`. A fixture that compared the whole variable against one index could never
+    /// trap inside a batch, which is the case worth testing: alone, a trapping mutant was
+    /// always answered correctly.
+    static func trapping(_ indices: String) -> String {
+        guard !indices.isEmpty else { return "" }
+        return """
+            for boom in \(indices); do
+              case ",$MUTANT," in
+                *",$boom,"*)
+                  rm -f "$LIVE/$MUTANT"
+                  kill -TRAP $$
+                  sleep 5
+                  ;;
+              esac
+            done
             """
     }
 

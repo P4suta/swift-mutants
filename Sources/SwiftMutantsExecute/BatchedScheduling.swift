@@ -33,6 +33,21 @@ extension Scheduler {
             )
 
         guard verdict.outcome == .killed || verdict.outcome == .survived else { return nil }
+
+        // A process that stopped part way has nothing to share out. The mutants whose
+        // tests had not run yet were not measured, and "no test failed for you" is exactly
+        // what surviving looks like - so sharing it out would report every one of them as
+        // having survived a program that died.
+        //
+        // A trap is the case that matters, and it is not rare: bounds arithmetic is where
+        // mutation testing earns its keep, and a mutation to bounds arithmetic traps. The
+        // process dies on a signal with no failure event, because there is no assertion,
+        // only a trap. Measured on a package of two hand-written binary codecs: alone the
+        // mutant was killed, in company every member of its batch came back a survivor
+        // whose missing assertion could not be written - the assertion it wants is "the
+        // process is still alive".
+        guard verdict.termination.settled else { return nil }
+
         var killers: [UInt32: [String]] = [:]
         for test in verdict.killedBy {
             guard let owner = batch.mutant(killedBy: test) else { return nil }
