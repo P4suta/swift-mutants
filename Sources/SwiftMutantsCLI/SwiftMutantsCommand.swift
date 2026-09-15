@@ -30,6 +30,7 @@ public struct SwiftMutantsCommand: AsyncParsableCommand {
             ApplyCommand.self, WhySkippedCommand.self, ReportCommand.self, DoctorCommand.self,
             CacheCommand.self,
             InitCommand.self,
+            TraceCommand.self,
         ],
         defaultSubcommand: nil
     )

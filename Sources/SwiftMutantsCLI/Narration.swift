@@ -23,6 +23,15 @@ import SwiftMutantsValidate
 /// themselves identically.
 enum Narration {
 
+    /// Where this run is keeping its recording.
+    ///
+    /// Said at the start rather than at the end, because the run somebody asked to record
+    /// is the run they expect to have trouble with - and a path printed after a run that
+    /// hung is a path they never see.
+    static func tracing(_ file: URL) -> String {
+        "recording this run to \(file.path)"
+    }
+
     /// What the last run got to, when it did not get to the end.
     ///
     /// A report is written once, when a run finishes, so an interrupted one used to produce

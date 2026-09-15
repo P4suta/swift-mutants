@@ -5,6 +5,7 @@ import ArgumentParser
 import Foundation
 import SwiftMutantsConfig
 import SwiftMutantsCore
+import SwiftMutantsDiagnostics
 import SwiftMutantsConsole
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -71,6 +72,22 @@ struct RunCommand: AsyncParsableCommand {
 
     @Flag(name: .long, help: "Exit non-zero if any mutant survived.")
     var strict = false
+
+    @Flag(
+        name: .long,
+        help: ArgumentHelp(
+            "Keep a recording of everything this run starts.",
+            discussion: """
+                Every subprocess a run starts passes through one recorder, so what it did \
+                is written down whether or not anybody asked - this keeps it after the run \
+                ends, when the terminal has scrolled and the copy is gone.
+
+                `swift-mutants trace summary` then says where the time went. Off by \
+                default because a recording is for the run you are about to have trouble \
+                with rather than for every run.
+                """
+        ))
+    var trace = false
 
     @Argument(
         parsing: .postTerminator,
@@ -266,7 +283,10 @@ struct RunCommand: AsyncParsableCommand {
         // back out, because the moment somebody needs it is the moment the run is over.
         let settings = try ConfigurationFile.read(in: root)
         let ledger = Self.keepingAnswers(for: root)
-        let recorder = TraceRecorder(sinks: [LiveTrace(verbosity: verbosity)])
+        let kept = trace ? Self.keepingTrace(for: root) : nil
+        if let kept { print(Narration.tracing(kept.path)) }
+        let recorder = TraceRecorder(
+            sinks: [LiveTrace(verbosity: verbosity)] + (kept.map { [$0] } ?? []))
         let outcome: RunOutcome
         do {
             outcome = try await Run(

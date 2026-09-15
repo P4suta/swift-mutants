@@ -5,6 +5,7 @@ import ArgumentParser
 import Foundation
 import SwiftMutantsConfig
 import SwiftMutantsCore
+import SwiftMutantsDiagnostics
 import SwiftMutantsConsole
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -101,6 +102,23 @@ extension RunCommand {
             into: FailureReport.home(for: root)
         )
         if let written { print(Narration.diagnosed(written)) }
+    }
+
+    /// Where a run keeps its recording, when it was asked to keep one.
+    ///
+    /// Nothing fails for being unable to. A recording is never evidence - it takes no part
+    /// in a verdict, a mutant's identity or a cache key - so a run that cannot write one
+    /// says nothing and carries on, rather than refusing to measure anything because it
+    /// could not keep a record of measuring it.
+    ///
+    /// Named by when it was made, because what somebody wants is the last one, and a name
+    /// that sorts is a name that answers that without asking the filesystem.
+    static func keepingTrace(for root: URL) -> TraceFileSink? {
+        let home = TraceCommand.home(for: root)
+        try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let name = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        return try? TraceFileSink(at: home.appending(path: "run-\(name).jsonl"))
     }
 
     /// Where a run's answers are written down as they are decided.
