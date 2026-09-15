@@ -213,3 +213,58 @@ struct NarrationValidationTests {
         )
     }
 }
+
+/// What a run says when the compiler would not place a refusal.
+///
+/// Two sentences, because it is two different pieces of news. "The compiler refused N" is
+/// about the mutants and there is nothing for anybody to do. "The compiler ran out of
+/// budget" is about *their* code - an expression that type-checks fine as written and tips
+/// over once guards wrap its subexpressions - and breaking it into statements is usually an
+/// improvement they wanted anyway.
+///
+/// Reported from a real package: twice in three runs, both times a genuine finding about
+/// the package, and both times it arrived reading like a mutant that was not valid Swift.
+@Suite("Narrating a halving")
+struct HalvingNarrationTests {
+
+    static func said(_ message: String, severity: String = "error") -> String {
+        let parsed = CompilerDiagnostic.parse("/tmp/pkg/Hot.swift:107:16: \(severity): \(message)")
+        return Narration.validating(.halving(mutants: 255, unplaceable: parsed.first))
+    }
+
+    @Test("says how many it is about to halve, and what the compiler said")
+    func saysTheCount() {
+        let said = Self.said("binary operator '-' cannot be applied to two 'String' operands")
+        #expect(said.contains("255"))
+        #expect(said.contains("Hot.swift:107:16"))
+        #expect(said.contains("binary operator"))
+    }
+
+    /// The one that is about their code says so, rather than reading like a refusal.
+    @Test("says when the compiler ran out of budget rather than refusing")
+    func saysWhenUnaffordable() {
+        let said = Self.said(
+            "the compiler is unable to type-check this expression in reasonable time; "
+                + "try breaking up the expression into distinct sub-expressions")
+        #expect(said.contains("too expensive"))
+        #expect(said.contains("Hot.swift:107:16"))
+        // And it says what to do, because there is something to do.
+        #expect(said.lowercased().contains("statement") || said.lowercased().contains("break"))
+    }
+
+    /// An ordinary refusal does not get that sentence, or it would be advice about nothing.
+    @Test("says nothing about expense when the compiler simply refused")
+    func ordinaryRefusalIsPlain() {
+        #expect(
+            !Self.said("missing return in a function expected to return 'Bool'")
+                .contains("too expensive"))
+    }
+
+    /// A compile that failed while saying nothing at all still says how many it is halving.
+    @Test("still says how many when the compiler said nothing")
+    func saidNothing() {
+        let said = Narration.validating(.halving(mutants: 42, unplaceable: nil))
+        #expect(said.contains("42"))
+        #expect(!said.contains("it said"))
+    }
+}

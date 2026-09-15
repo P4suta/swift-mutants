@@ -29,6 +29,26 @@ public struct CompilerDiagnostic: Sendable, Hashable {
     /// What it said, with the severity and position stripped off the front.
     public let message: String
 
+    /// Whether the compiler ran out of budget rather than finding anything wrong.
+    ///
+    /// A different thing from a refusal, and a different thing for somebody to do about.
+    /// A refused mutant is a fact about the mutant and there is nothing to act on - the
+    /// tool drops it and moves on. An expression the compiler cannot afford to type-check
+    /// is a fact about *their* code: it type-checks fine as written and tips over once
+    /// guards wrap its subexpressions, which means it was already close to the edge.
+    /// Breaking it into statements is usually an improvement they wanted anyway.
+    ///
+    /// It also costs differently, which decides how a run behaves. Looking for an invalid
+    /// mutant, every compile fails fast; looking for an unaffordable one, every compile
+    /// pays the whole type-checking budget first. Reported from a real package: seven and
+    /// a half minutes of halving on a package that builds in forty.
+    ///
+    /// Only an error. A warning saying the same thing did not stop a build, so it is not
+    /// why a compile failed.
+    public var isUnaffordable: Bool {
+        severity == .error && message.contains("type-check this expression in reasonable time")
+    }
+
     /// Creates a diagnostic.
     public init(file: String, position: SourcePosition, severity: Severity, message: String) {
         self.file = file
