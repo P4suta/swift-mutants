@@ -173,7 +173,7 @@ public struct Run: Sendable {
         environment: [String: String],
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Calibration {
-        let jobs = configuration.execution.jobs ?? 4
+        let jobs = Self.jobs(asked: configuration.execution.jobs)
         let calibrating = Scheduler(
             bundles: bundles,
             runner: runner,

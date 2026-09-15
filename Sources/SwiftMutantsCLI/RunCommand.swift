@@ -37,7 +37,21 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "The package to measure. Defaults to the current directory.")
     var packagePath: String?
 
-    @Option(name: .shortAndLong, help: "How many mutants to run at once.")
+    @Option(
+        name: .shortAndLong,
+        help: ArgumentHelp(
+            "How many mutants to run at once. Defaults to this machine's cores.",
+            discussion: """
+                A mutant is one test process, and this tool turns your suite's own \
+                in-process parallelism off so that which test caught a mutant is a fact \
+                rather than a race. So a mutant is one busy thread, and the default is \
+                however many places this machine has to put one.
+
+                Turn it down if your suite cannot run beside itself - a shared port, a \
+                fixture directory, a temporary file. A run checks for that before it \
+                measures anything and says so rather than reporting the failures as kills.
+                """
+        ))
     var jobs: Int?
 
     @Option(name: .long, help: "How long one mutant may take, in seconds.")

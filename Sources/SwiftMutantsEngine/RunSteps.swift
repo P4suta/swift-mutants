@@ -195,7 +195,7 @@ extension Run {
                     // it should be this - and a user who turned `--jobs` down because
                     // their machine was struggling meant it about every process this tool
                     // starts, not only the ones it starts last.
-                    jobs: configuration.execution.jobs ?? 4,
+                    jobs: Self.jobs(asked: configuration.execution.jobs),
                     fallback: building
                 )
             } ?? building,
