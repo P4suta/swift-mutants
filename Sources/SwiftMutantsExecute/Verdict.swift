@@ -15,6 +15,15 @@ public enum Termination: Sendable, Hashable {
     /// It ran out of time.
     case timedOut
 
+    /// It used more processor than it was allowed.
+    ///
+    /// Apart from ``timedOut`` because it is better evidence, not merely different. A
+    /// deadline says nothing was learned in the time allowed, which on a busy machine may
+    /// be a fact about the machine; this says the process did more *work* than the
+    /// allowance, which is the same on any machine and needs no second opinion. So a mutant
+    /// stopped this way is not retried: there is nothing a quieter machine would change.
+    case overranWork
+
     /// It never became a process.
     case couldNotStart(String)
 
@@ -34,7 +43,7 @@ public enum Termination: Sendable, Hashable {
         switch self {
         case .stopped: true
         case .exited(let status): status == 0
-        case .timedOut, .couldNotStart: false
+        case .timedOut, .overranWork, .couldNotStart: false
         }
     }
 }
@@ -76,6 +85,18 @@ public struct Verdict: Sendable, Hashable {
     /// apart is how long this suite takes when nothing is wrong with it.
     public let durationMilliseconds: Int
 
+    /// How much processor the trial used, when it was asked to account for it.
+    ///
+    /// The number a budget should be derived from, and the reason is the one above read
+    /// again: how long a suite takes is a fact about the machine as much as about the
+    /// suite, and how much work it does is a fact about the suite alone. A baseline taken
+    /// on a quiet machine and applied on a busy one is too tight in wall time and exactly
+    /// right in this.
+    ///
+    /// Absent when nothing was measured, which is not zero: a trial that could not account
+    /// for itself leaves the wall clock as the only limit, which is where this tool was.
+    public let cpuMilliseconds: Int?
+
     /// How the process ended.
     ///
     /// Kept beside the outcome rather than folded into it, because two mutants that are
@@ -91,6 +112,7 @@ public struct Verdict: Sendable, Hashable {
         firstFailure: String?,
         startedTests: [String],
         durationMilliseconds: Int,
+        cpuMilliseconds: Int? = nil,
         termination: Termination
     ) {
         self.outcome = outcome
@@ -98,6 +120,7 @@ public struct Verdict: Sendable, Hashable {
         self.firstFailure = firstFailure
         self.startedTests = startedTests
         self.durationMilliseconds = durationMilliseconds
+        self.cpuMilliseconds = cpuMilliseconds
         self.termination = termination
     }
 }
@@ -248,6 +271,9 @@ public struct StreamWatcher: Sendable {
     /// - A process this watcher stopped because it had learned everything it was waiting
     ///   for has an answer, and it is the answer. Only a stop it did not ask for - a
     ///   deadline, an interrupt - leaves it knowing nothing.
+    /// - A process the kernel stopped for using more processor than it was allowed did not
+    ///   terminate. That is the same finding a deadline makes and better evidence for it,
+    ///   so it is the same outcome and is never retried.
     /// - A process that started running tests and then died without finishing was killed
     ///   *by the mutant*: `try!` and `x!` mutants trap, and a trap takes the process with
     ///   it. Counting that as tooling trouble would lose the most reliably-caught mutants
@@ -257,13 +283,16 @@ public struct StreamWatcher: Sendable {
     ///   it read as a suite that passed.
     /// - Only a clean finish with no failures is `survived`, which is the answer that
     ///   costs somebody work, and so the one held to the strictest evidence.
-    public func verdict(after termination: Termination, taking milliseconds: Int = 0) -> Verdict {
+    public func verdict(
+        after termination: Termination, taking milliseconds: Int = 0, working cpu: Int? = nil
+    ) -> Verdict {
         Verdict(
             outcome: outcome(after: termination),
             killedBy: killers,
             firstFailure: firstFailure,
             startedTests: startedTests,
             durationMilliseconds: milliseconds,
+            cpuMilliseconds: cpu,
             termination: termination
         )
     }
@@ -278,7 +307,7 @@ public struct StreamWatcher: Sendable {
             // a deadline, an interrupt - after which it knows nothing, whatever ran first.
             guard isDecided, !startedTests.isEmpty else { return .errored }
             return .survived
-        case .timedOut:
+        case .timedOut, .overranWork:
             return startedTests.isEmpty ? .errored : .timedOut
         case .couldNotStart:
             return .errored
@@ -332,6 +361,11 @@ extension Verdict {
             firstFailure: verdicts.compactMap(\.firstFailure).first,
             startedTests: verdicts.flatMap(\.startedTests),
             durationMilliseconds: verdicts.reduce(0) { $0 + $1.durationMilliseconds },
+            // Added up, because a mutant facing two bundles did the work of both. Nothing
+            // at all when none of them could account for itself.
+            cpuMilliseconds: verdicts.compactMap(\.cpuMilliseconds).reduce(into: nil) {
+                $0 = ($0 ?? 0) + $1
+            },
             termination: deciding.termination
         )
     }

@@ -79,19 +79,36 @@ public enum Budget: Sendable, Hashable {
         /// Never less than this, however little a mutant faces.
         public let floor: Duration
 
+        /// The same two terms again, in processor time, when it could be measured.
+        ///
+        /// The unit a limit belongs in. A deadline in wall time is a statement about the
+        /// machine as much as about the suite: a baseline of 898 seconds became 1767
+        /// because a build started in another window, and every deadline derived from it
+        /// afterwards was too tight - so mutants met deadlines, were retried, met them
+        /// again, and were recorded as detections. A process doing the same work consumes
+        /// the same processor seconds however busy the machine is, so an allowance in this
+        /// unit is a statement about the program and there is no drift to notice.
+        ///
+        /// Absent when nothing was measured, which is not the same as zero: a run that
+        /// could not read its own processor time has no allowance to give, and the wall
+        /// clock is what is left.
+        public let cpu: Work?
+
         /// Records a measured suite.
         public init(
             fixedMilliseconds: Int,
             perTestMilliseconds: Int,
             everyTest: Int,
             slack: Int,
-            floor: Duration
+            floor: Duration,
+            cpu: Work? = nil
         ) {
             self.fixedMilliseconds = fixedMilliseconds
             self.perTestMilliseconds = perTestMilliseconds
             self.everyTest = everyTest
             self.slack = slack
             self.floor = floor
+            self.cpu = cpu
         }
     }
 
@@ -146,6 +163,8 @@ public enum Budget: Sendable, Hashable {
         suiteMilliseconds suite: Int,
         tests: Int,
         oneTestMilliseconds: Int?,
+        cpuSuiteMilliseconds: Int? = nil,
+        cpuOneTestMilliseconds: Int? = nil,
         slack: Int = 5,
         floor: Duration = .seconds(30)
     ) -> Self {
@@ -159,7 +178,64 @@ public enum Budget: Sendable, Hashable {
                 perTestMilliseconds: perTest,
                 everyTest: count,
                 slack: slack,
-                floor: floor
+                floor: floor,
+                cpu: Self.work(
+                    suite: cpuSuiteMilliseconds, oneTest: cpuOneTestMilliseconds, tests: count)
             ))
+    }
+
+    /// The same split, applied to what the suite cost in processor time.
+    private static func work(suite: Int?, oneTest: Int?, tests: Int) -> Work? {
+        guard let suite else { return nil }
+        let total = max(suite, 0)
+        let fixed = (oneTest ?? 0) <= total ? max(oneTest ?? 0, 0) : 0
+        return Work(
+            fixedMilliseconds: fixed,
+            perTestMilliseconds: tests > 0 ? max(total - fixed, 0) / tests : 0
+        )
+    }
+
+    /// How much processor a trial may use: this many bundles, offered this many tests.
+    ///
+    /// `nil` when nothing was measured, and when a deadline was asked for by name. An
+    /// explicit `--timeout` is an answer about the clock, and deriving an allowance in a
+    /// different unit that the person did not ask for would be overruling them in a way
+    /// they could not see.
+    ///
+    /// The floor is smaller than the deadline's, and deliberately: an allowance is spent
+    /// only by working, so a trial that waits for a fixture or a port spends none of it.
+    /// Five seconds of processor is a great deal of work for a handful of tests.
+    public func cpuForTrial(bundles: Int, tests: Int?) -> Duration? {
+        guard case .derived(let terms) = self, let work = terms.cpu else { return nil }
+        let facing = min(max(tests ?? terms.everyTest, 0), terms.everyTest)
+        let processes = max(bundles, 1)
+        let spent = work.fixedMilliseconds * processes + work.perTestMilliseconds * facing
+        return max(Self.cpuFloor, .milliseconds(spent * max(terms.slack, 1)))
+    }
+
+    /// The least processor any trial is allowed.
+    ///
+    /// A suite measured quick for reasons that say nothing about one mutant - a warm cache,
+    /// a machine that happened to be idle - must not produce an allowance a healthy trial
+    /// cannot meet.
+    public static let cpuFloor = Duration.seconds(5)
+}
+
+/// What a suite costs in processor time, split the way a deadline's terms are.
+///
+/// Its own type rather than a second pair of fields, because it is a different measurement
+/// of the same suite and the two must not be mistaken for each other anywhere.
+public struct Work: Sendable, Hashable {
+
+    /// What a trial costs before it runs any test.
+    public let fixedMilliseconds: Int
+
+    /// What one test costs once the process is up.
+    public let perTestMilliseconds: Int
+
+    /// Records a measured suite's work.
+    public init(fixedMilliseconds: Int, perTestMilliseconds: Int) {
+        self.fixedMilliseconds = fixedMilliseconds
+        self.perTestMilliseconds = perTestMilliseconds
     }
 }

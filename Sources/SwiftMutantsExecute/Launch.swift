@@ -21,13 +21,22 @@ public struct Launch: Sendable, Hashable {
     public let worker: Int
 
     /// How long it may take.
+    ///
+    /// The backstop rather than the limit, once there is an allowance. A deadline in wall
+    /// time is a statement about the machine as much as about the program; it is kept for
+    /// the one thing an allowance cannot see, which is a mutant that waits forever without
+    /// working - a deadlock spends no processor at all.
     public let timeout: Duration?
 
+    /// How much processor it may use, if this run could measure its own.
+    public let cpuLimit: Duration?
+
     /// Records how a mutant is started.
-    public init(plan: TestPlan, worker: Int, timeout: Duration?) {
+    public init(plan: TestPlan, worker: Int, timeout: Duration?, cpuLimit: Duration? = nil) {
         self.plan = plan
         self.worker = worker
         self.timeout = timeout
+        self.cpuLimit = cpuLimit
     }
 
     /// What to start, and what to tell it.
@@ -67,7 +76,8 @@ public struct Launch: Sendable, Hashable {
             ] + selection,
             directory: plan.directory,
             environment: environment,
-            timeout: timeout
+            timeout: timeout,
+            cpuLimit: cpuLimit
         )
     }
 }

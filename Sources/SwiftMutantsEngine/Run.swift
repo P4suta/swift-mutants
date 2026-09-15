@@ -243,8 +243,13 @@ public struct Run: Sendable {
         let asked: Duration?
 
         /// The deadline, once the probe has said what a near-empty trial costs.
-        func budget(withCheapestTrial cheapest: Int?) -> Budget {
-            Run.budget(from: contended, cheapestTrial: cheapest, asked: asked)
+        func budget(withCheapestTrial cheapest: Int?, workingCheapest cpu: Int? = nil) -> Budget {
+            Run.budget(
+                from: contended,
+                cheapestTrial: cheapest,
+                asked: asked,
+                cheapestTrialCpu: cpu
+            )
         }
     }
 

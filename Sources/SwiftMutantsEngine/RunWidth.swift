@@ -61,13 +61,22 @@ extension Run {
     /// retry; a deadline set too tight reports a survivor as a detection, which is the
     /// mistake nobody ever finds out about.
     public static func budget(
-        from baseline: Verdict, cheapestTrial: Int?, asked: Duration?
+        from baseline: Verdict,
+        cheapestTrial: Int?,
+        asked: Duration?,
+        cheapestTrialCpu: Int? = nil
     ) -> Budget {
         if let asked { return .flat(asked) }
         return Budget.deriving(
             suiteMilliseconds: max(baseline.durationMilliseconds, 1),
             tests: baseline.testsStarted,
-            oneTestMilliseconds: cheapestTrial
+            oneTestMilliseconds: cheapestTrial,
+            // The same suite measured in the unit the work is done in. A deadline derived
+            // from wall time is a statement about the machine as much as about the suite;
+            // an allowance derived from this one is a statement about the suite alone, and
+            // it is what actually stops a mutant that does not terminate.
+            cpuSuiteMilliseconds: baseline.cpuMilliseconds,
+            cpuOneTestMilliseconds: cheapestTrialCpu
         )
     }
 

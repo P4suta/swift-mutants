@@ -206,7 +206,11 @@ public struct Scheduler: Sendable {
         settled.reserveCapacity(results.count)
 
         for result in results {
+            // Not one the kernel stopped for its work. That is a fact about the program
+            // and the same on any machine, so a second look on a quiet one would establish
+            // nothing that is not already established - and would cost the allowance again.
             guard result.verdict.outcome == .timedOut,
+                result.verdict.termination != .overranWork,
                 let mutant = byIdentity[result.identity]
             else {
                 settled.append(result)

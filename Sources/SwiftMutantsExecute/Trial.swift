@@ -71,10 +71,18 @@ public struct Trial: MutantHost {
         // trial's budget would be giving the mutant three times what it was allowed.
         let deadline = budget.forTrial(bundles: wanted.count, tests: onlyTests?.count)
         let each = wanted.isEmpty ? deadline : deadline / wanted.count
+        // And the allowance, shared out the same way and for the same reason. This is the
+        // limit that decides; the deadline above is the backstop for a mutant that waits
+        // forever without working, which an allowance cannot see because waiting is free.
+        let work = budget.cpuForTrial(bundles: wanted.count, tests: onlyTests?.count)
+        let limits = Limits(
+            deadline: each,
+            allowance: wanted.isEmpty ? work : work.map { $0 / wanted.count }
+        )
         var said: [Verdict] = []
         for plan in wanted {
             let verdict = await run(
-                plan, waking: indices, onlyTests: onlyTests, settling: settling, within: each)
+                plan, waking: indices, onlyTests: onlyTests, settling: settling, within: limits)
             said.append(verdict)
             // A kill is a claim about one test, so the first bundle to make it has made
             // it; survival is a claim about all of them, so it needs all of them. The
@@ -91,8 +99,10 @@ public struct Trial: MutantHost {
         waking indices: [UInt32],
         onlyTests: [String]?,
         settling: StreamWatcher.Settlement,
-        within deadline: Duration
+        within limits: Limits
     ) async -> Verdict {
+        let deadline = limits.deadline
+        let allowance = limits.allowance
         let mutants = indices.isEmpty ? "base" : indices.map(String.init).joined(separator: "-")
         let name = "\(plan.module.isEmpty ? "tests" : plan.module)-\(mutants)"
         let stream = scratch.appending(path: "events-\(worker)-\(name)")
@@ -104,15 +114,16 @@ public struct Trial: MutantHost {
         // and a run that quietly produced no answer would be far worse than that.
         let pipe = EventPipe(path: stream.path)
         let outcome = await runner.run(
-            Launch(plan: plan, worker: worker, timeout: deadline).specification(
-                writingEventsTo: pipe?.path ?? stream.path,
-                waking: indices,
-                // Only this bundle's share of them. A filter naming a test that is not in
-                // here matches nothing, and swift-testing treats a filter that matches
-                // nothing as a run of no tests - which reads exactly like a mutant nothing
-                // noticed.
-                onlyTests: Self.share(of: onlyTests, in: plan)
-            ),
+            Launch(plan: plan, worker: worker, timeout: deadline, cpuLimit: allowance)
+                .specification(
+                    writingEventsTo: pipe?.path ?? stream.path,
+                    waking: indices,
+                    // Only this bundle's share of them. A filter naming a test that is not in
+                    // here matches nothing, and swift-testing treats a filter that matches
+                    // nothing as a run of no tests - which reads exactly like a mutant nothing
+                    // noticed.
+                    onlyTests: Self.share(of: onlyTests, in: plan)
+                ),
             watching: pipe
         ) { line in
             guard let event = TestEvent(line: line) else { return true }
@@ -130,9 +141,22 @@ public struct Trial: MutantHost {
         return watcher.withLock {
             $0.verdict(
                 after: Self.termination(of: outcome),
-                taking: outcome.durationMilliseconds
+                taking: outcome.durationMilliseconds,
+                working: outcome.cpuMilliseconds
             )
         }
+    }
+
+    /// What one bundle of a trial may spend.
+    ///
+    /// Two numbers because they answer different questions and only one of them decides.
+    /// The allowance is the limit: it bounds the *work* a mutant does, and the kernel
+    /// enforces it, so a machine busy with something else changes nothing. The deadline is
+    /// the backstop, for the one thing an allowance cannot see - a mutant that waits
+    /// forever without working spends no processor at all.
+    private struct Limits {
+        let deadline: Duration
+        let allowance: Duration?
     }
 
     /// The tests of `onlyTests` that live in this bundle, or nothing to mean all of them.
@@ -202,6 +226,10 @@ public struct Trial: MutantHost {
 
     private static func termination(of outcome: ProcessOutcome) -> Termination {
         if let failure = outcome.startFailure { return .couldNotStart(failure) }
+        // Before the deadline, because a process that passed its allowance was stopped by
+        // the kernel rather than by anything here - and it is the better evidence of the
+        // two, so it is the one to report.
+        if outcome.overranCpu { return .overranWork }
         if outcome.timedOut { return .timedOut }
         if outcome.stoppedEarly { return .stopped }
         return .exited(outcome.exitCode)
