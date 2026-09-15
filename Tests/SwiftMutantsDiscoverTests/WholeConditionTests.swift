@@ -123,22 +123,46 @@ struct WholeConditionTests {
             ).isEmpty)
     }
 
-    /// A `while` is a loop rather than a decision, and a loop whose condition is a constant
-    /// either never runs or never stops. The second is a mutant that hangs a suite, and the
-    /// deadline would call it a detection - a detection about this tool rather than about
-    /// the tests.
-    @Test("leaves a loop alone")
-    func loopsAreLeftAlone() {
-        #expect(
-            Self.noOps(
-                """
-                func f(_ limit: Int) -> Int {
-                    var total = 0
-                    while total < limit { total += 1 }
-                    return total
-                }
-                """
-            ).isEmpty)
+    /// A `while` too, and with `false` - which is the same answer the keyword-polarity
+    /// rule gives for an `if`, because a loop's condition is also the case that runs.
+    ///
+    /// The hang people reach for as an objection is `while true`, and that is the *other*
+    /// column: the same column as `guard false` and `if true`, which this family does not
+    /// generate. So `while` needs no exception, only the rule.
+    ///
+    /// Corrected after this family shipped without it. The mutant it would have missed, in
+    /// a real package: `while !input.isReadyForMoreMediaData { await Task.yield() }` - an
+    /// encoder waiting for hardware rather than dropping a frame. Making the loop never run
+    /// asks whether anything holds that trade in place.
+    @Test("makes a loop never run")
+    func loopsNeverRun() throws {
+        let found = Self.noOps(
+            """
+            func f(_ limit: Int) -> Int {
+                var total = 0
+                while total < limit { total += 1 }
+                return total
+            }
+            """)
+        #expect(found.count == 1)
+        #expect(found.first?.original == "total < limit")
+        #expect(found.first?.replacement == "false")
+    }
+
+    /// Never the direction that would not stop. A mutant that hangs the suite is answered
+    /// by the deadline, and the deadline would report it as a detection - a detection about
+    /// this tool rather than about the tests.
+    @Test("never makes a loop that will not stop")
+    func neverAnEndlessLoop() {
+        let found = Self.noOps(
+            """
+            func f(_ limit: Int) -> Int {
+                var total = 0
+                while total < limit { total += 1 }
+                return total
+            }
+            """)
+        #expect(!found.contains { $0.replacement == "true" })
     }
 
     /// A condition that is already a literal is already this mutant, and the boolean

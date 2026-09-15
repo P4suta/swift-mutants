@@ -15,6 +15,57 @@ public struct Configuration: Sendable, Hashable {
     /// What to mutate.
     public var mutation = Mutation()
 
+    /// A mutant a project wrote for itself.
+    ///
+    /// The operator catalogue asks "is this operator correct". A project's own mutants
+    /// usually ask something else - is this sort load-bearing, does this tie-break matter,
+    /// is this normalisation ever observed - and answering that needs the project.
+    ///
+    /// Measured on a package whose author had accumulated 290 hand-written mutations:
+    /// twenty were reproduced by a generated operator flip, and about a hundred fall into
+    /// families a tool can learn. The remaining two thirds need the project, and no
+    /// catalogue will reach them.
+    ///
+    /// Everything already built applies to one of these unchanged: content-addressed
+    /// identity, the outcome cache, coverage-directed test selection, batching, `explain`.
+    /// This is only somewhere to write them down.
+    public struct Custom: Sendable, Hashable {
+
+        /// Which file, as the repository names it.
+        public var file: String
+
+        /// The exact text to replace.
+        ///
+        /// Text rather than a position, because a position moves whenever anything above it
+        /// does and a project would be rewriting its catalogue after every edit. Text moves
+        /// with the code.
+        public var find: String
+
+        /// What to put there instead.
+        ///
+        /// May be empty: deleting a call is a mutation, and often the interesting one.
+        public var replace: String
+
+        /// What the mutant is asking, in the project's own words.
+        ///
+        /// Required, and not decoration. A surviving custom mutant is a finding somebody
+        /// has to act on months later, and "`wrong.sorted()` became `wrong`" says what
+        /// changed while this says what it was for.
+        public var reason: String
+
+        /// Which line to look on, when the text appears more than once.
+        public var line: Int?
+
+        /// Writes one down.
+        public init(file: String, find: String, replace: String, reason: String, line: Int? = nil) {
+            self.file = file
+            self.find = find
+            self.replace = replace
+            self.reason = reason
+            self.line = line
+        }
+    }
+
     /// How to run the tests.
     public var test = Test()
 
@@ -47,6 +98,9 @@ public struct Configuration: Sendable, Hashable {
         public var operators: [String] = []
         /// Survivors this project has accounted for.
         public var expect: [Expectation] = []
+
+        /// Mutants this project wrote for itself.
+        public var custom: [Custom] = []
 
         /// Creates the defaults.
         public init() {}

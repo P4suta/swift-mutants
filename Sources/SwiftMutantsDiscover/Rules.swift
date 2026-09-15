@@ -174,7 +174,12 @@ enum Rules {
     /// What a guard's condition becomes when it never bails.
     static let guardNoOp = "true"
 
-    /// What an `if`'s condition becomes when its body never runs.
+    /// What an `if`'s condition becomes when its body never runs - and a `while`'s, for
+    /// the same reason: both are the case that runs.
+    ///
+    /// Never the other direction for any keyword. `while true` does not stop, and a mutant
+    /// that hangs a suite is answered by the deadline - which would report it as a
+    /// detection about this tool rather than about the tests.
     static let ifNoOp = "false"
 
     /// Every binary operator this tool has a meaning for.

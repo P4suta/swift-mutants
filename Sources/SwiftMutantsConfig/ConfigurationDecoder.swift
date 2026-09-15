@@ -59,7 +59,9 @@ extension Configuration {
     private mutating func readMutation(_ table: TOMLTable) throws(ConfigurationError) {
         try Reader.refuseUnknownKeys(
             in: table,
-            known: ["profile", "extreme", "include", "exclude", "operators", "expect"],
+            known: [
+                "profile", "extreme", "include", "exclude", "operators", "expect", "custom",
+            ],
             path: "mutation"
         )
         if let profile = table["profile"] {
@@ -73,6 +75,7 @@ extension Configuration {
         mutation.exclude = try Reader.globs(table, "exclude", path: "mutation")
         mutation.operators = try Reader.strings(table, "operators", path: "mutation")
         mutation.expect = try Reader.expectations(table)
+        mutation.custom = try Reader.customMutants(table)
     }
 
     private mutating func readTest(_ table: TOMLTable) throws(ConfigurationError) {

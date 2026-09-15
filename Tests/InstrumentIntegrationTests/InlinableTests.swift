@@ -203,14 +203,24 @@ struct NoOpConditionTests {
             if b { return a }
             return 0
         }
+
+        public func waiting(_ ready: Bool, _ limit: Int) -> Int {
+            var spins = 0
+            while !ready, spins < limit { spins += 1 }
+            var single = 0
+            while single < limit { single += 1 }
+            return spins + single
+        }
         """
 
     @Test("compiles every conditional it makes a no-op of")
     func compiles() throws {
         let file = try InlinableTests.instrument(Self.subject, named: "NoOps")
         let noOps = file.mutants.filter { $0.rule.name == "condition-never-decides" }
-        // Three: the guard, the `if value < 0`, and the `if b`. Not the `guard let a`.
-        #expect(noOps.count == 3)
+        // Four: the guard, the `if value < 0`, the `if b`, and the single-clause `while`.
+        // Not the `guard let a`, and not the two-clause `while`, which is the other
+        // family's question.
+        #expect(noOps.count == 4)
         #expect(!noOps.contains { $0.original.contains("let a") })
 
         let result = try InlinableTests.compile(["NoOps": file.source])
@@ -223,6 +233,6 @@ struct NoOpConditionTests {
         let file = try InlinableTests.instrument(Self.subject, named: "NoOps")
         let noOps = file.mutants.filter { $0.rule.name == "condition-never-decides" }
         #expect(noOps.filter { $0.replacement == "true" }.count == 1)
-        #expect(noOps.filter { $0.replacement == "false" }.count == 2)
+        #expect(noOps.filter { $0.replacement == "false" }.count == 3)
     }
 }

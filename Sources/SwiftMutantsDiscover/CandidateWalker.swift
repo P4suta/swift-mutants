@@ -181,27 +181,6 @@ final class CandidateWalker: SyntaxVisitor {
         return .visitChildren
     }
 
-    /// Each clause of a list that can be dropped, dropped.
-    ///
-    /// Dropping a clause *is* replacing it with `true`, and that matters: a condition list
-    /// is not an expression, so it cannot be wrapped in a ternary, and a mutant that
-    /// rewrote the list would need a statement-level guard. One clause is an expression,
-    /// and `guard a, (awake ? true : b), c else` is both ordinary Swift and exactly the
-    /// same program as `guard a, c else`.
-    ///
-    /// Only plain expressions. A binding - `let x = f()`, or a `case` pattern - is named by
-    /// the clauses after it and by the body, and is not an expression to begin with. The
-    /// compiler would say so and validation would drop the mutant, but a compile is the
-    /// expensive thing here and this is knowable from the syntax.
-    private func recordClauseDrops(of node: ConditionElementListSyntax) {
-        let clauses = Array(node)
-        guard clauses.count > 1 else { return }
-        for clause in clauses {
-            guard case .expression(let expression) = clause.condition else { continue }
-            record(Rules.dropCondition, replacing: Syntax(expression), with: "true")
-        }
-    }
-
     override func visit(_ node: GuardStmtSyntax) -> SyntaxVisitorContinueKind {
         recordNoOp(of: node.conditions, becoming: Rules.guardNoOp)
         return .visitChildren
@@ -212,28 +191,12 @@ final class CandidateWalker: SyntaxVisitor {
         return .visitChildren
     }
 
-    /// Offers a single-clause condition replaced by the constant that makes it a no-op.
-    ///
-    /// One clause only. A list is the clause-dropping family's question, asked of each
-    /// clause in turn, and asking it here as well would ask the same thing twice and count
-    /// it twice in the score.
-    ///
-    /// Not a binding: the body names what it bound, so a constant in its place does not
-    /// compile. A single-clause `if let` therefore yields nothing, which is right.
-    ///
-    /// Not a literal either - a condition that is already a constant is already this
-    /// mutant, and the boolean literal family has it.
-    ///
-    /// `while` is absent on purpose. A loop is not a decision, and a loop whose condition is
-    /// a constant either never runs or never stops; the second hangs a suite, and the
-    /// deadline would report it as a detection about this tool rather than about the tests.
-    private func recordNoOp(of conditions: ConditionElementListSyntax, becoming constant: String) {
-        let clauses = Array(conditions)
-        guard clauses.count == 1, let only = clauses.first,
-            case .expression(let expression) = only.condition,
-            expression.as(BooleanLiteralExprSyntax.self) == nil
-        else { return }
-        record(Rules.neverDecides, replacing: Syntax(expression), with: constant)
+    override func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind {
+        // `false`, the same as an `if`, because a loop's condition is also the case that
+        // runs. The hang people reach for as an objection is `while true`, and that is the
+        // other column - the one this family does not generate for any keyword.
+        recordNoOp(of: node.conditions, becoming: Rules.ifNoOp)
+        return .visitChildren
     }
 
     override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind {
@@ -365,7 +328,7 @@ final class CandidateWalker: SyntaxVisitor {
     ///
     /// A condition list with one clause removed is not a subtree of anything, so there is
     /// no node to point at - only text to put in its place.
-    private func record(_ prune: Rules.Prune, replacing region: Syntax, with text: String) {
+    func record(_ prune: Rules.Prune, replacing region: Syntax, with text: String) {
         guard let span = Self.span(of: region) else { return }
         if !countOnly, isSuppressed(prune.family, at: region) {
             skips.append(Skip(reason: .disabledByComment, span: span, candidatesHidden: 1))
