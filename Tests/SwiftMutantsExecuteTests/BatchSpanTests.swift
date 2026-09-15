@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import Foundation
+import SwiftMutantsCore
 import SwiftMutantsInstrument
 import Testing
 
@@ -64,4 +66,76 @@ struct BatchSpanTests {
         let batches = Batch.group(Array(mutants.prefix(2)), using: coverage)
         #expect(batches.count == 2)
     }
+}
+
+/// How many processes a run says it will take.
+///
+/// The number is the saving, countable in advance, and it was "one unit, one process"
+/// while a package built one test bundle. A package builds one per test target now, so a
+/// unit spanning three of them starts three - and a count that had not noticed would
+/// understate every run in the flattering direction, making batching look like a larger
+/// saving than it is.
+@Suite("Counting the processes a run will take")
+struct ProcessSpanTests {
+
+    static func scheduler(coverage: Coverage?, bundles: Int) throws -> Scheduler {
+        Scheduler(
+            host: { _, _ in ScriptedHost() },
+            jobs: 1,
+            coverage: coverage,
+            bundleCount: bundles
+        )
+    }
+
+    @Test("counts one process per bundle a batch spans")
+    func perBundle() throws {
+        let mutants = try BatchSpanTests.mutants()
+        let coverage = Coverage(
+            byMutant: [
+                mutants[0].index: ["CoreTests.S/a()"],
+                mutants[1].index: ["CoreTests.S/b()"],
+                mutants[2].index: ["AppTests.S/c()"],
+            ],
+        )
+        // Two batches: the Core pair in one process, the App mutant in another.
+        let scheduler = try Self.scheduler(coverage: coverage, bundles: 2)
+        #expect(scheduler.processes(for: Array(mutants.prefix(3))) == 2)
+    }
+
+    /// A mutant nothing reaches is answered without starting anything, which is the
+    /// saving this number exists to show.
+    @Test("counts nothing for a mutant no test reaches")
+    func unreachedCostsNothing() throws {
+        let mutants = try BatchSpanTests.mutants()
+        let coverage = Coverage(byMutant: [mutants[0].index: ["CoreTests.S/a()"]])
+        let scheduler = try Self.scheduler(coverage: coverage, bundles: 3)
+        #expect(scheduler.processes(for: Array(mutants.prefix(2))) == 1)
+    }
+
+    /// Without coverage any test might be the one that notices, so every mutant faces
+    /// every bundle - and that is the bill a run without a probe actually pays.
+    @Test("counts every bundle for every mutant when nothing was probed")
+    func withoutCoverage() throws {
+        let mutants = try BatchSpanTests.mutants()
+        let scheduler = try Self.scheduler(coverage: nil, bundles: 4)
+        #expect(scheduler.processes(for: Array(mutants.prefix(3))) == 12)
+    }
+}
+
+/// A host that answers nothing, for tests that only count.
+private struct ScriptedHost: MutantHost {
+    func run(
+        waking indices: [UInt32], onlyTests: [String]?, settling: StreamWatcher.Settlement
+    ) async -> Verdict {
+        Verdict(
+            outcome: .survived,
+            killedBy: [],
+            firstFailure: nil,
+            startedTests: [],
+            durationMilliseconds: 0,
+            termination: .exited(0)
+        )
+    }
+
+    func probe(_ test: String, writingTo log: URL) async -> Int? { nil }
 }

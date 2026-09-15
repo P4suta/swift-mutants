@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import SwiftMutantsCore
+import SwiftMutantsBuild
 import SwiftMutantsInstrument
 
 /// Running several mutants in one process, and sharing out the answers correctly.
@@ -110,9 +111,35 @@ extension Scheduler {
         case together(Batch)
         case unreached(InstrumentedMutant)
 
-        /// Whether answering it costs a process.
+        /// Whether answering it costs a process at all.
         var startsSomething: Bool {
             if case .unreached = self { false } else { true }
+        }
+
+        /// How many processes answering it costs.
+        ///
+        /// One per test bundle it spans, because a package builds one bundle per test
+        /// target and a unit faces the ones its tests live in. This was "one, unless
+        /// nothing reaches it" while a package built one bundle; leaving it there would
+        /// have understated every count - and understated it in the flattering direction,
+        /// making batching look like a larger saving than it is.
+        ///
+        /// A unit with no coverage faces every bundle, because any test might be the one
+        /// that notices.
+        func processes(using coverage: Coverage?, ofTotal bundles: Int) -> Int {
+            guard startsSomething else { return 0 }
+            guard let coverage else { return max(bundles, 1) }
+            let tests: [String]
+            switch self {
+            case .alone(let mutant):
+                tests = coverage.tests(reaching: mutant.index) ?? []
+            case .together(let batch):
+                tests = batch.tests
+            case .unreached:
+                return 0
+            }
+            let spanned = Set(tests.compactMap { TestBundles.module(of: $0) }).count
+            return spanned == 0 ? max(bundles, 1) : spanned
         }
     }
 

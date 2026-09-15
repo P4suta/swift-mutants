@@ -19,14 +19,22 @@ import Testing
 @Suite("Keeping the copy")
 struct KeepingTests {
 
-    /// Deleting hundreds of megabytes of somebody's disk is a thing to mention.
-    @Test("says how many abandoned copies it cleared up")
+    /// Deleting hundreds of megabytes of somebody's disk is a thing to mention - and what
+    /// it means is a bigger thing than the disk.
+    ///
+    /// A copy is removed at the end of every run that reaches one, so a copy left behind is
+    /// a run of this tool that did not: killed, out of memory, a machine restarted. A
+    /// process that is killed prints nothing, writes no diagnostics bundle, and leaves a
+    /// log that stops mid-sentence - this is the only trace it leaves, and it used to read
+    /// as housekeeping.
+    @Test("says that a previous run did not finish, not merely that it tidied up")
     func saysWhatItCleared() {
         #expect(
-            Narration.swept(1) == "cleared up 1 copy left behind by a run that was interrupted")
+            Narration.swept(1)
+                == "a previous run did not finish; clearing up the copy it left behind")
         #expect(
             Narration.swept(7)
-                == "cleared up 7 copies left behind by runs that were interrupted")
+                == "7 previous runs did not finish; clearing up the copies they left behind")
     }
 
     /// Relative to the package, because that is how somebody refers to it afterwards - in

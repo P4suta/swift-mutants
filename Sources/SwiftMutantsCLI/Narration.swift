@@ -309,15 +309,24 @@ enum Narration {
         "what this run did is written down at \(directory.path)"
     }
 
-    /// What was cleared up before this run started.
+    /// What was cleared up before this run started, and what it means.
     ///
     /// Said rather than done quietly: deleting hundreds of megabytes of somebody's disk is
     /// a thing to mention, and a reader who did not know these were piling up should find
     /// out from the tool that made them.
+    ///
+    /// And phrased as evidence rather than as housekeeping, because that is what it is. A
+    /// copy is removed at the end of every run that reaches one, so a copy left behind is
+    /// a run of this tool that did not - killed, out of memory, a machine restarted. That
+    /// matters most in the case nobody can see from inside: a process that is killed prints
+    /// nothing, writes no diagnostics bundle, and leaves a log that stops mid-sentence.
+    /// Reported three times in one day by somebody who each time had to work out from a
+    /// truncated log that a run had died rather than finished. This is the only trace such
+    /// a run leaves, and it read like tidiness.
     static func swept(_ count: Int) -> String {
         count == 1
-            ? "cleared up 1 copy left behind by a run that was interrupted"
-            : "cleared up \(count) copies left behind by runs that were interrupted"
+            ? "a previous run did not finish; clearing up the copy it left behind"
+            : "\(count) previous runs did not finish; clearing up the copies they left behind"
     }
 
     /// Where the copy a run happened in was left.

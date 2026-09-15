@@ -32,6 +32,9 @@ public struct Scheduler: Sendable {
     /// How long a mutant gets, given how much of the suite it faces.
     let budget: Budget
 
+    /// How many test bundles there are, for a mutant that faces all of them.
+    let bundleCount: Int
+
     /// Prepares to run mutants `jobs` at a time, through whatever starts the tests.
     ///
     /// With `coverage`, a mutant is offered only the tests that reach it, and a mutant no
@@ -41,12 +44,14 @@ public struct Scheduler: Sendable {
         host: @escaping @Sendable (Int, Budget) -> any MutantHost,
         jobs: Int = 4,
         coverage: Coverage? = nil,
-        budget: Budget = .flat(.seconds(120))
+        budget: Budget = .flat(.seconds(120)),
+        bundleCount: Int = 1
     ) {
         self.host = host
         self.jobs = max(1, jobs)
         self.coverage = coverage
         self.budget = budget
+        self.bundleCount = max(1, bundleCount)
     }
 
     /// The same, for the SwiftPM path: one ``Trial`` per worker, from one built plan.
@@ -75,13 +80,16 @@ public struct Scheduler: Sendable {
             },
             jobs: jobs,
             coverage: coverage,
-            budget: budget ?? timeout.map(Budget.flat) ?? .flat(.seconds(120))
+            budget: budget ?? timeout.map(Budget.flat) ?? .flat(.seconds(120)),
+            bundleCount: bundles.plans.count
         )
     }
 
     /// The same scheduler, now knowing which tests reach which mutants.
     public func offering(_ coverage: Coverage?) -> Self {
-        Self(host: host, jobs: jobs, coverage: coverage, budget: budget)
+        Self(
+            host: host, jobs: jobs, coverage: coverage, budget: budget,
+            bundleCount: bundleCount)
     }
 
     /// The same scheduler, now knowing what a mutant's share of the suite is worth.
@@ -89,15 +97,22 @@ public struct Scheduler: Sendable {
     /// Apart from ``offering(_:)`` because the two are learned at the same moment and from
     /// the same phase, and folding them into one call would hide that either can be absent.
     public func budgeting(_ budget: Budget) -> Self {
-        Self(host: host, jobs: jobs, coverage: coverage, budget: budget)
+        Self(
+            host: host, jobs: jobs, coverage: coverage, budget: budget,
+            bundleCount: bundleCount)
     }
 
     /// How many processes a catalogue will take, before any of them start.
     ///
     /// The saving, countable in advance: a mutant nothing reaches takes none, and mutants
-    /// no test shares take one between them.
+    /// no test shares take one between them - one *per test bundle they span*, because a
+    /// package builds one bundle per test target. Counting units rather than processes was
+    /// right while a package built one bundle, and afterwards understated every run in the
+    /// flattering direction.
     public func processes(for mutants: [InstrumentedMutant]) -> Int {
-        units(for: mutants).count { $0.startsSomething }
+        units(for: mutants).reduce(0) {
+            $0 + $1.processes(using: coverage, ofTotal: bundleCount)
+        }
     }
 
     /// Runs the instrumented baseline: the same tree, nothing awake.
