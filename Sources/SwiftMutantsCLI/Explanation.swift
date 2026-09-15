@@ -100,8 +100,20 @@ enum Explanation {
             "  "
                 + (invocation.kept
                     ? "that copy is still there, because this run was asked to keep it."
-                    : "that copy has been deleted. Run again with --keep-temp to keep it.")
+                    : "that copy has been deleted. Run again with --keep-temp to keep it,")
         ]
+            + (invocation.kept
+                ? []
+                : [
+                    // The cheaper offer, second because it is the less exact one: the
+                    // command above is what actually ran, and this is the same experiment
+                    // done by hand. But a mutant is one edit to one span and this report
+                    // says which, so applying it to your own tree costs a minute where a
+                    // re-run costs a run. Reported by somebody who reproduced two mutants
+                    // by hand rather than pay 56 minutes to look at one `-` become a `+`.
+                    "  or make the one edit above in your own tree and run those tests -"
+                        + " it is the same experiment."
+                ])
     }
 
     /// The tests of `tests` that live in this bundle, or nothing to mean all of them.

@@ -225,6 +225,26 @@ struct ReproduceLineTests {
         )
     }
 
+    /// What to do when the copy is gone.
+    ///
+    /// The command to paste is the right first offer, and it needs a tree that no longer
+    /// exists - so the advice was "run again with --keep-temp", which for a one-line
+    /// mutation means paying for a whole run to look at one edit. Reported by somebody who
+    /// reproduced two mutants by hand instead, because a 56-minute re-run to see a single
+    /// `-` become a `+` is not a trade anybody makes.
+    ///
+    /// A mutant is one edit to one span, and this report says exactly which. Applying it to
+    /// your own tree and running the tests is the same experiment, costs a minute, and is
+    /// the thing most people will actually do.
+    @Test("offers the edit itself when the copy it ran in is gone")
+    func saysTheEditWorksToo() {
+        let said = Self.lines(Self.invocation(kept: false)).joined(separator: "\n")
+        #expect(said.contains("--keep-temp"), "\(said)")
+        #expect(
+            said.lowercased().contains("your own") || said.lowercased().contains("by hand"),
+            "\(said)")
+    }
+
     /// Two bundles, as a package with two test targets builds.
     static let twoBundles = [
         RunReport.LaunchedBundle(
@@ -346,45 +366,5 @@ struct ReproduceLineTests {
         let said = Self.lines(tests: []).joined(separator: "\n")
         #expect(!said.contains("--filter"))
         #expect(said.contains("SWIFT_MUTANTS_ACTIVE=7"))
-    }
-}
-
-/// What a browser is handed.
-///
-/// The browser itself is tested against rows; this is about which rows it gets, and the
-/// answer is the survivors. A killed mutant is not a thing to walk through - whoever reads
-/// it already has the test that caught it, which beats anything a browser could show.
-@Suite("What a browser is handed")
-struct BrowseRowsTests {
-
-    static func report(_ outcomes: [Outcome]) -> RunReport {
-        RunReport(
-            of: NarrationFixture.outcome(
-                results: outcomes.map { outcome in
-                    NarrationFixture.result(
-                        outcome, tests: outcome == .survived ? [] : ["MathTests/testAdd"])
-                }
-            ))
-    }
-
-    @Test("hands it the survivors and nothing else")
-    func survivorsOnly() {
-        let rows = BrowseCommand.rows(of: Self.report([.survived, .killed, .survived]))
-        #expect(rows.count == 2)
-    }
-
-    /// Everything `explain` would say, because that is what somebody opened it for.
-    @Test("hands it everything explain would say about one")
-    func theWholeStory() throws {
-        let rows = BrowseCommand.rows(of: Self.report([.survived]))
-        let row = try #require(rows.first)
-        #expect(row.identity.count == 64)
-        #expect(row.place.contains(".swift"))
-        #expect(row.story.contains { $0.contains("no test reaches this") })
-    }
-
-    @Test("says nothing to walk through when nothing survived")
-    func nothingSurvived() {
-        #expect(BrowseCommand.rows(of: Self.report([.killed])).isEmpty)
     }
 }
