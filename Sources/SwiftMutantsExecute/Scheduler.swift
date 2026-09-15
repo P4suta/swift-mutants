@@ -248,31 +248,54 @@ public struct Scheduler: Sendable {
         let units = self.units(for: mutants)
         var finished = [[MutantResult]](repeating: [], count: units.count)
 
-        await withTaskGroup(of: (Int, [MutantResult]).self) { group in
+        await withTaskGroup(of: Done.self) { group in
             var next = 0
+
+            // The tokens nobody is holding. A token is what a worker keys its scratch
+            // directory, its derived data and its non-hermetic fixtures on, so the one
+            // thing that must never happen is two live workers with the same one - and a
+            // token taken from here is held until its unit is finished and gives it back.
+            //
+            // This was `position % jobs`, which is the position of the unit rather than
+            // the worker that is free. Units start as earlier ones finish and they do not
+            // finish in order, so unit `jobs` - which takes unit 0's number - starts the
+            // moment *any* of the first batch finishes, and unit 0 is usually not the one
+            // that did. Two workers then shared a directory, and a suite that lost a
+            // fixture underneath it fails in a way indistinguishable from a kill.
+            //
+            // Most recently returned first, because that worker's directory is the one
+            // whose build products and caches are warm. Which token a unit gets is not
+            // visible in the report: results are put back into catalogue order, and a
+            // token names a scratch directory rather than anything a verdict depends on.
+            var free = Array((0..<jobs).reversed())
+
             // One task per worker to begin with, and one more started for each that
             // finishes. The alternative - every unit as a task at once - would have the
             // task group holding a task per unit, and on a package of any size that is a
             // lot of nothing waiting to start.
-            while next < min(jobs, units.count) {
+            while next < units.count, let token = free.popLast() {
                 let position = next
                 group.addTask { [self] in
-                    (
-                        position,
-                        await answers(for: units[position], in: path, worker: position % jobs)
+                    Done(
+                        position: position,
+                        token: token,
+                        answers: await answers(for: units[position], in: path, worker: token)
                     )
                 }
                 next += 1
             }
-            while let (position, answers) = await group.next() {
-                finished[position] = answers
-                for answer in answers { progress(answer) }
-                guard next < units.count else { continue }
+            while let done = await group.next() {
+                finished[done.position] = done.answers
+                for answer in done.answers { progress(answer) }
+                free.append(done.token)
+                guard next < units.count, let token = free.popLast() else { continue }
                 let position = next
                 group.addTask { [self] in
-                    (
-                        position,
-                        await self.answers(for: units[position], in: path, worker: position % jobs)
+                    Done(
+                        position: position,
+                        token: token,
+                        answers: await self.answers(
+                            for: units[position], in: path, worker: token)
                     )
                 }
                 next += 1
@@ -287,6 +310,19 @@ public struct Scheduler: Sendable {
         return finished.flatMap { $0 }.sorted {
             (order[$0.identity] ?? 0) < (order[$1.identity] ?? 0)
         }
+    }
+
+    /// A finished unit: where it goes in the report, and the token it is giving back.
+    ///
+    /// The token travels with the answer because it has to be returned by whoever observes
+    /// the completion, and the only thing that observes a completion is the loop reading
+    /// this. A task group hands back values, not identities, so a token that was not in
+    /// the value would have to be guessed at from the position - which is the mistake this
+    /// type exists to have already made once.
+    private struct Done: Sendable {
+        let position: Int
+        let token: Int
+        let answers: [MutantResult]
     }
 
     func result(
@@ -345,48 +381,4 @@ public struct Scheduler: Sendable {
     }
 
     func trial(worker: Int) -> any MutantHost { host(worker, budget) }
-}
-
-extension RunSummary {
-
-    /// Counts up what a run found.
-    ///
-    /// `rejected` is passed in rather than counted from the results, because a rejected
-    /// mutant never ran: the compiler refused it before there was anything to run. Counting
-    /// only what executed would quietly drop it from the report.
-    ///
-    /// `cached` likewise: an answer taken from a previous run is indistinguishable from a
-    /// fresh one in the row it produces, which is the point - and a reader still has to be
-    /// able to see how much of a report was measured this afternoon.
-    ///
-    /// `expected` is passed in because it is a fact about the configuration rather than
-    /// about the results: a survivor is expected when somebody wrote it down, and nothing
-    /// in the row distinguishes it from a survivor nobody did.
-    public static func of(
-        _ results: [MutantResult], rejected: Int = 0, cached: Int = 0, expected: Int = 0
-    ) -> RunSummary? {
-        var counts: [Outcome: Int] = [:]
-        for result in results { counts[result.verdict.outcome, default: 0] += 1 }
-
-        // A survivor no test reaches is a different piece of news from a survivor the
-        // tests looked at and did not notice. The first is usually the cheaper thing to
-        // fix - often by deleting the code rather than by writing an assertion - and it is
-        // the one a reader should see first.
-        let uncovered = results.count {
-            $0.verdict.outcome == .survived && $0.verdict.startedTests.isEmpty
-        }
-        return RunSummary(
-            killed: counts[.killed] ?? 0,
-            survived: counts[.survived] ?? 0,
-            timedOut: counts[.timedOut] ?? 0,
-            inconclusive: counts[.inconclusive] ?? 0,
-            errored: counts[.errored] ?? 0,
-            notRun: counts[.notRun] ?? 0,
-            rejected: rejected,
-            equivalent: counts[.equivalent] ?? 0,
-            uncovered: uncovered,
-            cached: cached,
-            expectedSurvivors: expected
-        )
-    }
 }
