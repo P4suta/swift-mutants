@@ -165,9 +165,17 @@ public struct Lister: Sendable {
         var filesRead = 0
 
         for target in description.targets {
-            // Every file is digested, including the tests: what a test concludes rests on
-            // the test as much as on the code, and an answer remembered between runs has
-            // to rest on all of it. Only the mutable ones are read for candidates.
+            // Every file is digested, including the tests and the C: what a test concludes
+            // rests on the test as much as on the code, and an answer remembered between
+            // runs has to rest on all of it. Only the mutable Swift is read for candidates.
+            //
+            // A target holding C is a `library` like any other, so its `.c` files arrive
+            // here and were parsed as Swift. swift-syntax reads `#define` and `#include` as
+            // macro expansions, which this tool skips - so a package vendoring a C
+            // dependency got a per-line `macro-expansion` skip for somebody else's
+            // preprocessor, reported as a finding about their code. Measured on a package
+            // vendoring Argon2: 79 of its 205 skips, and the first thing its author did to
+            // the output was grep them out.
             let isMutable = target.kind.isMutable
             for path in target.sources {
                 guard
@@ -177,7 +185,7 @@ public struct Lister: Sendable {
                     )
                 else { continue }
                 digests[path] = Digest.of(source)
-                guard isMutable, selection.admits(path) else { continue }
+                guard isMutable, path.isSwift, selection.admits(path) else { continue }
                 filesRead += 1
 
                 let discovery = Discover.candidates(

@@ -76,8 +76,9 @@ struct ListCommand: AsyncParsableCommand {
             // *instruments*, which is smaller because a file with nothing to mutate is not
             // instrumented. Two bare counts of "files" in two phases read as the same
             // quantity disagreeing.
-            "\(listing.catalog.mutants.count) mutants  \(listing.skips.count) skips"
-                + "  \(hidden) hidden  \(listing.filesRead) files read"
+            "\(listing.catalog.mutants.count) mutants"
+                + "  \(listing.skips.count) skips hiding \(hidden) more"
+                + "  \(listing.filesRead) files read"
         )
         if !explain, !listing.skips.isEmpty {
             print("Run with --explain to see what was passed over and why.")

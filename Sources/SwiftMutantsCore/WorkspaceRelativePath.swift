@@ -26,6 +26,18 @@ public struct WorkspaceRelativePath: Sendable, Hashable, Comparable, CustomStrin
     /// The portable spelling, with forward slashes.
     public var description: String { rendered }
 
+    /// Whether this names a Swift file.
+    ///
+    /// A target holding C is a `library` target like any other, so its `.c` and `.h` files
+    /// arrive wherever its Swift does. Parsed as Swift they are not an error - swift-syntax
+    /// reads `#define` and `#include` as macro expansions, which this tool skips - so a
+    /// package vendoring a C dependency got a per-line skip for somebody else's
+    /// preprocessor, reported as a finding about their own code.
+    ///
+    /// By extension rather than by sniffing the contents, because the extension is what
+    /// the compiler decides by too.
+    public var isSwift: Bool { rendered.hasSuffix(".swift") }
+
     /// Normalises a path, or refuses it.
     ///
     /// Refused: anything absolute, anything that would climb above the workspace root, and
