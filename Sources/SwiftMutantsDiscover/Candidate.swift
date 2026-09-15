@@ -142,6 +142,18 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     /// write down.
     case customAnchorNotUnique = "custom-anchor-not-unique"
 
+    /// An expression holding a string whose newlines are part of what it means.
+    ///
+    /// The mutated copy of a site goes on one line, because the original copy beside it
+    /// keeps every newline the file had and every line number in an instrumented file has
+    /// to equal the original's. A multi-line string literal cannot survive that: its
+    /// newlines are its content, not its layout.
+    ///
+    /// The only shape that genuinely cannot be flattened. A line comment can - it has no
+    /// meaning to a compiler, so the mutated copy does without it while the original keeps
+    /// it - and that used to be a refusal that stopped the whole run.
+    case multilineString = "multiline-string"
+
     case excluded
 }
 
@@ -177,6 +189,19 @@ public struct FileDiscovery: Sendable, Hashable {
     /// counts still include it as a skip, so a listing's arithmetic adds up.
     public let unanchored: [UnanchoredMutant]
 
+    /// Where this file's line comments are, in the bytes the user wrote.
+    ///
+    /// Carried out of discovery because only discovery can know. The mutated copy of a
+    /// site is put on one line, and a line comment runs to the end of its line, so the
+    /// comment has to come out of the copy - but `//` inside a string literal is not a
+    /// comment, and nothing working on bytes can tell the two apart. Discovery has the
+    /// tree, so it says exactly which bytes to take out and the splice takes those.
+    ///
+    /// Every line comment in the file, not only the ones inside a site: which sites there
+    /// are is decided after this, and a list that had already been filtered would have to
+    /// be filtered again by whoever splices.
+    public let lineComments: [SourceSpan]
+
     /// Records what was found in one file.
     public init(
         path: WorkspaceRelativePath,
@@ -184,7 +209,8 @@ public struct FileDiscovery: Sendable, Hashable {
         candidates: [Candidate],
         skips: [Skip],
         unknownSuppressions: [UnknownSuppression] = [],
-        unanchored: [UnanchoredMutant] = []
+        unanchored: [UnanchoredMutant] = [],
+        lineComments: [SourceSpan] = []
     ) {
         self.path = path
         self.sourceDigest = sourceDigest
@@ -192,6 +218,7 @@ public struct FileDiscovery: Sendable, Hashable {
         self.skips = skips
         self.unknownSuppressions = unknownSuppressions
         self.unanchored = unanchored
+        self.lineComments = lineComments
     }
 
     /// The same discovery with only the candidates that pass `isKept`.
@@ -209,7 +236,8 @@ public struct FileDiscovery: Sendable, Hashable {
             candidates: candidates.filter(isKept),
             skips: skips,
             unknownSuppressions: unknownSuppressions,
-            unanchored: unanchored
+            unanchored: unanchored,
+            lineComments: lineComments
         )
     }
 }

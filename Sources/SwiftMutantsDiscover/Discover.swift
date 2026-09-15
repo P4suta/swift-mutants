@@ -40,15 +40,55 @@ public enum Discover {
         walker.walk(folded)
 
         let own = Self.anchored(custom, in: source, lines: LineIndex(source))
+
+        // What can be put on one line, and where the comments are that have to come out of
+        // it first. Both are facts about the tree rather than about the bytes, and both
+        // have to be known here: `list` prints this catalogue and a run instruments it, so
+        // a site neither of them can place must be passed over in the one place they share.
+        let scan = SourceScan(folded)
+        let offered = Self.flattenable(walker.candidates + own.candidates, by: scan)
+
         return FileDiscovery(
             path: path,
             sourceDigest: Digest.of(source),
-            candidates: (walker.candidates + own.candidates).sorted { $0.span < $1.span },
-            skips: (walker.skips + own.skips).sorted { $0.span < $1.span },
+            candidates: offered.candidates.sorted { $0.span < $1.span },
+            skips: (walker.skips + own.skips + offered.skips).sorted { $0.span < $1.span },
             unknownSuppressions: suppressions.unknownFamilies
                 .map { UnknownSuppression(line: $0.line, name: $0.name) }
                 .sorted { ($0.line, $0.name) < ($1.line, $1.name) },
-            unanchored: own.unanchored
+            unanchored: own.unanchored,
+            lineComments: scan.lineComments
+        )
+    }
+
+    /// The candidates whose site can be put on one line, and a named skip for each that
+    /// cannot.
+    ///
+    /// One shape cannot: a site holding a string whose newlines are part of what it means.
+    /// A line comment can, because the mutated copy does without it, so this is a much
+    /// narrower thing than the refusal it replaced - narrow enough to be a skip somebody
+    /// reads in `list --explain` rather than a run that stops.
+    private static func flattenable(
+        _ candidates: [Candidate], by scan: SourceScan
+    ) -> (candidates: [Candidate], skips: [Skip]) {
+        guard !scan.multilineStrings.isEmpty else { return (candidates, []) }
+
+        var offered: [Candidate] = []
+        var passed: [SourceSpan: Int] = [:]
+        for candidate in candidates {
+            guard scan.holdsAMultilineString(candidate.guardSpan) else {
+                offered.append(candidate)
+                continue
+            }
+            passed[candidate.guardSpan, default: 0] += 1
+        }
+        // One skip per site rather than one per candidate: the site is what could not be
+        // put on a line, and the count is how many mutants that cost.
+        return (
+            offered,
+            passed.keys.sorted().map {
+                Skip(reason: .multilineString, span: $0, candidatesHidden: passed[$0] ?? 0)
+            }
         )
     }
 }

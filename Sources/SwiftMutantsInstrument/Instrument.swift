@@ -73,7 +73,12 @@ public enum Instrument {
 
         let numbered = Self.number(forest, token: token, discovery: discovery, from: base)
 
-        let spliced = try Self.splice(forest, bytes: bytes, token: token, numbered: numbered)
+        let spliced = Self.splice(
+            forest,
+            bytes: bytes,
+            token: token,
+            numbered: numbered,
+            comments: discovery.lineComments)
         let runtime = Runtime.source(
             token: token, count: numbered.mutants.count, base: base)
         return InstrumentedFile(
@@ -95,8 +100,9 @@ public enum Instrument {
         _ forest: IntervalForest<[Candidate]>,
         bytes: [UInt8],
         token: String,
-        numbered: Numbering
-    ) throws(InstrumentError) -> Rendered {
+        numbered: Numbering,
+        comments: [SourceSpan]
+    ) -> Rendered {
         var rewritten = ""
         var produced = 0
         var placements: [UInt32: SourceSpan] = [:]
@@ -108,8 +114,12 @@ public enum Instrument {
             rewritten += lead
             produced += lead.utf8.count
 
-            let rendered = try Self.render(
-                root, bytes: bytes, token: token, indices: numbered.indices)
+            let rendered = Self.render(
+                root,
+                bytes: bytes,
+                token: token,
+                indices: numbered.indices,
+                comments: comments)
             rewritten += rendered.text
             for (index, relative) in rendered.placements {
                 placements[index] = relative.shifted(by: produced)
@@ -238,8 +248,9 @@ public enum Instrument {
         _ node: IntervalForest<[Candidate]>.Node,
         bytes: [UInt8],
         token: String,
-        indices: [SourceSpan: [UInt32]]
-    ) throws(InstrumentError) -> Rendered {
+        indices: [SourceSpan: [UInt32]],
+        comments: [SourceSpan]
+    ) -> Rendered {
         // The original side keeps its bytes, with any nested guards spliced into it.
         var original = ""
         var produced = 0
@@ -251,7 +262,8 @@ public enum Instrument {
             original += lead
             produced += lead.utf8.count
 
-            let rendered = try render(child, bytes: bytes, token: token, indices: indices)
+            let rendered = render(
+                child, bytes: bytes, token: token, indices: indices, comments: comments)
             original += rendered.text
             for (index, relative) in rendered.placements {
                 placements[index] = relative.shifted(by: produced)
@@ -276,7 +288,8 @@ public enum Instrument {
         // placement check then refuses the file rather than shipping a phantom.
         let alternatives = Array(zip(node.values.flatMap { $0 }, indices[node.span] ?? []))
         for (candidate, index) in alternatives.reversed() {
-            let mutated = try Self.apply(candidate, to: bytes, within: node.span)
+            let mutated = Self.apply(
+                candidate, to: bytes, within: node.span, hiding: comments)
             let head = "(\(Runtime.guardCall(token: token, index: index)) ? ("
             rendered = "\(head)\(mutated)) : \(rendered))"
 
@@ -308,24 +321,31 @@ public enum Instrument {
     /// The site's bytes with one candidate's edit applied, flattened onto one line.
     ///
     /// Flattened because the original side of the guard keeps every newline the file had,
-    /// so a mutated copy that kept its own would add them.
+    /// so a mutated copy that kept its own would add them - and every line number in an
+    /// instrumented file has to equal the original's, or the coverage a run reads back
+    /// afterwards is about different lines than the ones it measured.
+    ///
+    /// Line comments come out on the way. A comment runs to the end of its line, so joining
+    /// the lines would put the rest of the guard - the closing parenthesis included - inside
+    /// it. Taking it out costs nothing: a comment has no meaning to a compiler, and the
+    /// original copy beside it keeps every byte the file had, so a person reading the tree
+    /// or running `apply` still sees their own comment.
+    ///
+    /// This was a refusal, and the refusal stopped the run: one site, one file, after the
+    /// whole instrument-and-validate pass had already been paid for. Measured on a package
+    /// with 87 commented expressions across 32 files - four runs, four stops, one site each.
+    /// It could not be done here because it cannot be done on bytes: `//` inside a string
+    /// literal is not a comment, and the refusal matched two characters. Discovery has the
+    /// tree and says which bytes are comments; this takes exactly those.
     private static func apply(
         _ candidate: Candidate,
         to bytes: [UInt8],
-        within site: SourceSpan
-    ) throws(InstrumentError) -> String {
-        let prefix = String(decoding: bytes[site.start..<candidate.span.start], as: UTF8.self)
-        let suffix = String(decoding: bytes[candidate.span.end..<site.end], as: UTF8.self)
-        let text = prefix + candidate.replacement + suffix
-        guard !text.contains("//") else {
-            throw InstrumentError(
-                """
-                the expression at \(site.start)..<\(site.end) holds a line comment, which \
-                cannot survive being flattened onto one line
-                """
-            )
-        }
-        return text.replacingNewlines(with: " ")
+        within site: SourceSpan,
+        hiding comments: [SourceSpan]
+    ) -> String {
+        let prefix = Self.bytes(bytes, from: site.start, to: candidate.span.start, less: comments)
+        let suffix = Self.bytes(bytes, from: candidate.span.end, to: site.end, less: comments)
+        return (prefix + candidate.replacement + suffix).replacingNewlines(with: " ")
     }
 
     private static func identity(

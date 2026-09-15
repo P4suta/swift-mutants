@@ -128,8 +128,8 @@ final class CandidateWalker: SyntaxVisitor {
     /// order it is in, and a mutant nothing can kill only drags a score down - this is the
     /// one case of that the syntax can see, and the compiler cannot be asked about the rest.
     private func recordConcatSwap(of node: InfixOperatorExprSyntax) {
-        let left = node.leftOperand.trimmedDescription
-        let right = node.rightOperand.trimmedDescription
+        let left = node.leftOperand.flattenableDescription
+        let right = node.rightOperand.flattenableDescription
         guard left != right else { return }
         // Parenthesised, because the operands may be chains themselves. `(x + y) + z`
         // swapped is `z + (x + y)`, and writing that as `z + x + y` re-parses as
@@ -338,7 +338,7 @@ final class CandidateWalker: SyntaxVisitor {
                 rule: Rules.identifier(for: prune),
                 span: region,
                 original: expression.trimmedDescription,
-                replacement: operand.trimmedDescription,
+                replacement: operand.flattenableDescription,
                 guardSpan: region,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
