@@ -161,17 +161,24 @@ extension Run {
     ) async -> (results: [MutantResult], remembered: Int) {
         let validated = work.validated
         let catalogue = MutantCatalogue(work)
-        let coverage = await cover(
+        let probed = await cover(
             calibration,
             probing: calibration.baseline.startedTests,
             in: site.pipes,
             against: Known(catalogue: catalogue, listing: listing),
             progress: progress
         )
+        let coverage = probed?.coverage
         let known = remembering(work, coverage: coverage, listing: listing)
+        // The deadline is settled here rather than at calibration, because this is the
+        // first moment anything knows how much of the suite a mutant actually faces - and
+        // because the probe has just measured, hundreds of times, what a trial costs
+        // before it runs any test at all.
+        let budget = calibration.budget(withCheapestTrial: probed?.cheapestMilliseconds)
+        progress(.calibrated(budget.forTrial(bundles: calibration.bundles.plans.count, tests: nil)))
         let measured = await measure(
             work,
-            with: calibration.scheduler.offering(coverage),
+            with: calibration.scheduler.offering(coverage).budgeting(budget),
             remembering: known,
             coverage: coverage,
             progress: progress

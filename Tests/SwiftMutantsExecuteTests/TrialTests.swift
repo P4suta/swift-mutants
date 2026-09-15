@@ -78,12 +78,12 @@ struct TrialTests {
         """
     }
 
-    static func trial(_ fake: Fake, timeout: Duration? = .seconds(30)) -> Trial {
+    static func trial(_ fake: Fake, timeout: Duration = .seconds(30)) -> Trial {
         Trial(
             bundles: TestBundles(plans: [fake.plan]),
             runner: Runner(recorder: TraceRecorder()),
             scratch: fake.scratch,
-            timeout: timeout
+            budget: .flat(timeout)
         )
     }
 
@@ -200,7 +200,7 @@ struct TrialTests {
             bundles: TestBundles(plans: [plan]),
             runner: Runner(recorder: TraceRecorder()),
             scratch: fake.scratch,
-            timeout: .seconds(30)
+            budget: .flat(.seconds(30))
         ).run(activating: 1)
 
         let argv = try String(contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8)

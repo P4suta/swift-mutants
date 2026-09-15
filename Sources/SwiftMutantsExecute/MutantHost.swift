@@ -48,10 +48,17 @@ public protocol MutantHost: Sendable {
     ///   - log: where the runtime is told to write the guards it evaluated. The caller made
     ///     it empty first, so a file that exists and is empty means the test reached
     ///     nothing while a file that could not be read means the process did not finish.
-    /// - Returns: whether the process got to the end of its job. `false` establishes
-    ///   nothing about the test, which is not the same as the test reaching nothing - and
-    ///   the difference is a mutant reported as unreachable that a test catches every day.
-    func probe(_ test: String, writingTo log: URL) async -> Bool
+    /// - Returns: how long the process took, or nothing when it did not get to the end of
+    ///   its job. `nil` establishes nothing about the test, which is not the same as the
+    ///   test reaching nothing - and the difference is a mutant reported as unreachable
+    ///   that a test catches every day.
+    ///
+    ///   The duration rather than a bare yes, because this is the only place a run
+    ///   measures a trial that runs almost nothing. That measurement is what separates
+    ///   what a trial costs before it runs any test from what its tests cost, and without
+    ///   the split every mutant gets the deadline of the whole suite however little of it
+    ///   it faces.
+    func probe(_ test: String, writingTo log: URL) async -> Int?
 }
 
 extension MutantHost {

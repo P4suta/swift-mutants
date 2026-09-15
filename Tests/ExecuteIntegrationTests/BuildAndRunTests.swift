@@ -106,7 +106,11 @@ struct BuildAndRunTests {
         ).buildForTesting(scratch: fixture.scratch.path, environment: Self.environment())
 
         let trial = Trial(
-            bundles: bundles, runner: runner, scratch: fixture.scratch, timeout: .seconds(300))
+            bundles: bundles,
+            runner: runner,
+            scratch: fixture.scratch,
+            budget: .flat(.seconds(300))
+        )
 
         // Nothing activated: the package's own tests pass, as they do for anybody.
         let baseline = await trial.run(activating: nil)

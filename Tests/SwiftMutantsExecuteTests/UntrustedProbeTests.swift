@@ -98,7 +98,7 @@ struct ProbeTrustTests {
         let fake = try ScriptedBundle.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        let coverage = await Self.probe(fake).probe(["P.S/a()"])
+        let coverage = await Self.probe(fake).probe(["P.S/a()"]).coverage
         #expect(coverage.untrusted.isEmpty)
         #expect(coverage.tests(reaching: 1) == nil)
         #expect(coverage.uncovered(among: [1]) == 1)
@@ -112,7 +112,7 @@ struct ProbeTrustTests {
             failingFor: [], failingBaselineTests: ["P.S/a()"])
         defer { fake.cleanUp() }
 
-        let coverage = await Self.probe(fake).probe(["P.S/a()"])
+        let coverage = await Self.probe(fake).probe(["P.S/a()"]).coverage
         #expect(coverage.untrusted == ["P.S/a()"])
         #expect(coverage.uncovered(among: [1]) == 0)
     }
@@ -128,7 +128,8 @@ struct ProbeTrustTests {
         let fake = try ScriptedBundle.fake(failingFor: [], slowBaseline: true)
         defer { fake.cleanUp() }
 
-        let coverage = await Self.probe(fake, timeout: .milliseconds(1)).probe(["P.S/a()"])
+        let coverage = await Self.probe(fake, timeout: .milliseconds(1))
+            .probe(["P.S/a()"]).coverage
         #expect(coverage.untrusted == ["P.S/a()"])
     }
 }

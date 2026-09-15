@@ -78,12 +78,16 @@ struct NarrationTests {
 @Suite("Narrating numbers")
 struct NarrationNumberTests {
 
-    @Test("says where the deadline came from")
+    /// The widest case, and it has to say so. A mutant the probe narrowed to a handful
+    /// of tests gets far less than this - and a line reading "each mutant" while most of
+    /// them got a fraction of it would have a reader comparing their run against a number
+    /// nothing in it used.
+    @Test("says where the deadline came from, and who gets it")
     func saysWhereTheDeadlineCameFrom() {
-        #expect(
-            Narration.line(for: .calibrated(.seconds(37)))
-                == "  giving each mutant 37 seconds, from how long that took"
-        )
+        let said = Narration.line(for: .calibrated(.seconds(37)))
+        #expect(said?.contains("37 seconds") == true, "\(said ?? "nothing")")
+        #expect(said?.contains("nothing narrows") == true, "\(said ?? "nothing")")
+        #expect(said?.contains("each mutant") != true, "\(said ?? "nothing")")
     }
 
     @Test("says how many tests it asked")

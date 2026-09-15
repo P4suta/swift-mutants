@@ -105,7 +105,7 @@ public struct XcodeHost: MutantHost {
     /// than from the exit status, for the reason everything here is: `xcodebuild` exits
     /// non-zero for a failing test and for a project that will not load, and only one of
     /// those means the probe established nothing.
-    public func probe(_ test: String, writingTo log: URL) async -> Bool {
+    public func probe(_ test: String, writingTo log: URL) async -> Int? {
         let woken: URL
         do {
             woken =
@@ -113,7 +113,7 @@ public struct XcodeHost: MutantHost {
                 .waking(["SWIFT_MUTANTS": "1", Prober.probeVariable: log.path])
                 .write(named: documentName)
         } catch {
-            return false
+            return nil
         }
         let bundle = scratch.appending(path: "probe-\(worker)-\(abs(test.hashValue)).xcresult")
         guard
@@ -124,11 +124,17 @@ public struct XcodeHost: MutantHost {
                 onlyTests: [test]
             )
         else {
-            return false
+            return nil
         }
         // A probe runs with nothing awake, so a test that failed is a suite that was
         // already failing - and what it reached is not something to build a run on.
-        return !results.started.isEmpty && !results.anythingFailed
+        //
+        // No duration: this path has no event stream and no supervised process of its own
+        // to have measured one, so it reports that the probe finished and says nothing
+        // about what it cost. A deadline derived from nothing is the floor, which is the
+        // direction to be wrong in.
+        guard !results.started.isEmpty, !results.anythingFailed else { return nil }
+        return 0
     }
 
     /// A copy of the document with these mutants awake, written where Xcode will find it.

@@ -196,9 +196,16 @@ struct RunIntegrationTests {
         // solitary one is measured first and is not the figure the mutants live under. An
         // earlier version of this compared against the solitary baseline and passed only
         // while both were clamped to the floor, which is most of the time and not always.
+        //
+        // The announced figure is the widest one - every bundle, the whole suite - because
+        // that is the one a reader can compare against how long their tests take. What a
+        // particular mutant gets is smaller and is decided per trial.
         let budget = try #require(
             seen.withLock { $0 }, "the run never said what deadline it chose")
-        #expect(budget == Run.budget(from: outcome.contendedBaseline, jobs: 2))
+        let derived = Run.budget(
+            from: outcome.contendedBaseline, cheapestTrial: nil, asked: nil)
+        // One bundle, because the fixture declares one test target.
+        #expect(budget == derived.forTrial(bundles: 1, tests: nil))
         #expect(budget >= .seconds(30))
     }
 

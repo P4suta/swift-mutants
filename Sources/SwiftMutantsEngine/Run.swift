@@ -200,15 +200,23 @@ public struct Run: Sendable {
             )
         }
         let slowest = crowd.max { $0.durationMilliseconds < $1.durationMilliseconds } ?? baseline
-        let budget = configuration.test.timeout ?? Self.budget(from: slowest, jobs: jobs)
-        progress(.calibrated(budget))
+        // Not announced here. What a mutant gets depends on how much of the suite reaches
+        // it, and nothing knows that until the probe has run - so the line that says how
+        // long each mutant is given is printed there rather than guessed at now.
         return Calibration(
             baseline: baseline,
             contended: slowest,
             scheduler: Scheduler(
-                bundles: bundles, runner: runner, scratch: pipes, timeout: budget, jobs: jobs),
+                bundles: bundles,
+                runner: runner,
+                scratch: pipes,
+                jobs: jobs,
+                budget: Self.budget(
+                    from: slowest, cheapestTrial: nil, asked: configuration.test.timeout)
+            ),
             bundles: bundles,
-            jobs: jobs
+            jobs: jobs,
+            asked: configuration.test.timeout
         )
     }
 
@@ -219,6 +227,14 @@ public struct Run: Sendable {
         let scheduler: Scheduler
         let bundles: TestBundles
         let jobs: Int
+
+        /// What somebody asked for with `--timeout`, if they asked.
+        let asked: Duration?
+
+        /// The deadline, once the probe has said what a near-empty trial costs.
+        func budget(withCheapestTrial cheapest: Int?) -> Budget {
+            Run.budget(from: contended, cheapestTrial: cheapest, asked: asked)
+        }
     }
 
     /// Asks each test what it reaches.
@@ -234,7 +250,7 @@ public struct Run: Sendable {
         in pipes: URL,
         against known: Known,
         progress: @Sendable (RunStage) -> Void
-    ) async -> Coverage? {
+    ) async -> Probed? {
         let (catalogue, listing) = (known.catalogue, known.listing)
         let indices = Array(catalogue.files.keys)
         guard !tests.isEmpty else { return nil }
@@ -271,7 +287,8 @@ public struct Run: Sendable {
                 timeout: configuration.test.timeout ?? Self.calibrationBudget,
                 jobs: calibration.jobs
             ).probe(toAsk)
-        let coverage = Self.merged(remembered: remembered, asked: asked, tests: tests)
+        let coverage = Self.merged(
+            remembered: remembered, asked: asked?.coverage, tests: tests)
         remember(coverage, observable: observable, catalogue: catalogue, listing: listing)
 
         let covered = indices.compactMap { coverage.tests(reaching: $0)?.count }
@@ -282,7 +299,8 @@ public struct Run: Sendable {
         if !coverage.untrusted.isEmpty {
             progress(.unmeasured(tests: coverage.untrusted.count))
         }
-        return coverage
+        return Probed(
+            coverage: coverage, cheapestMilliseconds: asked?.cheapestMilliseconds)
     }
 
     /// Runs the instrumented tree with nothing awake, and insists that it passes.
@@ -328,28 +346,33 @@ public struct Run: Sendable {
     /// package whose tests are simply long.
     public static let calibrationBudget: Duration = .seconds(1800)
 
-    /// How long one mutant gets, derived from how long the suite takes when nothing is
-    /// wrong with it.
+    /// How long one mutant gets, once the run knows how much of the suite it faces.
     ///
-    /// Five times the baseline, and never less than thirty seconds. A number picked out of
-    /// the air is either so tight that a loaded machine reports a working suite as a hang,
-    /// or so loose that a mutant which really does hang costs the whole budget - and the
-    /// only thing that tells the two apart is how long this suite takes.
+    /// This was one number for every mutant - five times the whole contended suite, floor
+    /// of thirty seconds - and coverage was not consulted at all. Coverage is this tool's
+    /// largest saving and it was being spent in one direction only: a mutant reached by
+    /// forty-five of a package's 1333 tests ran forty-five tests and was then given the
+    /// budget of all 1333. Reported from a real package: 898 seconds for a trial that
+    /// runs 3.4% of the suite.
     ///
-    /// Five, and not five times the number of workers, because the baseline it is derived
-    /// from was already measured with every worker running - so the contention is in the
-    /// number rather than guessed at on top of it. Guessing on top of it made a genuine
-    /// hang cost sixteen minutes; guessing under it, from a solitary suite, timed out most
-    /// of a run. Measured here: thirty-five seconds alone, over five times that with eight
-    /// at once.
+    /// ``Budget`` carries the shape and the reasoning; this supplies the measurements.
+    /// The suite's cost is the *contended* baseline, because that is the figure the
+    /// mutants will live under - measured here, thirty-five seconds alone and over five
+    /// times that with eight at once. The intercept is the cheapest thing the probe phase
+    /// saw, which is a trial that ran one test, on this machine, under this contention.
     ///
     /// The asymmetry still sets the direction. A deadline met under load costs one serial
-    /// retry; a deadline set too tight *without* a retry reports a survivor as a kill,
-    /// which is the mistake nobody ever finds out about.
-    public static func budget(from baseline: Verdict, jobs: Int) -> Duration {
-        _ = jobs
-        let solitary = max(baseline.durationMilliseconds, 1)
-        return max(.seconds(30), .milliseconds(solitary * 5))
+    /// retry; a deadline set too tight reports a survivor as a detection, which is the
+    /// mistake nobody ever finds out about.
+    public static func budget(
+        from baseline: Verdict, cheapestTrial: Int?, asked: Duration?
+    ) -> Budget {
+        if let asked { return .flat(asked) }
+        return Budget.deriving(
+            suiteMilliseconds: max(baseline.durationMilliseconds, 1),
+            tests: baseline.testsStarted,
+            oneTestMilliseconds: cheapestTrial
+        )
     }
 
     /// Where the instrumented copy is built.

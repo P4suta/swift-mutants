@@ -25,9 +25,12 @@ public struct Scheduler: Sendable {
     /// A function rather than a value, because a worker's host is a worker's: the token a
     /// non-hermetic suite keys on, and on the Xcode path a derived-data directory, are per
     /// worker and two workers sharing either would be two workers treading on each other.
-    private let host: @Sendable (Int) -> any MutantHost
+    private let host: @Sendable (Int, Budget) -> any MutantHost
     private let jobs: Int
     let coverage: Coverage?
+
+    /// How long a mutant gets, given how much of the suite it faces.
+    let budget: Budget
 
     /// Prepares to run mutants `jobs` at a time, through whatever starts the tests.
     ///
@@ -35,13 +38,15 @@ public struct Scheduler: Sendable {
     /// test reaches is answered without starting anything. Without it, every mutant is
     /// offered the whole suite, because any test might be the one that notices.
     public init(
-        host: @escaping @Sendable (Int) -> any MutantHost,
+        host: @escaping @Sendable (Int, Budget) -> any MutantHost,
         jobs: Int = 4,
-        coverage: Coverage? = nil
+        coverage: Coverage? = nil,
+        budget: Budget = .flat(.seconds(120))
     ) {
         self.host = host
         self.jobs = max(1, jobs)
         self.coverage = coverage
+        self.budget = budget
     }
 
     /// The same, for the SwiftPM path: one ``Trial`` per worker, from one built plan.
@@ -55,26 +60,36 @@ public struct Scheduler: Sendable {
         scratch: URL,
         timeout: Duration? = .seconds(120),
         jobs: Int = 4,
-        coverage: Coverage? = nil
+        coverage: Coverage? = nil,
+        budget: Budget? = nil
     ) {
         self.init(
-            host: { worker in
+            host: { worker, budget in
                 Trial(
                     bundles: bundles,
                     runner: runner,
                     scratch: scratch,
-                    timeout: timeout,
+                    budget: budget,
                     worker: worker
                 )
             },
             jobs: jobs,
-            coverage: coverage
+            coverage: coverage,
+            budget: budget ?? timeout.map(Budget.flat) ?? .flat(.seconds(120))
         )
     }
 
     /// The same scheduler, now knowing which tests reach which mutants.
     public func offering(_ coverage: Coverage?) -> Self {
-        Self(host: host, jobs: jobs, coverage: coverage)
+        Self(host: host, jobs: jobs, coverage: coverage, budget: budget)
+    }
+
+    /// The same scheduler, now knowing what a mutant's share of the suite is worth.
+    ///
+    /// Apart from ``offering(_:)`` because the two are learned at the same moment and from
+    /// the same phase, and folding them into one call would hide that either can be absent.
+    public func budgeting(_ budget: Budget) -> Self {
+        Self(host: host, jobs: jobs, coverage: coverage, budget: budget)
     }
 
     /// How many processes a catalogue will take, before any of them start.
@@ -306,7 +321,7 @@ public struct Scheduler: Sendable {
         )
     }
 
-    func trial(worker: Int) -> any MutantHost { host(worker) }
+    func trial(worker: Int) -> any MutantHost { host(worker, budget) }
 }
 
 extension RunSummary {

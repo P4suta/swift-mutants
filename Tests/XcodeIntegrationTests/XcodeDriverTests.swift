@@ -282,7 +282,7 @@ struct XcodeHostTests {
         FileManager.default.createFile(atPath: log.path, contents: Data())
 
         let finished = await host.probe("SubjectTests/boundary()", writingTo: log)
-        #expect(finished)
+        #expect(finished != nil)
 
         // The fixture's one test runs the one guard, so the log holds its index and
         // nothing else.
@@ -303,7 +303,7 @@ struct XcodeHostTests {
             at: fixture.scratch, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: log.path, contents: Data())
 
-        #expect(await !host.probe("SubjectTests/NoSuchTest/nope()", writingTo: log))
+        #expect(await host.probe("SubjectTests/NoSuchTest/nope()", writingTo: log) == nil)
     }
 
     /// Two workers must not write one document, or each would wake the other's mutant -

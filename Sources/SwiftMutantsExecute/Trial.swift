@@ -17,7 +17,7 @@ public struct Trial: MutantHost {
     private let bundles: TestBundles
     private let runner: Runner
     private let scratch: URL
-    private let timeout: Duration?
+    private let budget: Budget
     private let worker: Int
 
     /// Prepares to run one mutant at a time inside `scratch`.
@@ -30,13 +30,13 @@ public struct Trial: MutantHost {
         bundles: TestBundles,
         runner: Runner,
         scratch: URL,
-        timeout: Duration? = .seconds(120),
+        budget: Budget = .flat(.seconds(120)),
         worker: Int = 0
     ) {
         self.bundles = bundles
         self.runner = runner
         self.scratch = scratch
-        self.timeout = timeout
+        self.budget = budget
         self.worker = worker
     }
 
@@ -66,10 +66,15 @@ public struct Trial: MutantHost {
         // offering a mutant all of them would be paying for a process per target to
         // establish what the probe already said: that no test in there goes near it.
         let wanted = bundles.covering(onlyTests)
+        // One deadline for the trial, shared out between the bundles it runs. A mutant
+        // facing three bundles is three processes, and giving each of them the whole
+        // trial's budget would be giving the mutant three times what it was allowed.
+        let deadline = budget.forTrial(bundles: wanted.count, tests: onlyTests?.count)
+        let each = wanted.isEmpty ? deadline : deadline / wanted.count
         var said: [Verdict] = []
         for plan in wanted {
             let verdict = await run(
-                plan, waking: indices, onlyTests: onlyTests, settling: settling)
+                plan, waking: indices, onlyTests: onlyTests, settling: settling, within: each)
             said.append(verdict)
             // A kill is a claim about one test, so the first bundle to make it has made
             // it; survival is a claim about all of them, so it needs all of them. The
@@ -85,7 +90,8 @@ public struct Trial: MutantHost {
         _ plan: TestPlan,
         waking indices: [UInt32],
         onlyTests: [String]?,
-        settling: StreamWatcher.Settlement
+        settling: StreamWatcher.Settlement,
+        within deadline: Duration
     ) async -> Verdict {
         let mutants = indices.isEmpty ? "base" : indices.map(String.init).joined(separator: "-")
         let name = "\(plan.module.isEmpty ? "tests" : plan.module)-\(mutants)"
@@ -98,7 +104,7 @@ public struct Trial: MutantHost {
         // and a run that quietly produced no answer would be far worse than that.
         let pipe = EventPipe(path: stream.path)
         let outcome = await runner.run(
-            Launch(plan: plan, worker: worker, timeout: timeout).specification(
+            Launch(plan: plan, worker: worker, timeout: deadline).specification(
                 writingEventsTo: pipe?.path ?? stream.path,
                 waking: indices,
                 // Only this bundle's share of them. A filter naming a test that is not in
@@ -141,7 +147,13 @@ public struct Trial: MutantHost {
     /// The first bundle, for the callers that want to show somebody a command to paste.
     /// A mutant may face several, and `explain` names the one that caught it.
     var launch: Launch? {
-        bundles.plans.first.map { Launch(plan: $0, worker: worker, timeout: timeout) }
+        bundles.plans.first.map {
+            Launch(
+                plan: $0,
+                worker: worker,
+                timeout: budget.forTrial(bundles: 1, tests: nil)
+            )
+        }
     }
 
     func specification(
@@ -160,11 +172,11 @@ public struct Trial: MutantHost {
     /// The probe runs with nothing awake, so the suite passes and the process exits zero.
     /// Anything else is a process that did not get to the end of its job, and whatever it
     /// managed to write is a prefix rather than an answer.
-    public func probe(_ test: String, writingTo log: URL) async -> Bool {
+    public func probe(_ test: String, writingTo log: URL) async -> Int? {
         // The one bundle it lives in. Asking every bundle to run a test only one of them
         // has would be one process per target to establish that the other targets do not
         // contain it.
-        guard let plan = bundles.holding(test) ?? bundles.plans.first else { return false }
+        guard let plan = bundles.holding(test) ?? bundles.plans.first else { return nil }
         var environment = plan.environment
         environment["SWIFT_MUTANTS"] = "1"
         environment["SWIFT_MUTANTS_TEST_TOKEN"] = "\(worker)"
@@ -179,10 +191,13 @@ public struct Trial: MutantHost {
                 ],
                 directory: plan.directory,
                 environment: environment,
-                timeout: timeout
+                // The whole suite's worth, because a probe has to be let finish: what a
+                // test reaches is only complete once it has, and a probe stopped early is
+                // a prefix that reads exactly like a test reaching less than it does.
+                timeout: budget.forTrial(bundles: 1, tests: nil)
             )
         )
-        return outcome.exitCode == 0
+        return outcome.exitCode == 0 ? outcome.durationMilliseconds : nil
     }
 
     private static func termination(of outcome: ProcessOutcome) -> Termination {

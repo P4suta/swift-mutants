@@ -51,7 +51,7 @@ struct ReproductionTests {
             bundles: TestBundles(plans: [fake.plan]),
             runner: SchedulerTests.runner(),
             scratch: fake.scratch,
-            timeout: .seconds(30),
+            budget: .flat(.seconds(30)),
             worker: 2
         )
         let launch = Launch(plan: fake.plan, worker: 2, timeout: .seconds(30))

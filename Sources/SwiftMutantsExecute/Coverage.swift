@@ -152,7 +152,7 @@ public struct Prober: Sendable {
                     bundles: bundles,
                     runner: runner,
                     scratch: scratch,
-                    timeout: timeout,
+                    budget: timeout.map(Budget.flat) ?? .flat(.seconds(120)),
                     worker: worker
                 )
             },
@@ -165,30 +165,38 @@ public struct Prober: Sendable {
     public func probe(
         _ tests: [String],
         progress: @Sendable (Int) -> Void = { _ in }
-    ) async -> Coverage {
-        guard !tests.isEmpty else { return Coverage(byMutant: [:]) }
+    ) async -> Probed {
+        guard !tests.isEmpty else { return Probed(coverage: Coverage(byMutant: [:])) }
 
         var reached: [UInt32: [String]] = [:]
         var reach: [String: Set<UInt32>] = [:]
         var untrusted: [String] = []
-        await withTaskGroup(of: (String, Set<UInt32>?).self) { group in
+        var cheapest: Int?
+        await withTaskGroup(of: Asked.self) { group in
             var next = 0
             while next < min(jobs, tests.count) {
                 let test = tests[next]
                 let worker = next
                 group.addTask { [self] in
-                    (test, await self.indices(reachedBy: test, worker: worker))
+                    await self.probing(test, worker: worker)
                 }
                 next += 1
             }
             var done = 0
-            while let (test, indices) = await group.next() {
-                if let indices {
+            while let answer = await group.next() {
+                let (test, cost) = (answer.test, answer.costMilliseconds)
+                if let indices = answer.reached {
                     reach[test] = indices
                     for index in indices.sorted() { reached[index, default: []].append(test) }
                 } else {
                     untrusted.append(test)
                 }
+                // The cheapest one, because every probe is one test in its own process and
+                // the least expensive of them is the closest thing to a trial that runs
+                // nothing at all. Cheapest rather than average: a probe's cost is what a
+                // trial costs plus what its one test costs, and the test that cost least
+                // leaves the most of what remains being the trial.
+                if let cost { cheapest = min(cheapest ?? cost, cost) }
                 done += 1
                 progress(done)
 
@@ -196,12 +204,21 @@ public struct Prober: Sendable {
                 let waiting = tests[next]
                 let worker = next % jobs
                 group.addTask { [self] in
-                    (waiting, await self.indices(reachedBy: waiting, worker: worker))
+                    await self.probing(waiting, worker: worker)
                 }
                 next += 1
             }
         }
-        return Coverage(byMutant: reached, reach: reach, untrusted: untrusted)
+        return Probed(
+            coverage: Coverage(byMutant: reached, reach: reach, untrusted: untrusted),
+            cheapestMilliseconds: cheapest
+        )
+    }
+
+    /// One test's reach, and what asking cost.
+    private func probing(_ test: String, worker: Int) async -> Asked {
+        let (indices, cost) = await measuring(reachedBy: test, worker: worker)
+        return Asked(test: test, reached: indices, costMilliseconds: cost)
     }
 
     /// What one test reached, or nothing when the run that should have said did not.
@@ -210,7 +227,9 @@ public struct Prober: Sendable {
     /// ran out of time, crashed, or left no log establishes nothing about that test - and
     /// an empty set reads exactly like "this test reaches nothing", which is how a mutant
     /// the test catches every day comes back as a survivor nobody looks at.
-    private func indices(reachedBy test: String, worker: Int) async -> Set<UInt32>? {
+    private func measuring(
+        reachedBy test: String, worker: Int
+    ) async -> (Set<UInt32>?, Int?) {
         let log = scratch.appending(path: "probe-\(worker)-\(abs(test.hashValue)).log")
         try? FileManager.default.removeItem(at: log)
         // Made empty before the run, so that the file existing means the process got to
@@ -221,12 +240,12 @@ public struct Prober: Sendable {
         FileManager.default.createFile(atPath: log.path, contents: Data())
         defer { try? FileManager.default.removeItem(at: log) }
 
-        guard await host(worker).probe(test, writingTo: log),
+        guard let cost = await host(worker).probe(test, writingTo: log),
             let text = try? String(contentsOf: log, encoding: .utf8)
         else {
-            return nil
+            return (nil, nil)
         }
-        return Set(text.split(separator: "\n").compactMap { UInt32($0) })
+        return (Set(text.split(separator: "\n").compactMap { UInt32($0) }), cost)
     }
 
     /// The environment variable the generated runtime writes its findings to.
@@ -252,4 +271,43 @@ public struct Prober: Sendable {
         }
         return pattern + "$"
     }
+}
+
+/// What a probe phase found, and what it cost to find out.
+public struct Probed: Sendable {
+
+    /// Which tests reach which mutants.
+    public let coverage: Coverage
+
+    /// The cheapest trial the probe observed, in milliseconds.
+    ///
+    /// Every probe is one test in its own process, so the least expensive of them is the
+    /// closest thing to a measurement of what a trial costs before it runs anything -
+    /// start the process, load the bundle, bring up the runtime. That is the number a
+    /// per-mutant deadline needs and the one a run has always thrown away.
+    ///
+    /// Absent when nothing was probed, which is what a fully remembered run looks like.
+    public let cheapestMilliseconds: Int?
+
+    /// Records what the probe established.
+    public init(coverage: Coverage, cheapestMilliseconds: Int? = nil) {
+        self.coverage = coverage
+        self.cheapestMilliseconds = cheapestMilliseconds
+    }
+}
+
+/// One test, what it reached, and what asking cost.
+///
+/// Named rather than a tuple because it travels out of a task group, where a bare triple
+/// is three positions a reader has to keep straight and a compiler will not.
+struct Asked: Sendable {
+
+    /// The test that was asked.
+    let test: String
+
+    /// What it reached, or nothing when the probe established nothing.
+    let reached: Set<UInt32>?
+
+    /// What asking cost, or nothing when the process did not finish.
+    let costMilliseconds: Int?
 }

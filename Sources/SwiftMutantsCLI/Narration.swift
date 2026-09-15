@@ -88,7 +88,13 @@ enum Narration {
     static func measurement(for stage: RunStage) -> String? {
         switch stage {
         case .calibrated(let budget):
-            "  giving each mutant \(budget.seconds) seconds, from how long that took"
+            // The widest case, and it says so. A mutant nothing narrows faces the whole
+            // suite and gets this; one the probe narrowed to a handful of tests gets far
+            // less, worked out per trial from what it actually faces. Printing the widest
+            // figure as "each mutant" was true while there was one number and became a
+            // considerable overstatement when there stopped being one.
+            "  at most \(budget.seconds) seconds for a mutant nothing narrows, "
+                + "from how long that took"
         case .probing(let tests): "asking each of \(tests) tests what it reaches"
         case .covered(let uncovered, let average):
             "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "
