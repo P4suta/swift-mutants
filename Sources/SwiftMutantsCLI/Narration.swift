@@ -94,7 +94,7 @@ enum Narration {
             // figure as "each mutant" was true while there was one number and became a
             // considerable overstatement when there stopped being one.
             "  at most \(budget.seconds) seconds for a mutant nothing narrows, "
-                + "from how long that took"
+                + "from how long your suite takes"
         case .probing(let tests): "asking each of \(tests) tests what it reaches"
         case .covered(let uncovered, let average):
             "  nothing reaches \(uncovered) of them; the rest face \(oneDecimal(average)) "

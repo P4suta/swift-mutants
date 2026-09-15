@@ -85,6 +85,22 @@ struct VerdictAcrossBundlesTests {
         #expect(said.killedBy == ["B.y()"])
     }
 
+    /// A bundle that established nothing does not let the others speak for it.
+    ///
+    /// `startedTests.isEmpty` on any branch is already `errored` rather than `survived` -
+    /// a run of no tests is not a run in which nothing noticed - and folding several
+    /// bundles must not undo that. A sibling package's harness counted "anything that is
+    /// not the string `killed`" as a survivor, so a worker dying part way turned every
+    /// mutant after it into a hole somebody would go and write a test for.
+    @Test("refuses to let a bundle that established nothing read as survival")
+    func oneBundleEstablishingNothing() {
+        let said = Verdict.across([
+            Self.verdict(.survived, started: ["A.x()"]),
+            Self.verdict(.errored),
+        ])
+        #expect(said.outcome == .errored)
+    }
+
     /// One bundle, which is every package with one test target and was every package at
     /// all until recently. It has to come back exactly as it went in.
     @Test("hands a single bundle's answer straight back")
