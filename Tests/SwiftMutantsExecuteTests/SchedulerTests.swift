@@ -61,7 +61,7 @@ struct SchedulerTests {
         _ fake: Fake, jobs: Int = 3, timeout: Duration = .seconds(30)
     ) -> Scheduler {
         Scheduler(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: Runner(recorder: TraceRecorder()),
             scratch: fake.scratch,
             timeout: timeout,

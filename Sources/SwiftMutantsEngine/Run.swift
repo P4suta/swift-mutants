@@ -84,11 +84,11 @@ public struct Run: Sendable {
         try prove(validated.files.map(\.instrumented))
 
         progress(.building)
-        let plan = try await buildTests(in: tree, environment: environment)
+        let bundles = try await buildTests(in: tree, environment: environment)
 
         let pipes = try pipesDirectory()
         let calibration = try await calibrate(
-            plan, in: pipes, environment: environment, progress: progress)
+            bundles, in: pipes, environment: environment, progress: progress)
         let baseline = calibration.baseline
         let measured = await ask(
             Work(validated: validated, subjects: subjects),
@@ -112,7 +112,7 @@ public struct Run: Sendable {
             digests: listing.digests,
             expectations: expectations,
             unanchored: listing.unanchored.map(\.mutant),
-            plan: plan,
+            plan: bundles.plans.first,
             shard: configuration.execution.shard
         )
     }
@@ -168,14 +168,14 @@ public struct Run: Sendable {
     /// generous budget of its own: it is spent once, and the alternative is giving up on a
     /// package whose tests are simply long.
     private func calibrate(
-        _ plan: TestPlan,
+        _ bundles: TestBundles,
         in pipes: URL,
         environment: [String: String],
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Calibration {
         let jobs = configuration.execution.jobs ?? 4
         let calibrating = Scheduler(
-            plan: plan,
+            bundles: bundles,
             runner: runner,
             scratch: pipes,
             timeout: configuration.test.timeout ?? Self.calibrationBudget,
@@ -206,8 +206,8 @@ public struct Run: Sendable {
             baseline: baseline,
             contended: slowest,
             scheduler: Scheduler(
-                plan: plan, runner: runner, scratch: pipes, timeout: budget, jobs: jobs),
-            plan: plan,
+                bundles: bundles, runner: runner, scratch: pipes, timeout: budget, jobs: jobs),
+            bundles: bundles,
             jobs: jobs
         )
     }
@@ -217,7 +217,7 @@ public struct Run: Sendable {
         let baseline: Verdict
         let contended: Verdict
         let scheduler: Scheduler
-        let plan: TestPlan
+        let bundles: TestBundles
         let jobs: Int
     }
 
@@ -265,7 +265,7 @@ public struct Run: Sendable {
             toAsk.isEmpty
             ? nil
             : await Prober(
-                plan: calibration.plan,
+                bundles: calibration.bundles,
                 runner: runner,
                 scratch: pipes,
                 timeout: configuration.test.timeout ?? Self.calibrationBudget,

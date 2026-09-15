@@ -107,14 +107,14 @@ extension Run {
         guard (try? Snapshot.create(of: root, at: tree)) != nil else { return nil }
         let named = CanonicalPath.of(tree)
         Self.lendDependencies(from: root, to: named)
-        guard let plan = try? await buildTests(in: named, environment: environment),
+        guard let bundles = try? await buildTests(in: named, environment: environment),
             let pipes = try? pipesDirectory()
         else {
             return nil
         }
         // One worker: this is not calibrating anything, it is asking one question once.
         return await Scheduler(
-            plan: plan,
+            bundles: bundles,
             runner: runner,
             scratch: pipes,
             timeout: configuration.test.timeout ?? Self.calibrationBudget,

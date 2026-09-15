@@ -135,7 +135,7 @@ extension Run {
                 """
                 the package does not build as it is, before any mutant was put in it. \
                 Nothing below this would be about your tests. The compiler said:
-                \(output.text.split(separator: "\n").suffix(20).joined(separator: "\n"))
+                \(CompilerDiagnostic.complaints(in: output.text))
                 """
             )
         }
@@ -224,22 +224,31 @@ extension Run {
 
     func buildTests(
         in tree: URL, environment: [String: String]
-    ) async throws(RunError) -> TestPlan {
+    ) async throws(RunError) -> TestBundles {
         do {
-            let plan = try await SwiftPackageManager(
+            let bundles = try await SwiftPackageManager(
                 root: tree, runner: runner, executable: executable
             ).buildForTesting(
                 scratch: Self.buildDirectory(in: tree).path,
                 environment: environment,
                 timeout: .seconds(1800)
             )
-            guard !testArguments.isEmpty else { return plan }
-            return TestPlan(
-                executable: plan.executable,
-                arguments: plan.arguments + testArguments,
-                environment: plan.environment,
-                directory: plan.directory,
-                eventStreamVersion: plan.eventStreamVersion
+            guard !testArguments.isEmpty else { return bundles }
+            // The user's arguments go to every bundle, because they are a scope over the
+            // suite rather than over one target - and a narrowing applied to one bundle
+            // and not the rest would make the score about a suite nobody asked for.
+            return TestBundles(
+                plans: bundles.plans.map { plan in
+                    TestPlan(
+                        executable: plan.executable,
+                        arguments: plan.arguments + testArguments,
+                        environment: plan.environment,
+                        directory: plan.directory,
+                        eventStreamVersion: plan.eventStreamVersion,
+                        derived: plan.derived,
+                        module: plan.module
+                    )
+                }
             )
         } catch {
             throw RunError("the instrumented copy could not be built: \(error)")

@@ -4,6 +4,7 @@
 import Foundation
 import SwiftMutantsCore
 import SwiftMutantsInstrument
+import SwiftMutantsBuild
 import Testing
 
 @testable import SwiftMutantsExecute
@@ -125,7 +126,7 @@ struct BatchedRunTests {
 
     static func scheduler(_ fake: ScriptedBundle.Fake) -> Scheduler {
         Scheduler(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: SchedulerTests.runner(),
             scratch: fake.scratch,
             timeout: .seconds(30),
@@ -243,7 +244,7 @@ struct BatchedSchedulingTests {
 
     static func scheduler(_ fake: ScriptedBundle.Fake, coverage: Coverage?) -> Scheduler {
         Scheduler(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: SchedulerTests.runner(),
             scratch: fake.scratch,
             timeout: .seconds(30),
@@ -291,7 +292,7 @@ struct BatchedSchedulingTests {
         let apart = try ScriptedBundle.fake(failingFor: [], failingTests: ["t2": "t2"])
         defer { apart.cleanUp() }
         let alone = await Scheduler(
-            plan: apart.plan,
+            bundles: TestBundles(plans: [apart.plan]),
             runner: SchedulerTests.runner(),
             scratch: apart.scratch,
             timeout: .seconds(30),

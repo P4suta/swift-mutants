@@ -206,3 +206,59 @@ struct ValidationErrorTests {
         #expect(ValidationError("it did not build").description == "it did not build")
     }
 }
+
+/// What to show somebody when a build failed.
+///
+/// A build prints a great deal that is not a complaint, and it started printing far more
+/// of it the day this tool began asking for a verbose build to recover the plan SwiftPM
+/// no longer writes down. The failure message showed the last twenty lines; they became
+/// twenty lines of `Compiling X.swift`, and the compiler's actual objection - the only
+/// part anybody can act on - scrolled off the top of a message written to carry it.
+@Suite("What the compiler said, out of what the build printed")
+struct ComplaintTests {
+
+    static let narrated = """
+        Compile CoreTests.swift
+            cd /tmp/tree
+            builtin-SwiftPerFileCompile CoreTests.swift
+        /tmp/tree/Sources/Core/Core.swift:4:70: error: binary operator '-' cannot be applied
+        Compiling test_entry_point.swift
+        Emitting module for CoreTests
+        error: Build failed
+        Prune stale explicit modules at /tmp/tree/.build/out
+        """
+
+    @Test("keeps what the compiler objected to")
+    func keepsTheObjections() {
+        let said = CompilerDiagnostic.complaints(in: Self.narrated)
+        #expect(said.contains("binary operator '-' cannot be applied"), "\(said)")
+        #expect(said.contains("error: Build failed"), "\(said)")
+    }
+
+    @Test("drops what the build was merely narrating")
+    func dropsTheNarration() {
+        let said = CompilerDiagnostic.complaints(in: Self.narrated)
+        #expect(!said.contains("builtin-SwiftPerFileCompile"), "\(said)")
+        #expect(!said.contains("Prune stale explicit modules"), "\(said)")
+    }
+
+    /// A build that failed while saying nothing a filter recognises has still failed, and
+    /// showing nothing at all would be the worst of both: a message that carries neither
+    /// the complaint nor the context somebody could reconstruct it from.
+    @Test("falls back to the tail when nothing looks like a complaint")
+    func fallsBackToTheTail() {
+        let said = CompilerDiagnostic.complaints(in: "one\ntwo\nthree")
+        #expect(said.contains("three"), "\(said)")
+    }
+
+    /// The last ones, because a build reports errors as it reaches them and the reader is
+    /// looking for why it stopped.
+    @Test("shows at most the limit it was given")
+    func obeysTheLimit() {
+        let many = (1...50).map { "a.swift:\($0):1: error: number \($0)" }.joined(separator: "\n")
+        let said = CompilerDiagnostic.complaints(in: many, atMost: 3)
+        #expect(said.split(separator: "\n").count == 3, "\(said)")
+        #expect(said.contains("number 50"), "\(said)")
+        #expect(!said.contains("number 47"), "\(said)")
+    }
+}

@@ -23,6 +23,14 @@ public struct TestPlan: Sendable, Hashable {
     /// Which spelling of the event stream to ask for.
     public let eventStreamVersion: String
 
+    /// The test target this bundle was built from.
+    ///
+    /// The name a test wears in front of its own: swift-testing identifies a test as
+    /// `Module.Suite/name()`, and a test target's module is the bundle it is built into.
+    /// That is what lets a set of reaching tests say which bundles a mutant has to face,
+    /// now that a package builds one bundle per test target rather than one in total.
+    public let module: String
+
     /// The variables this plan worked out, as opposed to the ones it was handed.
     ///
     /// A subset of ``environment``, kept apart because these are the ones a command that
@@ -40,7 +48,8 @@ public struct TestPlan: Sendable, Hashable {
         environment: [String: String],
         directory: String,
         eventStreamVersion: String = "6.3",
-        derived: [String: String] = [:]
+        derived: [String: String] = [:],
+        module: String = ""
     ) {
         self.executable = executable
         self.arguments = arguments
@@ -48,5 +57,6 @@ public struct TestPlan: Sendable, Hashable {
         self.directory = directory
         self.eventStreamVersion = eventStreamVersion
         self.derived = derived
+        self.module = module
     }
 }

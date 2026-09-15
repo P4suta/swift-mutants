@@ -140,7 +140,7 @@ public struct Prober: Sendable {
 
     /// The same, for the SwiftPM path: one ``Trial`` per worker, from one built plan.
     public init(
-        plan: TestPlan,
+        bundles: TestBundles,
         runner: Runner,
         scratch: URL,
         timeout: Duration? = .seconds(120),
@@ -149,7 +149,7 @@ public struct Prober: Sendable {
         self.init(
             host: { worker in
                 Trial(
-                    plan: plan,
+                    bundles: bundles,
                     runner: runner,
                     scratch: scratch,
                     timeout: timeout,

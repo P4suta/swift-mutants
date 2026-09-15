@@ -80,7 +80,7 @@ struct TrialTests {
 
     static func trial(_ fake: Fake, timeout: Duration? = .seconds(30)) -> Trial {
         Trial(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: Runner(recorder: TraceRecorder()),
             scratch: fake.scratch,
             timeout: timeout
@@ -197,7 +197,7 @@ struct TrialTests {
             directory: fake.plan.directory
         )
         _ = await Trial(
-            plan: plan,
+            bundles: TestBundles(plans: [plan]),
             runner: Runner(recorder: TraceRecorder()),
             scratch: fake.scratch,
             timeout: .seconds(30)
@@ -256,12 +256,14 @@ struct TrialTests {
         defer { try? FileManager.default.removeItem(at: scratch) }
 
         let trial = Trial(
-            plan: TestPlan(
-                executable: "/no/such/bundle",
-                arguments: [],
-                environment: [:],
-                directory: scratch.path
-            ),
+            bundles: TestBundles(plans: [
+                TestPlan(
+                    executable: "/no/such/bundle",
+                    arguments: [],
+                    environment: [:],
+                    directory: scratch.path
+                )
+            ]),
             runner: Runner(recorder: TraceRecorder()),
             scratch: scratch
         )

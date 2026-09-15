@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsBuild
 import Testing
 
 @testable import SwiftMutantsExecute
@@ -82,7 +83,7 @@ struct ProbeTrustTests {
 
     static func probe(_ fake: ScriptedBundle.Fake, timeout: Duration = .seconds(30)) -> Prober {
         Prober(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: SchedulerTests.runner(),
             scratch: fake.scratch,
             timeout: timeout,

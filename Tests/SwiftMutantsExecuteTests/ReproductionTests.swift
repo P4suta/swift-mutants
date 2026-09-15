@@ -48,7 +48,7 @@ struct ReproductionTests {
         let fake = try ScriptedBundle.fake(failingFor: [])
         defer { fake.cleanUp() }
         let trial = Trial(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: SchedulerTests.runner(),
             scratch: fake.scratch,
             timeout: .seconds(30),

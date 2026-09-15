@@ -101,12 +101,12 @@ struct BuildAndRunTests {
         defer { fixture.cleanUp() }
         let runner = Runner(recorder: TraceRecorder())
 
-        let plan = try await SwiftPackageManager(
+        let bundles = try await SwiftPackageManager(
             root: fixture.root, runner: runner, executable: "/usr/bin/swift"
         ).buildForTesting(scratch: fixture.scratch.path, environment: Self.environment())
 
         let trial = Trial(
-            plan: plan, runner: runner, scratch: fixture.scratch, timeout: .seconds(300))
+            bundles: bundles, runner: runner, scratch: fixture.scratch, timeout: .seconds(300))
 
         // Nothing activated: the package's own tests pass, as they do for anybody.
         let baseline = await trial.run(activating: nil)

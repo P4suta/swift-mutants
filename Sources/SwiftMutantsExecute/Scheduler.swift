@@ -50,7 +50,7 @@ public struct Scheduler: Sendable {
     /// because a caller writing the closure out would be a caller who could get the worker
     /// token wrong.
     public init(
-        plan: TestPlan,
+        bundles: TestBundles,
         runner: Runner,
         scratch: URL,
         timeout: Duration? = .seconds(120),
@@ -60,7 +60,7 @@ public struct Scheduler: Sendable {
         self.init(
             host: { worker in
                 Trial(
-                    plan: plan,
+                    bundles: bundles,
                     runner: runner,
                     scratch: scratch,
                     timeout: timeout,

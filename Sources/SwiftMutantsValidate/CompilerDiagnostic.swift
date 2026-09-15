@@ -193,3 +193,25 @@ extension CompilerDiagnostic {
         return (file, SourcePosition(line: line, column: column))
     }
 }
+
+extension CompilerDiagnostic {
+
+    /// What the compiler objected to, out of everything a build printed.
+    ///
+    /// A build prints a great deal that is not a complaint, and it began printing far more
+    /// of it once this tool started asking for a verbose build to recover the plan SwiftPM
+    /// no longer writes down. A failure message showing the last twenty lines then showed
+    /// twenty lines of `Compiling X.swift`, and the objection - the only part anybody can
+    /// act on - scrolled off the top of a message written to carry it.
+    ///
+    /// The last ones, because a build reports errors as it reaches them and a reader is
+    /// looking for why it stopped. The tail when nothing matches, because a build that
+    /// failed while saying nothing this recognises has still failed, and showing nothing
+    /// would carry neither the complaint nor the context to reconstruct it.
+    public static func complaints(in text: String, atMost limit: Int = 20) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let said = lines.filter { Self.undressed(String($0)).contains("error:") }
+        let kept = said.isEmpty ? lines : said
+        return kept.suffix(limit).joined(separator: "\n")
+    }
+}

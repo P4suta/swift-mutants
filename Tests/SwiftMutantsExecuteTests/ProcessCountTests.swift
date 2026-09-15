@@ -5,6 +5,7 @@ import Foundation
 import SwiftMutantsCore
 import SwiftMutantsInstrument
 import SwiftMutantsTestKit
+import SwiftMutantsBuild
 import Testing
 
 @testable import SwiftMutantsExecute
@@ -21,7 +22,7 @@ struct ProcessCountTests {
 
     static func scheduler(_ fake: ScriptedBundle.Fake, coverage: Coverage?) -> Scheduler {
         Scheduler(
-            plan: fake.plan,
+            bundles: TestBundles(plans: [fake.plan]),
             runner: SchedulerTests.runner(),
             scratch: fake.scratch,
             timeout: .seconds(30),

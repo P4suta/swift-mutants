@@ -269,3 +269,50 @@ public struct StreamWatcher: Sendable {
         }
     }
 }
+
+extension Verdict {
+
+    /// One answer from several bundles.
+    ///
+    /// A trial used to be one process, because a package used to build one test bundle. It
+    /// now builds one per test target, so a mutant several bundles could catch is several
+    /// processes - and the answer has to read as one, because a mutant has one verdict and
+    /// a score has one denominator.
+    ///
+    /// The asymmetry decides every rule. `survived` is a claim about every test that could
+    /// have caught it, so it needs all of them to have looked; `killed` is a claim about
+    /// one, so the first is enough. A deadline sits between: it establishes nothing about
+    /// the bundles it did not reach, so it beats survival - reading it as survival would
+    /// report a mutant nothing caught when what happened is that nothing finished looking -
+    /// and loses to a kill, which answered the question the deadline was still asking.
+    ///
+    /// Nothing at all is not an answer about a program. It means the caller worked out that
+    /// nothing could run and started nothing, and calling that `survived` would put a
+    /// mutant nobody measured into a score.
+    public static func across(_ verdicts: [Verdict]) -> Verdict {
+        guard let first = verdicts.first else {
+            return Verdict(
+                outcome: .errored,
+                killedBy: [],
+                firstFailure: "no test bundle was run for this mutant",
+                startedTests: [],
+                durationMilliseconds: 0,
+                termination: .couldNotStart("no bundle to run")
+            )
+        }
+        guard verdicts.count > 1 else { return first }
+
+        let deciding =
+            verdicts.first { $0.outcome == .killed }
+            ?? verdicts.first { $0.outcome != .survived }
+            ?? first
+        return Verdict(
+            outcome: deciding.outcome,
+            killedBy: verdicts.flatMap(\.killedBy),
+            firstFailure: verdicts.compactMap(\.firstFailure).first,
+            startedTests: verdicts.flatMap(\.startedTests),
+            durationMilliseconds: verdicts.reduce(0) { $0 + $1.durationMilliseconds },
+            termination: deciding.termination
+        )
+    }
+}
