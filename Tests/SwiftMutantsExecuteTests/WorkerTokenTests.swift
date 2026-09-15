@@ -98,7 +98,7 @@ struct WorkerTokenTests {
         let watch = TokenWatch(releasingAfter: 3)
         let scheduler = Self.scheduler(jobs: 2, watch: watch, holding: mutants[0].index)
 
-        let results = await scheduler.run(mutants, in: SchedulerTests.path())
+        let results = await scheduler.run(mutants)
 
         #expect(results.count == mutants.count)
         #expect(
@@ -119,7 +119,7 @@ struct WorkerTokenTests {
         let watch = TokenWatch(releasingAfter: mutants.count)
         let scheduler = Self.scheduler(jobs: 2, watch: watch, holding: mutants[0].index)
 
-        _ = await scheduler.run(mutants, in: SchedulerTests.path())
+        _ = await scheduler.run(mutants)
         #expect(watch.used.isSubset(of: [0, 1]), "used tokens \(watch.used.sorted())")
     }
 

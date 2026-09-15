@@ -47,16 +47,16 @@ struct CommentedExpressionCompileTests {
     func commentedArgument() throws {
         let said = try Self.compiles(
             """
-            struct Thing { let label: String; let count: Int }
+            struct Row { let name: String; let position: Int }
 
-            func all(_ existing: [Thing], _ label: String) -> [Thing] {
+            func all(_ existing: [Row], _ name: String) -> [Row] {
                 existing
                     + [
-                        Thing(
-                            label: label,
-                            // Without a placement, which is the point: the solver
-                            // decides where it goes, and nobody drags it there.
-                            count: 1
+                        Row(
+                            name: name,
+                            // Left unset on purpose: whatever reads this decides,
+                            // and nothing upstream is allowed to.
+                            position: 1
                         )
                     ]
             }
@@ -71,7 +71,7 @@ struct CommentedExpressionCompileTests {
         let said = try Self.compiles(
             """
             func names(_ first: [String]) -> [String] {
-                first  // the caller's own, which come before anything we add
+                first  // the caller's own, which come before anything added here
                     + ["ours"]
             }
             """)
@@ -100,7 +100,7 @@ struct CommentedExpressionCompileTests {
             """
             func sizes(_ base: [Int], _ n: Int) -> [Int] {
                 base
-                    /// the double, which the layout uses for retina
+                    /// the double, for the caller that asks for two of everything
                     + [n * 2]
             }
             """)

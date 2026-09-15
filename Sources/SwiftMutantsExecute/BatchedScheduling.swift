@@ -24,9 +24,7 @@ extension Scheduler {
     /// A test that fails and belongs to nobody means the batch was built wrong. Rather than
     /// credit the kill to whoever happens to be nearby, the caller is told and the mutants
     /// are run one at a time.
-    func results(
-        of batch: Batch, in path: WorkspaceRelativePath, worker: Int
-    ) async -> [MutantResult]? {
+    func results(of batch: Batch, worker: Int) async -> [MutantResult]? {
         let verdict = await trial(worker: worker)
             .run(
                 waking: batch.mutants.map(\.index),
@@ -44,7 +42,7 @@ extension Scheduler {
         return batch.mutants.map { mutant in
             MutantResult(
                 identity: mutant.identity,
-                path: path,
+                path: mutant.path,
                 rule: mutant.rule,
                 span: mutant.span,
                 original: mutant.original,
@@ -81,20 +79,18 @@ extension Scheduler {
     }
 
     /// One unit of work: a batch when the coverage allows it, a mutant when it does not.
-    func answers(
-        for unit: Unit, in path: WorkspaceRelativePath, worker: Int
-    ) async -> [MutantResult] {
+    func answers(for unit: Unit, worker: Int) async -> [MutantResult] {
         switch unit {
         case .alone(let mutant), .unreached(let mutant):
-            return [await result(of: mutant, in: path, worker: worker)]
+            return [await result(of: mutant, worker: worker)]
         case .together(let batch):
-            if let shared = await results(of: batch, in: path, worker: worker) { return shared }
+            if let shared = await results(of: batch, worker: worker) { return shared }
             // The batch said something it could not share out. Ask them separately rather
             // than hand several mutants one answer, which is the mistake a batch exists to
             // avoid rather than to make.
             var apart: [MutantResult] = []
             for mutant in batch.mutants {
-                apart.append(await result(of: mutant, in: path, worker: worker))
+                apart.append(await result(of: mutant, worker: worker))
             }
             return apart
         }

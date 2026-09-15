@@ -43,7 +43,7 @@ struct CoverageTests {
             byMutant: [mutants[0].index: ["P.S/a()", "P.S/b()"]],
         )
         _ = await Self.scheduler(fake, coverage: coverage)
-            .run([mutants[0]], in: SchedulerTests.path())
+            .run([mutants[0]])
 
         let argv = try String(contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8)
         #expect(argv.contains(Prober.exactly("P.S/a()")))
@@ -62,7 +62,7 @@ struct CoverageTests {
 
         let coverage = Coverage(byMutant: [:])
         let results = await Self.scheduler(fake, coverage: coverage)
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
 
         #expect(results.count == mutants.count)
         #expect(results.allSatisfy { $0.verdict.outcome == .survived })
@@ -84,7 +84,7 @@ struct CoverageTests {
         defer { fake.cleanUp() }
 
         _ = await Self.scheduler(fake, coverage: nil)
-            .run([mutants[0]], in: SchedulerTests.path())
+            .run([mutants[0]])
 
         let argv = try String(contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8)
         #expect(!argv.contains("--filter"))

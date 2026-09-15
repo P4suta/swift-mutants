@@ -35,7 +35,7 @@ struct RetryTests {
 
         // A deadline the slow pass certainly misses and the quick one certainly meets.
         let results = await SchedulerTests.scheduler(fake, timeout: .milliseconds(700))
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
         let retried = try #require(results.first { $0.identity == mutants[2].identity })
         #expect(retried.verdict.outcome == .survived)
         #expect(retried.attempts == 2)
@@ -52,7 +52,7 @@ struct RetryTests {
         defer { fake.cleanUp() }
 
         let results = await SchedulerTests.scheduler(fake, timeout: .milliseconds(700))
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
         let stuck = try #require(results.first { $0.identity == mutants[1].identity })
         #expect(stuck.verdict.outcome == .timedOut)
         #expect(stuck.attempts == 2)

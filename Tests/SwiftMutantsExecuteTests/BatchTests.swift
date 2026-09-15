@@ -152,7 +152,7 @@ struct BatchedRunTests {
         )
         let batch = try #require(Batch.group(Array(mutants.prefix(3)), using: coverage).first)
         let results = try #require(
-            await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0))
+            await Self.scheduler(fake).results(of: batch, worker: 0))
 
         #expect(results.count == 3)
         let killed = results.filter { $0.verdict.outcome == .killed }
@@ -180,7 +180,7 @@ struct BatchedRunTests {
         )
         let batch = try #require(Batch.group(Array(mutants.prefix(3)), using: coverage).first)
         let results = try #require(
-            await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0))
+            await Self.scheduler(fake).results(of: batch, worker: 0))
 
         let killed = Set(results.filter { $0.verdict.outcome == .killed }.map(\.identity))
         #expect(killed == [mutants[0].identity, mutants[2].identity])
@@ -201,7 +201,7 @@ struct BatchedRunTests {
         let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         let batch = try #require(Batch.group([mutants[0]], using: coverage).first)
         #expect(
-            await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0)
+            await Self.scheduler(fake).results(of: batch, worker: 0)
                 == nil)
     }
 
@@ -216,7 +216,7 @@ struct BatchedRunTests {
             byMutant: [mutants[0].index: ["a"], mutants[1].index: ["b"]])
         let batch = try #require(Batch.group(Array(mutants.prefix(2)), using: coverage).first)
         let results = try #require(
-            await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0))
+            await Self.scheduler(fake).results(of: batch, worker: 0))
         #expect(results.allSatisfy { $0.verdict.outcome == .survived })
     }
 
@@ -231,7 +231,7 @@ struct BatchedRunTests {
         let coverage = Coverage(byMutant: [mutants[0].index: ["a"]])
         let batch = try #require(Batch.group([mutants[0]], using: coverage).first)
         #expect(
-            await Self.scheduler(fake).results(of: batch, in: SchedulerTests.path(), worker: 0)
+            await Self.scheduler(fake).results(of: batch, worker: 0)
                 == nil)
     }
 }
@@ -266,7 +266,7 @@ struct BatchedSchedulingTests {
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
         )
         let results = await Self.scheduler(fake, coverage: coverage)
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
 
         #expect(results.count == mutants.count)
         let invocations = try String(
@@ -287,7 +287,7 @@ struct BatchedSchedulingTests {
         let batched = try ScriptedBundle.fake(failingFor: [], failingTests: ["t2": "t2"])
         defer { batched.cleanUp() }
         let together = await Self.scheduler(batched, coverage: coverage)
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
 
         let apart = try ScriptedBundle.fake(failingFor: [], failingTests: ["t2": "t2"])
         defer { apart.cleanUp() }
@@ -298,7 +298,7 @@ struct BatchedSchedulingTests {
             timeout: .seconds(30),
             jobs: 1,
             coverage: coverage
-        ).offering(nil).run(mutants, in: SchedulerTests.path())
+        ).offering(nil).run(mutants)
 
         #expect(together.map(\.identity) == alone.map(\.identity))
         #expect(together.first { $0.verdict.outcome == .killed }?.identity == mutants[2].identity)
@@ -321,7 +321,7 @@ struct BatchedSchedulingTests {
         }
         let coverage = Coverage(byMutant: sets)
         let results = await Self.scheduler(fake, coverage: coverage)
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
         #expect(results.map(\.identity) == mutants.map(\.identity))
     }
 
@@ -340,7 +340,7 @@ struct BatchedSchedulingTests {
             byMutant: Dictionary(uniqueKeysWithValues: pair.map { ($0.index, ["shared"]) }),
         )
         let results = await Self.scheduler(fake, coverage: coverage)
-            .run(pair, in: SchedulerTests.path())
+            .run(pair)
 
         #expect(results.count == 2)
         #expect(
@@ -363,7 +363,7 @@ struct BatchedSchedulingTests {
                 uniqueKeysWithValues: mutants.enumerated().map { ($1.index, ["t\($0)"]) }),
         )
         let results = await Self.scheduler(fake, coverage: coverage)
-            .run(mutants, in: SchedulerTests.path())
+            .run(mutants)
 
         #expect(results.count == mutants.count)
         #expect(results.map(\.identity) == mutants.map(\.identity))
@@ -377,7 +377,7 @@ struct BatchedSchedulingTests {
         let fake = try ScriptedBundle.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        _ = await Self.scheduler(fake, coverage: nil).run(mutants, in: SchedulerTests.path())
+        _ = await Self.scheduler(fake, coverage: nil).run(mutants)
         let invocations = try String(
             contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8
         ).split(separator: "\n").count

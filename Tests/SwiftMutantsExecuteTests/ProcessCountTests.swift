@@ -80,7 +80,7 @@ struct ProcessCountTests {
         let scheduler = Self.scheduler(fake, coverage: coverage)
 
         let expected = scheduler.processes(for: mutants)
-        _ = await scheduler.run(mutants, in: SchedulerTests.path())
+        _ = await scheduler.run(mutants)
         let started = try String(
             contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8
         ).split(separator: "\n").count

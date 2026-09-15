@@ -58,26 +58,25 @@ struct ConfigurationFileTests {
         #expect(configuration.mutation.exclude.map(\.description) == ["Sources/Generated/**"])
     }
 
-    /// The rows a project writes because they encode what its code is *for* - that the
-    /// opposite of a direction is a half turn, that a step distance wraps because directions
-    /// are a circle. A generator working from syntax cannot propose those, and a file that
-    /// was never read meant a project could write three hundred of them and measure none.
+    /// The rows a project writes because they encode what its code is *for*, which nothing
+    /// working from syntax alone can propose. A file that was never read meant a project
+    /// could write three hundred of them and measure none.
     @Test("reads the mutations a project wrote itself")
     func readsCustomMutants() throws {
         let root = try Self.writing(
             """
             [[mutation.custom]]
-            file = "Sources/Compass/Direction.swift"
-            find = "case .north: return .south"
-            replace = "case .north: return .east"
-            reason = "the opposite of north is half a turn away, not a quarter"
+            file = "Sources/Core/Order.swift"
+            find = "entries.sorted()"
+            replace = "entries"
+            reason = "is the sort load-bearing, or only tidy"
             """)
         defer { try? FileManager.default.removeItem(at: root) }
 
         let custom = try ConfigurationFile.decoded(in: root).mutation.custom
         #expect(custom.count == 1)
-        #expect(custom.first?.file == "Sources/Compass/Direction.swift")
-        #expect(custom.first?.reason.contains("half a turn") == true)
+        #expect(custom.first?.file == "Sources/Core/Order.swift")
+        #expect(custom.first?.reason.contains("load-bearing") == true)
     }
 
     /// The promise the parser's bookkeeping exists to keep. The commonest thing a

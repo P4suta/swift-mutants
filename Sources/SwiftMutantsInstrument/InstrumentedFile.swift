@@ -48,6 +48,16 @@ public struct InstrumentedMutant: Sendable, Hashable {
     /// What it is called. Computed from the **original** file, never the instrumented one.
     public let identity: MutantIdentity
 
+    /// The file it came from, as the workspace spells it.
+    ///
+    /// Carried because the instrumenter knew it and everything downstream needs it. A run
+    /// used to hand the scheduler one file's mutants and the file's name alongside them,
+    /// which meant measuring a package one file at a time - so a batch could never pair
+    /// mutants from two files however disjoint their tests were, and the worker pool
+    /// drained at every file boundary. A mutant that knows its own file is what lets a
+    /// whole catalogue go in at once.
+    public let path: WorkspaceRelativePath
+
     /// The dense index its guard spells.
     ///
     /// Dense and per-file, so a guard is an integer compare against a global the runtime

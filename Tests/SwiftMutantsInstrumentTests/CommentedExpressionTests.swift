@@ -22,11 +22,12 @@ import Testing
 /// comment explaining an argument at the argument:
 ///
 /// ```swift
-/// Annotation(
-///     id: Self.nextID(in: scene),
-///     label: label,
-///     // Without a placement, which is the point: the solver decides where it goes.
-///     placement: nil
+/// Row(
+///     id: Self.next(in: rows),
+///     name: name,
+///     // Left unset on purpose: whatever reads this decides, and nothing upstream is
+///     // allowed to.
+///     position: nil
 /// )
 /// ```
 ///
@@ -64,8 +65,7 @@ struct CommentedExpressionTests {
     /// looks like from inside.
     ///
     /// The shape that does reach it is a concatenation, because the site is then the whole
-    /// multi-line expression - which is also the shape in the report, one example further
-    /// down: `scene.annotations + [Annotation(… // … , placement: nil)]`.
+    /// multi-line expression: `existing + [Row(… // … , position: nil)]`.
     static func holdsACommentInASite(_ discovery: FileDiscovery) -> Bool {
         discovery.lineComments.contains { comment in
             discovery.candidates.contains {
@@ -81,14 +81,14 @@ struct CommentedExpressionTests {
     }
 
     static let commentedArgument = """
-        func all(_ existing: [Thing], _ label: String) -> [Thing] {
+        func all(_ existing: [Row], _ name: String) -> [Row] {
             existing
                 + [
-                    Thing(
-                        label: label,
-                        // Without a placement, which is the point: the solver
-                        // decides where it goes, and nobody drags it there.
-                        count: 1
+                    Row(
+                        name: name,
+                        // Left unset on purpose: whatever reads this decides,
+                        // and nothing upstream is allowed to.
+                        position: 1
                     )
                 ]
         }
@@ -105,7 +105,7 @@ struct CommentedExpressionTests {
     @Test("leaves the comment in the copy that is not mutated")
     func keepsTheCommentOnTheOriginalSide() throws {
         let file = try Self.instrumented(Self.commentedArgument)
-        #expect(file.source.contains("// Without a placement, which is the point: the solver"))
+        #expect(file.source.contains("// Left unset on purpose: whatever reads this decides,"))
     }
 
     /// The whole reason for flattening. A file that gained lines would make every line

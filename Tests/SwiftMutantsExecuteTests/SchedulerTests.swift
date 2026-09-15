@@ -75,7 +75,7 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        let results = await Self.scheduler(fake).run(mutants)
         #expect(results.count == mutants.count)
         #expect(results.allSatisfy { $0.verdict.outcome == .survived })
     }
@@ -90,7 +90,7 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: [mutants[0].index])
         defer { fake.cleanUp() }
 
-        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        let results = await Self.scheduler(fake).run(mutants)
         #expect(results.map(\.identity) == mutants.map(\.identity))
     }
 
@@ -101,7 +101,7 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: caught)
         defer { fake.cleanUp() }
 
-        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        let results = await Self.scheduler(fake).run(mutants)
         let killed = results.filter { $0.verdict.outcome == .killed }.map(\.identity)
         #expect(Set(killed) == Set([mutants[1].identity, mutants[3].identity]))
     }
@@ -114,7 +114,7 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        _ = await Self.scheduler(fake, jobs: 2).run(mutants, in: Self.path())
+        _ = await Self.scheduler(fake, jobs: 2).run(mutants)
 
         let counts = try String(
             contentsOf: fake.scratch.appending(path: "inflight.txt"), encoding: .utf8
@@ -130,7 +130,7 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: [])
         defer { fake.cleanUp() }
 
-        _ = await Self.scheduler(fake, jobs: 1).run(mutants, in: Self.path())
+        _ = await Self.scheduler(fake, jobs: 1).run(mutants)
 
         let counts = try String(
             contentsOf: fake.scratch.appending(path: "inflight.txt"), encoding: .utf8
@@ -144,7 +144,7 @@ struct SchedulerTests {
     func empty() async throws {
         let fake = try Self.fake(failingFor: [])
         defer { fake.cleanUp() }
-        #expect(await Self.scheduler(fake).run([], in: Self.path()).isEmpty)
+        #expect(await Self.scheduler(fake).run([]).isEmpty)
     }
 
     /// The instrumented baseline wakes nothing. Its passing is what says the guards left
@@ -179,7 +179,7 @@ struct SchedulerTests {
         defer { fake.cleanUp() }
 
         let seen = Mutex(0)
-        _ = await Self.scheduler(fake).run(mutants, in: Self.path()) { _ in
+        _ = await Self.scheduler(fake).run(mutants) { _ in
             seen.withLock { $0 += 1 }
         }
         #expect(seen.withLock { $0 } == mutants.count)
@@ -193,7 +193,7 @@ struct SchedulerTests {
         let fake = try Self.fake(failingFor: [mutants[0].index])
         defer { fake.cleanUp() }
 
-        let results = await Self.scheduler(fake).run(mutants, in: Self.path())
+        let results = await Self.scheduler(fake).run(mutants)
         let summary = try #require(RunSummary.of(results, rejected: 2))
         #expect(summary.killed == 1)
         #expect(summary.survived == mutants.count - 1)

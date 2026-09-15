@@ -167,6 +167,7 @@ public enum Instrument {
             placed.append(
                 InstrumentedMutant(
                     identity: mutant.identity,
+                    path: discovery.path,
                     index: mutant.index,
                     marker: mutant.marker,
                     span: mutant.span,

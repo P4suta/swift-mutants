@@ -257,24 +257,28 @@ extension Run {
         progress(
             .running(total: toAsk.count, processes: scheduler.processes(for: toAsk)))
 
+        // One pass over the whole catalogue, not one per file.
+        //
+        // A batch is several mutants in one process, sound because no test reaches two of
+        // them - which is a fact about their covering tests and nothing to do with which
+        // file they are in. Asking a file at a time threw away every pairing across files;
+        // measured on a package of 55 files, 755 mutants came to 680 processes, so
+        // batching was saving a tenth of what it is for.
+        //
+        // And the pool drained at every file boundary: with eighteen workers and a file
+        // holding five mutants, thirteen of them waited for the last one before the next
+        // file began. Fifty files is fifty of those stalls.
+        let answers = await scheduler.run(toAsk) { progress(.finished($0)) }
+        var answered = Dictionary(
+            answers.map { ($0.identity, $0) }, uniquingKeysWith: { first, _ in first })
+
+        // Back into catalogue order, with the remembered answers in their places. A report
+        // whose rows moved because a cache was warm, or because one worker was quicker
+        // than another, would be a different report about the same run.
         var results: [MutantResult] = []
         var remembered = 0
-        for (file, subject) in zip(work.validated.files, work.subjects) {
-            guard let path = WorkspaceRelativePath(subject.name) else { continue }
-            let mutants = file.instrumented.mutants.sorted { $0.index < $1.index }
-            let asking = mutants.filter {
-                self.holds($0) && remembering.answer(for: $0.index) == nil
-            }
-
-            var answered = Dictionary(
-                uniqueKeysWithValues: await scheduler.run(asking, in: path) {
-                    progress(.finished($0))
-                }.map { ($0.identity, $0) })
-
-            // Back into catalogue order, with the remembered answers in their places. A
-            // report whose rows moved because a cache was warm would be a different report
-            // about the same run.
-            for mutant in mutants {
+        for file in work.validated.files {
+            for mutant in file.instrumented.mutants.sorted(by: { $0.index < $1.index }) {
                 if let fresh = answered.removeValue(forKey: mutant.identity) {
                     results.append(fresh)
                     continue
@@ -282,13 +286,13 @@ extension Run {
                 guard self.holds(mutant) else {
                     // Another machine's. Counted so the columns add up to the catalogue,
                     // and reported as what it is: not measured here.
-                    results.append(Self.notRun(mutant, at: path))
+                    results.append(Self.notRun(mutant, at: mutant.path))
                     continue
                 }
                 guard let answer = remembering.answer(for: mutant.index) else { continue }
                 let result = Self.result(
                     of: mutant,
-                    at: path,
+                    at: mutant.path,
                     from: answer,
                     offering: coverage?.tests(reaching: mutant.index) ?? []
                 )

@@ -177,11 +177,10 @@ public struct Scheduler: Sendable {
     /// result rather than a count.
     public func run(
         _ mutants: [InstrumentedMutant],
-        in path: WorkspaceRelativePath,
         progress: @Sendable (MutantResult) -> Void = { _ in }
     ) async -> [MutantResult] {
-        let first = await attempt(mutants, in: path, progress: progress)
-        return await retryingTimeouts(first, of: mutants, in: path, progress: progress)
+        let first = await attempt(mutants, progress: progress)
+        return await retryingTimeouts(first, of: mutants, progress: progress)
     }
 
     /// Runs the mutants that ran out of time again, one at a time, on a quiet machine.
@@ -199,7 +198,6 @@ public struct Scheduler: Sendable {
     private func retryingTimeouts(
         _ results: [MutantResult],
         of mutants: [InstrumentedMutant],
-        in path: WorkspaceRelativePath,
         progress: @Sendable (MutantResult) -> Void
     ) async -> [MutantResult] {
         let byIdentity = Dictionary(
@@ -214,7 +212,7 @@ public struct Scheduler: Sendable {
                 settled.append(result)
                 continue
             }
-            var again = await self.result(of: mutant, in: path, worker: 0)
+            var again = await self.result(of: mutant, worker: 0)
             again = MutantResult(
                 identity: again.identity,
                 path: again.path,
@@ -241,7 +239,6 @@ public struct Scheduler: Sendable {
     /// of time, a test failed that belongs to nobody - is asked again one at a time.
     private func attempt(
         _ mutants: [InstrumentedMutant],
-        in path: WorkspaceRelativePath,
         progress: @Sendable (MutantResult) -> Void
     ) async -> [MutantResult] {
         guard !mutants.isEmpty else { return [] }
@@ -253,7 +250,7 @@ public struct Scheduler: Sendable {
         // it from the position of the unit - so two workers shared a directory on
         // essentially every run.
         let answered = await WorkerPool(jobs: jobs).run(over: units) { [self] unit, token in
-            await answers(for: unit, in: path, worker: token)
+            await answers(for: unit, worker: token)
         } asEachFinishes: { _, answers in
             for answer in answers { progress(answer) }
         }
@@ -268,9 +265,7 @@ public struct Scheduler: Sendable {
         }
     }
 
-    func result(
-        of mutant: InstrumentedMutant, in path: WorkspaceRelativePath, worker: Int
-    ) async -> MutantResult {
+    func result(of mutant: InstrumentedMutant, worker: Int) async -> MutantResult {
         // A mutant nothing reaches cannot be caught, and running the suite to find that
         // out would be spending the most expensive thing this tool does on a question
         // already answered. It is reported as surviving, which it does, and as uncovered,
@@ -279,14 +274,14 @@ public struct Scheduler: Sendable {
         var covering: [String]?
         if let coverage {
             guard let reached = coverage.tests(reaching: mutant.index), !reached.isEmpty else {
-                return Self.unreached(mutant, in: path)
+                return Self.unreached(mutant)
             }
             covering = reached
         }
 
         return MutantResult(
             identity: mutant.identity,
-            path: path,
+            path: mutant.path,
             rule: mutant.rule,
             span: mutant.span,
             original: mutant.original,
@@ -299,12 +294,10 @@ public struct Scheduler: Sendable {
     }
 
     /// The answer for a mutant no test reaches, arrived at without starting a process.
-    private static func unreached(
-        _ mutant: InstrumentedMutant, in path: WorkspaceRelativePath
-    ) -> MutantResult {
+    private static func unreached(_ mutant: InstrumentedMutant) -> MutantResult {
         MutantResult(
             identity: mutant.identity,
-            path: path,
+            path: mutant.path,
             rule: mutant.rule,
             span: mutant.span,
             original: mutant.original,
