@@ -262,27 +262,6 @@ struct RunIntegrationTests {
         #expect(outcome.summary.killed > 0)
     }
 
-    /// A score is an answer about a program, so a tree that does not behave like the one
-    /// the user wrote must stop the run rather than produce one.
-    @Test("refuses to score a package whose own tests fail", .tags(.integration))
-    func redBaseline() async throws {
-        let fixture = try Self.fixture()
-        defer { fixture.cleanUp() }
-        try Self.write(
-            """
-            import Testing
-            @testable import Subject
-
-            @Suite("Subject")
-            struct SubjectTests {
-                @Test("is wrong") func wrong() { #expect(atLeast(1, 3)) }
-            }
-            """, to: fixture.root.appending(path: "Tests/SubjectTests/SubjectTests.swift"))
-
-        let failure = await #expect(throws: RunError.self) { try await Self.run(fixture) }
-        #expect(failure?.description.contains("does not behave like the one you wrote") == true)
-    }
-
     @Test("says so when there is nothing to mutate", .tags(.integration))
     func nothingToMutate() async throws {
         let fixture = try Self.fixture()

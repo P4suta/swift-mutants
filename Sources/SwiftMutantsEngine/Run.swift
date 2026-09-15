@@ -87,7 +87,8 @@ public struct Run: Sendable {
         let plan = try await buildTests(in: tree, environment: environment)
 
         let pipes = try pipesDirectory()
-        let calibration = try await calibrate(plan, in: pipes, progress: progress)
+        let calibration = try await calibrate(
+            plan, in: pipes, environment: environment, progress: progress)
         let baseline = calibration.baseline
         let measured = await ask(
             Work(validated: validated, subjects: subjects),
@@ -167,7 +168,10 @@ public struct Run: Sendable {
     /// generous budget of its own: it is spent once, and the alternative is giving up on a
     /// package whose tests are simply long.
     private func calibrate(
-        _ plan: TestPlan, in pipes: URL, progress: @Sendable (RunStage) -> Void
+        _ plan: TestPlan,
+        in pipes: URL,
+        environment: [String: String],
+        progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Calibration {
         let jobs = configuration.execution.jobs ?? 4
         let calibrating = Scheduler(
@@ -178,7 +182,8 @@ public struct Run: Sendable {
             jobs: jobs
         )
         progress(.baseline)
-        let baseline = try await provedBaseline(calibrating)
+        let baseline = try await provedBaseline(
+            calibrating, environment: environment, progress: progress)
 
         // Measured the way the mutants will be run, because that is the only figure a
         // deadline can be derived from. It also asks whether this suite can run beside
@@ -285,21 +290,6 @@ public struct Run: Sendable {
     /// This is what earns the right to report anything at all. If the tree with no mutant
     /// awake does not behave like the one the user wrote, every later answer is about a
     /// program nobody has - and would read as a score about theirs.
-    private func provedBaseline(_ scheduler: Scheduler) async throws(RunError) -> Verdict {
-        let baseline = await scheduler.baseline()
-        guard baseline.outcome == .survived else {
-            throw RunError(
-                """
-                the instrumented tree does not behave like the one you wrote: with no mutant \
-                awake the tests came back \(baseline.outcome.rawValue). Every later answer \
-                would be about a program nobody has, so the run stops here.
-                \(Self.blame(baseline))
-                """
-            )
-        }
-        return baseline
-    }
-
     /// Which tests said so, and what they said.
     ///
     /// Named, because "the baseline failed" is a sentence somebody can do nothing with.
@@ -307,7 +297,7 @@ public struct Run: Sendable {
     /// about the program - a lint gate, a golden file, a check on imports - and
     /// instrumentation changes those files by design. Knowing which test it was turns a
     /// dead end into a one-line exclusion.
-    private static func blame(_ baseline: Verdict) -> String {
+    static func blame(_ baseline: Verdict) -> String {
         guard !baseline.killedBy.isEmpty else {
             return """
 

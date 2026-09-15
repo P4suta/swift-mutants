@@ -152,6 +152,12 @@ public enum RunStage: Sendable, Hashable {
     case proving
     case baseline
 
+    /// Working out whose failure a red baseline is, by building the package as written.
+    ///
+    /// Only ever reached when the run is about to stop, and said out loud because an
+    /// unexplained second build after a failure looks like the tool having lost its place.
+    case attributing
+
     /// How long each mutant will be given, and where that came from.
     case calibrated(Duration)
 
