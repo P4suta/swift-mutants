@@ -118,9 +118,15 @@ public struct Runner: Sendable {
     /// Its own process group, always: the thing that has to be ended when a deadline runs
     /// out or an answer arrives is usually a grandchild, and a group is what reaches it.
     private static func configuration(for spec: ProcessSpec) -> Configuration {
-        Configuration(
-            executable: .path(FilePath(spec.executable)),
-            arguments: Arguments(spec.arguments),
+        // Wrapped only when there is an allowance to enforce, so every build, every probe
+        // and everything else is spawned exactly as it was before.
+        let started: (executable: String, arguments: [String]) =
+            spec.cpuLimit.map {
+                CpuAllowance.wrapping(spec.executable, spec.arguments, within: $0)
+            } ?? (spec.executable, spec.arguments)
+        return Configuration(
+            executable: .path(FilePath(started.executable)),
+            arguments: Arguments(started.arguments),
             environment: .custom(Self.environmentBlock(spec.environment)),
             workingDirectory: FilePath(spec.directory),
             platformOptions: Self.ownProcessGroup()
@@ -270,13 +276,18 @@ public struct Runner: Sendable {
             )
         )
 
+        // The accounting comes off before anybody sees the error stream: a trial's is read
+        // for what the tests said, and a line this tool added to measure with would be a
+        // line somebody has to explain.
+        let accounted = CpuAllowance.taking(completion.error.retained)
         return ProcessOutcome(
             exitCode: completion.exitCode,
+            cpuMilliseconds: accounted.cpuMilliseconds,
             timedOut: completion.timedOut,
             stoppedEarly: completion.stoppedEarly,
             durationMilliseconds: completion.duration,
             standardOutput: output.retained,
-            standardError: completion.error.retained,
+            standardError: accounted.error,
             startFailure: completion.startFailure,
             traceSequence: event.sequence
         )

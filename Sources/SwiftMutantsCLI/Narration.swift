@@ -71,9 +71,10 @@ enum Narration {
             // multiply with the number of refusals, which is the thing being found out.
             "  compile \(compiles), narrowed to \(narrowing)"
                 + (refused > 0 ? " - this one is refused" : "")
-        case .halving(let mutants, let read, let unplaceable):
+        case .halving(let mutants, let read, let unplaceable, let wrote):
             "  the compiler would not say which, so halving \(mutants) mutants"
-                + Self.whyTheFastPathDidNotTake(read: read, unplaceable: unplaceable)
+                + Self.whyTheFastPathDidNotTake(
+                    read: read, unplaceable: unplaceable, wrote: wrote)
         }
     }
 

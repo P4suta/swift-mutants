@@ -204,4 +204,56 @@ struct UnanchoredNarrationTests {
         let said = Self.lines([Self.row("gone()", "a reason", found: 0)]).joined(separator: "\n")
         #expect(said.lowercased().contains("measur") || said.lowercased().contains("test"))
     }
+
+    /// And what it said, when this could read none of it.
+    ///
+    /// A run records every subprocess's output by hash and length, which answers "did this
+    /// print the same thing twice" for a fraction of two megabytes. It is exactly the wrong
+    /// shape for "what were the diagnostics", and that is the question the fallback raises.
+    /// Reported by somebody who opened the bundle to answer it and found `stdout_sha256`
+    /// and `stdout_bytes` and nothing to read - and who could not have sent the round that
+    /// fell through in any case, because a run that ends successfully writes no bundle at
+    /// all.
+    ///
+    /// So the text comes out here, where the person is already looking, bounded to a few
+    /// lines because what is wanted is the *shape* rather than the log. It costs nothing on
+    /// the path where the parse works: there is nothing to print when everything was read.
+    @Test("shows what the compiler wrote when it could read none of it")
+    func showsTheTextItCouldNotRead() {
+        let said = Narration.validating(
+            .halving(
+                mutants: 9,
+                read: 0,
+                unplaceable: nil,
+                wrote: "ld: symbol not found\nclang: error: linker command failed"))
+        #expect(said.contains("ld: symbol not found"), "\(said)")
+        #expect(said.contains("linker command failed"), "\(said)")
+    }
+
+    /// Bounded, because a build log is two megabytes and a terminal is not.
+    @Test("shows only the first few lines of a long one")
+    func boundsWhatItShows() {
+        let long = (1...200).map { "line \($0)" }.joined(separator: "\n")
+        let said = Narration.validating(
+            .halving(mutants: 9, read: 0, unplaceable: nil, wrote: long))
+        #expect(said.contains("line 1"))
+        #expect(!said.contains("line 200"), "it printed the whole log")
+        #expect(said.contains("200"), "it did not say how much it left out: \(said)")
+    }
+
+    /// Nothing to show on the path where the parse worked. The diagnostics are the
+    /// explanation there, and the raw text would only bury them.
+    @Test("shows no raw text when it read the diagnostics")
+    func quietWhenItCouldRead() {
+        let said = Narration.validating(
+            .halving(mutants: 9, read: 2, unplaceable: Self.first, wrote: "some raw text"))
+        #expect(!said.contains("some raw text"), "\(said)")
+    }
+
+    static let first = CompilerDiagnostic(
+        file: "A.swift",
+        position: SourcePosition(line: 1, column: 1),
+        severity: .error,
+        message: "no"
+    )
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import Foundation
 import SwiftMutantsValidate
 
 /// What a run says when one compile did not name every refusal.
@@ -24,7 +25,7 @@ extension Narration {
     /// The count rather than only the first, because "one stray error" and "forty of them,
     /// none of which are mine" are different situations whose first line looks the same.
     static func whyTheFastPathDidNotTake(
-        read: Int, unplaceable: CompilerDiagnostic?
+        read: Int, unplaceable: CompilerDiagnostic?, wrote: String = ""
     ) -> String {
         guard read > 0 else {
             return """
@@ -33,7 +34,7 @@ extension Narration {
                 diagnostic, which is a defect in this tool rather than in your package. \
                 Halving will still find the refusals; it will take one compile per \
                 narrowing rather than one in total.
-                """
+                """ + Self.showing(wrote)
         }
         return "\n  it read \(read) and placed none of them at a mutant"
             + (unplaceable.map {
@@ -41,6 +42,32 @@ extension Narration {
                     + ($0.isUnaffordable ? "\n" + Self.unaffordable : "")
             } ?? "")
     }
+
+    /// The compiler's own words, when none of them could be read.
+    ///
+    /// A run records every subprocess's output by hash and length. That answers "did this
+    /// print the same thing twice" for a fraction of two megabytes, and it is exactly the
+    /// wrong shape for "what were the diagnostics" - which is the question this case
+    /// raises, and the only moment the raw text is worth anything. Reported by somebody who
+    /// opened the diagnostics bundle to answer it and found a hash, and who could not have
+    /// sent the round that fell through in any case, because a run that ends successfully
+    /// writes no bundle at all.
+    ///
+    /// The first few lines rather than the log, because what is wanted is the shape. How
+    /// much was left out is said, so nobody reads the first twenty lines of two hundred as
+    /// though they were all of it.
+    static func showing(_ text: String) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !lines.isEmpty else { return "" }
+        let shown = lines.prefix(Self.linesOfRawOutput)
+        return "\n  it wrote \(lines.count) lines, of which the first \(shown.count):\n"
+            + shown.map { "    \($0)" }.joined(separator: "\n")
+    }
+
+    /// How much of a compile's own output to show. Enough to see the shape of a diagnostic,
+    /// far short of a build log.
+    static let linesOfRawOutput = 20
 
     /// What to say when the compiler ran out of budget rather than refusing anything.
     ///

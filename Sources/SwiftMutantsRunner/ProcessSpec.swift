@@ -58,6 +58,29 @@ public struct ProcessSpec: Sendable, Hashable {
     /// How long it may take, if it has a deadline.
     public let timeout: Duration?
 
+    /// How much processor it may use, if it has an allowance.
+    ///
+    /// The unit a limit on a mutant belongs in. A wall-clock deadline makes a verdict
+    /// sensitive to something that is not a property of the program - a mutant that met its
+    /// deadline because a build started in another window is recorded as a detection -
+    /// whereas a process doing the same work consumes the same user and system seconds
+    /// whether it is alone on the machine or sharing it with seventeen others. The
+    /// scheduler gives it fewer per wall second, not fewer in total.
+    ///
+    /// Enforced by the kernel through `RLIMIT_CPU`, which sends `SIGXCPU` the moment a
+    /// process passes its allowance: nothing polls and nothing can be got wrong. A child
+    /// that only waits is untouched, which is exactly right - waiting is not working - and
+    /// is why ``timeout`` remains as the backstop for the one thing this cannot see.
+    ///
+    /// Not a perfect invariant, and no claim is made that it is: a throttled core, or one
+    /// of Apple silicon's efficiency cores, does less work per processor second than a
+    /// performance core. Those vary far less than contention does, and they vary the same
+    /// way for the baseline a budget is derived from as for the trials it bounds.
+    ///
+    /// Whole seconds, because that is the unit the limit is expressed in. Absent for
+    /// everything that is not a mutant under measurement.
+    public let cpuLimit: Duration?
+
     /// Describes one command.
     public init(
         kind: Kind,
@@ -65,7 +88,8 @@ public struct ProcessSpec: Sendable, Hashable {
         arguments: [String],
         directory: String,
         environment: [String: String],
-        timeout: Duration?
+        timeout: Duration?,
+        cpuLimit: Duration? = nil
     ) {
         self.kind = kind
         self.executable = executable
@@ -73,6 +97,7 @@ public struct ProcessSpec: Sendable, Hashable {
         self.directory = directory
         self.environment = environment
         self.timeout = timeout
+        self.cpuLimit = cpuLimit
     }
 
     /// The variables this tool sets, as opposed to the ones it passes on.
@@ -132,8 +157,23 @@ public struct ProcessOutcome: Sendable {
     /// Its exit status, or `-1` when it never became a process.
     public let exitCode: Int
 
+    /// How much processor it used, when it was asked to account for it.
+    ///
+    /// `nil` for every command given no allowance, which is every build and every probe.
+    /// Nothing measured is not zero measured, and a budget derived from zero would be a
+    /// budget nobody could meet.
+    public let cpuMilliseconds: Int?
+
     /// Whether it was stopped for overrunning its deadline.
     public let timedOut: Bool
+
+    /// Whether the kernel stopped it for passing its allowance of processor time.
+    ///
+    /// Different news from a deadline, and better news: a deadline says nothing was learned
+    /// in the time allowed, which on a busy machine may be a fact about the machine. This
+    /// says the process did more *work* than the allowance, which is a fact about the
+    /// program and is the same on any machine.
+    public var overranCpu: Bool { exitCode == CpuAllowance.overrunStatus }
 
     /// Whether it was stopped because whoever was watching it had its answer.
     ///

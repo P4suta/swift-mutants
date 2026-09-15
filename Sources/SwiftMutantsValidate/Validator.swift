@@ -64,7 +64,13 @@ public struct Validator: Sendable {
         /// is what happened when SwiftPM began emitting colour, and from outside the two
         /// were the same sentence. A run that says only "would not say which" sends
         /// somebody to look at their code for a defect in here.
-        case halving(mutants: Int, read: Int, unplaceable: CompilerDiagnostic?)
+        /// And `wrote`, the compiler's own output, for the case where none of it could be
+        /// read. A run records every subprocess's output by hash and length - which answers
+        /// "did this print the same thing twice" for a fraction of two megabytes, and is
+        /// exactly the wrong shape for "what were the diagnostics". That is the question
+        /// this case raises, and the only moment the raw text is worth carrying.
+        case halving(
+            mutants: Int, read: Int, unplaceable: CompilerDiagnostic?, wrote: String = "")
 
         /// One compile of the halving, and what it has cornered so far.
         ///
@@ -120,6 +126,12 @@ public struct Validator: Sendable {
                 discoveries = Self.dropping(attribution.rejected, from: discoveries)
                 continue
             }
+            let refusal = Refusal(
+                unplaceable: attribution.unattributed,
+                said: output.text,
+                written: Written(instrumented, at: paths),
+                state: Rounds(discoveries: discoveries)
+            )
 
             // The compile failed while naming nothing this tool put there. Guessing from
             // here is how a tool starts rejecting mutants at positions nobody reported, so
@@ -128,13 +140,7 @@ public struct Validator: Sendable {
             // `swift build` stops at the first module that fails, so a clean build of one
             // layer is what lets the next layer's errors appear at all - and they do. The
             // loop is the only thing that decides a tree compiles.
-            let found = try await halve(
-                files,
-                from: Rounds(discoveries: discoveries),
-                blaming: attribution.unattributed,
-                written: Written(instrumented, at: paths),
-                progress: progress
-            )
+            let found = try await halve(files, refusing: refusal, progress: progress)
             bisected = true
             rejected += found.rejected
             discoveries = found.discoveries
@@ -156,11 +162,12 @@ public struct Validator: Sendable {
     /// compiles.
     private func halve(
         _ files: [FileUnderValidation],
-        from state: Rounds,
-        blaming unplaceable: [CompilerDiagnostic],
-        written: Written,
+        refusing refusal: Refusal,
         progress: @Sendable (Progress) -> Void
     ) async throws(ValidationError) -> Bisection {
+        let unplaceable = refusal.unplaceable
+        let written = refusal.written
+        let state = refusal.state
         // Three narrowings, smallest first, and each of them is what the compiler already
         // said read as narrowly as it can be.
         //
@@ -184,7 +191,10 @@ public struct Validator: Sendable {
             .halving(
                 mutants: (pointed.isEmpty ? byFile : pointed).count,
                 read: unplaceable.count,
-                unplaceable: unplaceable.first
+                unplaceable: unplaceable.first,
+                // Only when nothing could be read. On the path where the parse worked the
+                // diagnostics are the explanation, and the raw text would bury them.
+                wrote: unplaceable.isEmpty ? refusal.said : ""
             ))
         return try await bisect(
             files,
@@ -302,6 +312,19 @@ public struct Validator: Sendable {
             .flatMap { position, discovery in
                 discovery.candidates.map { Located(file: position, key: Key($0.span, $0.rule)) }
             }
+    }
+
+    /// What a round that would not explain itself left behind.
+    ///
+    /// One value because the three travel together and are three views of the same compile:
+    /// what could not be placed, what the compiler actually wrote, and where each file was
+    /// written. A caller holding one without the others could not say which file a
+    /// diagnostic is in, nor show a reader the text when none of it could be read.
+    private struct Refusal {
+        let unplaceable: [CompilerDiagnostic]
+        let said: String
+        let written: Written
+        let state: Rounds
     }
 
     /// Where the loop had got to when it gave up explaining itself.
