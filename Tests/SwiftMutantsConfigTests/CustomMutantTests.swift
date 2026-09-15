@@ -121,4 +121,78 @@ struct CustomMutantTests {
     func badLine(_ line: String) throws {
         #expect(throws: ConfigurationError.self) { try Self.read(Self.one + "\nline = \(line)\n") }
     }
+
+    /// Indentation is not part of an expression, and matching it makes the row's span
+    /// start before the expression does.
+    ///
+    /// What that produces is not a wrong answer but a run that stops: the row's span and
+    /// the generated mutant's span at the same place then overlap without either containing
+    /// the other, and no order of splicing satisfies both. Reported from a package where
+    /// one such row stopped a run of 3223 mutants after the whole instrument-and-validate
+    /// pass, with a message that named the file and not the pair.
+    ///
+    /// Refused rather than trimmed. Trimming would make `find = "  x"` and `find = "x"` the
+    /// same row, which is a decision this reader should not be making on somebody's behalf,
+    /// and a project anchoring on indentation-sensitive text would find its anchor quietly
+    /// changed.
+    @Test(
+        "refuses a row whose anchor is padded with whitespace",
+        arguments: [
+            "    wrong.sorted()", "wrong.sorted()    ", "\\twrong.sorted()",
+            "wrong.sorted()\\n",
+        ])
+    func refusesPaddedAnchors(_ padded: String) throws {
+        var said = ""
+        do {
+            _ = try Self.read(
+                """
+                [[mutation.custom]]
+                file = "Sources/Layout.swift"
+                find = "\(padded)"
+                replace = "wrong"
+                reason = "is the sort load-bearing"
+                """)
+            Issue.record("a padded anchor was accepted")
+        } catch {
+            said = "\(error)"
+        }
+        #expect(said.contains("find"), "\(said)")
+        #expect(said.contains("3"), "the line the anchor is on is not in: \(said)")
+    }
+
+    /// The replacement too, and for the same reason: it is spliced where the anchor was, so
+    /// padding on it is padding inside an expression.
+    @Test("refuses a row whose replacement is padded with whitespace")
+    func refusesPaddedReplacements() throws {
+        var said = ""
+        do {
+            _ = try Self.read(
+                """
+                [[mutation.custom]]
+                file = "Sources/Layout.swift"
+                find = "wrong.sorted()"
+                replace = "  wrong"
+                reason = "is the sort load-bearing"
+                """)
+            Issue.record("a padded replacement was accepted")
+        } catch {
+            said = "\(error)"
+        }
+        #expect(said.contains("replace"), "\(said)")
+    }
+
+    /// An anchor may still hold whitespace inside it, including a newline: a multi-line
+    /// anchor is written with `\n` and is a perfectly good row. Only the ends are refused.
+    @Test("still takes an anchor with whitespace inside it")
+    func innerWhitespaceIsFine() throws {
+        let custom = try Self.read(
+            """
+            [[mutation.custom]]
+            file = "Sources/Layout.swift"
+            find = "a + b,\\n    c + d"
+            replace = "a + b"
+            reason = "is the second term load-bearing"
+            """)
+        #expect(custom.first?.find.contains("\n") == true, "\(custom.first?.find ?? "")")
+    }
 }

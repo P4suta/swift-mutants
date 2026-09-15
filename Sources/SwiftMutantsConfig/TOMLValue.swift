@@ -104,3 +104,18 @@ public struct TOMLParseError: Error, Hashable, CustomStringConvertible {
         self.reason = reason
     }
 }
+
+extension String {
+
+    /// The same text with any whitespace at either end taken off.
+    ///
+    /// Written out rather than taken from Foundation, because this module reaches for
+    /// nothing outside the standard library and a configuration's meaning must not depend
+    /// on which libraries happen to be linked.
+    func trimmingWhitespace() -> String {
+        var view = Substring(self)
+        while let first = view.first, first.isWhitespace { view = view.dropFirst() }
+        while let last = view.last, last.isWhitespace { view = view.dropLast() }
+        return String(view)
+    }
+}

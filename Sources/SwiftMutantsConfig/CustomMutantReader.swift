@@ -74,6 +74,9 @@ extension Reader {
                     """
             )
         }
+        try Self.refusePadding(find, "find", in: fields, at: rowLine)
+        try Self.refusePadding(replace, "replace", in: fields, at: rowLine)
+
         var found = Configuration.Custom(
             file: file, find: find, replace: replace, reason: reason)
         if let written = fields["line"] {
@@ -87,6 +90,37 @@ extension Reader {
             found.line = number
         }
         return found
+    }
+
+    /// Refuses an anchor or a replacement padded with whitespace.
+    ///
+    /// Indentation is not part of an expression, and matching it makes the row's span start
+    /// before the expression does. What that produces is not a wrong answer but a run that
+    /// stops: the row's span and a generated mutant's span at the same place then overlap
+    /// without either containing the other, and no order of splicing satisfies both.
+    /// Reported from a package where one such row stopped a run of 3223 mutants after the
+    /// whole instrument-and-validate pass had already been paid for.
+    ///
+    /// Refused rather than trimmed. Trimming would make `find = "  x"` and `find = "x"` the
+    /// same row, which is a decision to make on somebody's behalf about text they chose,
+    /// and a project anchoring on indentation-sensitive text would find its anchor quietly
+    /// changed underneath it.
+    ///
+    /// Only the ends. Whitespace inside an anchor is ordinary - a multi-line anchor is
+    /// written with `\n` and is a perfectly good row.
+    private static func refusePadding(
+        _ text: String, _ key: String, in fields: TOMLTable, at rowLine: Int
+    ) throws(ConfigurationError) {
+        guard text != text.trimmingWhitespace() else { return }
+        throw ConfigurationError(
+            line: fields.line(of: key) ?? rowLine,
+            reason: """
+                this mutation.custom row's '\(key)' begins or ends with whitespace. \
+                Indentation is not part of an expression, and matching it makes the row \
+                cover bytes the expression does not - which collides with the mutants \
+                generated at the same place and stops the run. Write the expression alone.
+                """
+        )
     }
 
     /// A field a row cannot do without, or the reason it is missing.
