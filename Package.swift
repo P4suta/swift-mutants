@@ -426,7 +426,14 @@ let package = Package(
         // and excluded from `mise run test:unit`.
         .testTarget(
             name: "CompilerGateIntegrationTests",
-            dependencies: ["SwiftMutantsTestKit"],
+            dependencies: [
+                "SwiftMutantsTestKit",
+                // The generated runtime is compiled by this tier, so the tier has to be
+                // able to generate one.
+                "SwiftMutantsCore",
+                "SwiftMutantsDiscover",
+                "SwiftMutantsInstrument",
+            ],
             swiftSettings: strict
         ),
     ]

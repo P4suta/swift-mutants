@@ -163,19 +163,31 @@ enum Runtime {
             repeating: false, count: \(count))
         @usableFromInline internal func __sm_record_\(token)(_ index: UInt32) {
             let slot = Int(index) - \(base)
-            guard slot >= 0, slot < __sm_seen_\(token).count, !__sm_seen_\(token)[slot] else {
-                return
-            }
-            __sm_seen_\(token)[slot] = true
+            // Spelled twice again, and this time the second condition is the compiler
+            // rather than the setting: reading a `nonisolated(unsafe)` global from code
+            // that may run concurrently became something Swift 6.4 wants marked, and 6.3
+            // calls the same marker unnecessary. Neither of them is a warning this tool
+            // may leave in somebody else's file.
+            #if hasFeature(StrictMemorySafety) && compiler(>=6.4)
+                guard slot >= 0, unsafe slot < __sm_seen_\(token).count,
+                    unsafe !__sm_seen_\(token)[slot]
+                else { return }
+                unsafe __sm_seen_\(token)[slot] = true
+            #else
+                guard slot >= 0, slot < __sm_seen_\(token).count, !__sm_seen_\(token)[slot]
+                else { return }
+                __sm_seen_\(token)[slot] = true
+            #endif
+            // The array goes straight to `write`, on the implicit conversion that lends a
+            // pointer to its storage for the length of the call. Not through
+            // `withUnsafeBufferPointer`: that needs a marker of its own under
+            // -strict-memory-safety on Swift 6.3 and reports the same marker as covering
+            // nothing on 6.4, so there is no one spelling of it that both accept.
             let line = Array("\\(index)\\n".utf8)
             #if hasFeature(StrictMemorySafety)
-                _ = unsafe line.withUnsafeBufferPointer {
-                    unsafe write(__sm_probe_\(token), $0.baseAddress, $0.count)
-                }
+                _ = unsafe write(__sm_probe_\(token), line, line.count)
             #else
-                _ = line.withUnsafeBufferPointer {
-                    write(__sm_probe_\(token), $0.baseAddress, $0.count)
-                }
+                _ = write(__sm_probe_\(token), line, line.count)
             #endif
         }
         """
