@@ -62,3 +62,26 @@ jobs:
           name: integration-evidence
           path: ${{ runner.temp }}/swift-mutants-test-*
           if-no-files-found: ignore
+
+  gate-release:
+    name: The shipped configuration
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Nothing here needs the token afterwards, and a job that
+          # uploads artifacts on failure should not be carrying one.
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+      # The only tier compiled with the optimiser, and the only one that runs the
+      # executable this repository ships. Both halves were missing on the day a release
+      # binary crashed with every debug test green.
+      - run: mise run gate:release
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: release-evidence
+          path: ${{ runner.temp }}/swift-mutants-test-*
+          if-no-files-found: ignore
