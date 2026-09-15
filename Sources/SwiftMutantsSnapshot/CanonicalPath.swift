@@ -42,8 +42,12 @@ public enum CanonicalPath {
         // `realpath(path, nil)` allocates the result, which is this function's to free.
         // Every path in and out of it is bytes, and Swift's own `String(cString:)` is the
         // only reader of them.
+        //
+        // One marker, on the `realpath` call and not on `withCString` around it: Swift 6.4
+        // reports the outer one as covering no unsafe operation, and under
+        // `-warnings-as-errors` that is a build failure rather than a note.
         guard
-            let buffer = unsafe path.withCString({ unsafe realpath($0, nil) })
+            let buffer = path.withCString({ unsafe realpath($0, nil) })
         else {
             return nil
         }

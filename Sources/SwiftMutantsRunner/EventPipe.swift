@@ -101,7 +101,7 @@ public final class EventPipe: Sendable {
                 var pending: [UInt8] = []
                 var buffer = [UInt8](repeating: 0, count: 1 << 16)
                 reading: while true {
-                    let count = unsafe buffer.withUnsafeMutableBytes {
+                    let count = buffer.withUnsafeMutableBytes {
                         unsafe read(descriptor, $0.baseAddress, $0.count)
                     }
                     guard count > 0 else { break }

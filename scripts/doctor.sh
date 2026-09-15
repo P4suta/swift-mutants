@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-required_swift="${SWIFT_MUTANTS_REQUIRED_SWIFT:-6.3}"
+required_swift="${SWIFT_MUTANTS_REQUIRED_SWIFT:-6.4}"
 status=0
 
 report() { # ok|warn|fail, label, detail
@@ -37,7 +37,7 @@ else
     esac
 fi
 
-for tool in swiftlint periphery ast-grep typos rumdl taplo yamllint actionlint zizmor shellcheck gitleaks committed lefthook; do
+for tool in swiftlint periphery ast-grep typos rumdl taplo yamllint actionlint zizmor shellcheck gitleaks committed lefthook jq; do
     if command -v "$tool" >/dev/null 2>&1; then
         report ok "$tool" "$(command -v "$tool")"
     else

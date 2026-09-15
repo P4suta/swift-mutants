@@ -22,11 +22,12 @@ committed = "1.1.11"
 lefthook = "2.1.12"
 "ast-grep" = "0.45.3"
 hyperfine = "1.20.0"
+jq = "1.8.2"
 watchexec = "2.7.2"
 
 [env]
 # The toolchain this package is developed and gated against.
-SWIFT_MUTANTS_REQUIRED_SWIFT = "6.3"
+SWIFT_MUTANTS_REQUIRED_SWIFT = "6.4"
 # Warnings are errors in every gated build. It lives here rather than in Package.swift,
 # where `unsafeFlags` would make this package unusable as a versioned dependency.
 SWIFT_MUTANTS_STRICT_BUILD_FLAGS = "-Xswiftc -warnings-as-errors"
@@ -101,6 +102,14 @@ description = "Drives Xcode itself: schemes, .xctestrun, result bundles"
 # because one build-for-testing is slower than the whole integration tier.
 run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --filter 'XcodeIntegrationTests|XcodeBuildDriverTests'"
 
+[tasks."gate:release"]
+description = "The shipped configuration: optimised, built from nothing, run end to end"
+# Apart from every other tier because it is the only one that compiles with the optimiser.
+# On the day this was written the debug tiers were 1137 green and the release binary died
+# in `swift_retain`; no debug test could have said so, because an optimiser-dependent
+# fault has no debug tier that can see it.
+run = "./scripts/gate-release.sh"
+
 [tasks.dogfood]
 description = "swift-mutants measures swift-mutants"
 # Two things are skipped, and both are the suite telling the truth about itself.
@@ -118,11 +127,9 @@ description = "swift-mutants measures swift-mutants"
 # hundreds of runs - so including them would measure the toolchain rather than the tests.
 # The score is then about what the unit tier catches, which is what the `--` arguments
 # mean: narrowing the suite narrows what the score is about, and it says so.
-run = [
-  "swift build -c release",
-  """.build/release/swift-mutants run --jobs 8 -- \
-     --skip RepositoryGateTests --skip IntegrationTests --skip ToolchainTests""",
-]
+depends = ["gate:release"]
+run = """.build-release/release/swift-mutants run --jobs 8 -- \
+   --skip RepositoryGateTests --skip IntegrationTests --skip ToolchainTests"""
 
 [tasks.schema-embed]
 description = "Regenerate the schemas the tool carries from the ones schema/ publishes"
