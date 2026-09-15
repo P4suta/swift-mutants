@@ -71,29 +71,11 @@ enum Narration {
             // multiply with the number of refusals, which is the thing being found out.
             "  compile \(compiles), narrowed to \(narrowing)"
                 + (refused > 0 ? " - this one is refused" : "")
-        case .halving(let mutants, let unplaceable):
+        case .halving(let mutants, let read, let unplaceable):
             "  the compiler would not say which, so halving \(mutants) mutants"
-                + (unplaceable.map {
-                    "\n  it said: \($0.file):\($0.position): \($0.message)"
-                        + ($0.isUnaffordable ? "\n" + Self.unaffordable : "")
-                } ?? "")
+                + Self.whyTheFastPathDidNotTake(read: read, unplaceable: unplaceable)
         }
     }
-
-    /// What to say when the compiler ran out of budget rather than refusing anything.
-    ///
-    /// Different news from a refusal, and the only one of the two a reader can act on. The
-    /// expression type-checks fine as written and tips over once guards wrap its
-    /// subexpressions, which means it was already close to the edge - so this is a finding
-    /// about their code that happens to have been made by a mutation tool.
-    ///
-    /// Said plainly because it otherwise reads exactly like a mutant that was not valid
-    /// Swift, and a reader would take it as this tool's problem rather than theirs.
-    static let unaffordable = """
-          that is not a mutant it refused: the expression type-checks as you wrote it and \
-        becomes too expensive once a guard is inside it. Breaking it into statements \
-        usually helps, and is usually worth doing anyway.
-        """
 
     /// The lines that carry a number somebody will want to reason about.
     static func measurement(for stage: RunStage) -> String? {

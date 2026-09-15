@@ -56,7 +56,15 @@ public struct Validator: Sendable {
         /// explanation for being on the expensive path and a reader has no other way to
         /// see it. Usually it means a diagnostic arrived from somewhere this tool did not
         /// put a mutant - a macro buffer, a synthesised declaration, a linker.
-        case halving(mutants: Int, unplaceable: CompilerDiagnostic?)
+        ///
+        /// And `read`, which is how many diagnostics were understood at all, because that
+        /// is what separates two failures with different owners. Diagnostics read and none
+        /// of them at a mutant is a fact about the program. *No* diagnostics read out of a
+        /// compile that failed is this tool's own parser not recognising the shape - which
+        /// is what happened when SwiftPM began emitting colour, and from outside the two
+        /// were the same sentence. A run that says only "would not say which" sends
+        /// somebody to look at their code for a defect in here.
+        case halving(mutants: Int, read: Int, unplaceable: CompilerDiagnostic?)
 
         /// One compile of the halving, and what it has cornered so far.
         ///
@@ -175,6 +183,7 @@ public struct Validator: Sendable {
         progress(
             .halving(
                 mutants: (pointed.isEmpty ? byFile : pointed).count,
+                read: unplaceable.count,
                 unplaceable: unplaceable.first
             ))
         return try await bisect(

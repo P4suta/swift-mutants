@@ -31,6 +31,12 @@ struct ModuleFanOutTests {
     ///
     /// Asked of the processes themselves rather than of the driver, because a driver that
     /// miscounted its own compilers would agree with itself.
+    ///
+    /// The sleep is what makes the overlap happen at all - without it a script can finish
+    /// before the next one starts and the widest count is one however wide the pass was.
+    /// The assertion is still about the count and not about time, and the deadline given to
+    /// each is ten minutes so that a machine busy with something else cannot turn this into
+    /// a failure about the machine.
     static func recorder(in directory: URL) throws -> URL {
         let script = directory.appending(path: "compiler.sh")
         try """
@@ -76,7 +82,7 @@ struct ModuleFanOutTests {
             manifest: BuildManifest(modules: modules),
             root: scratch.path,
             environment: [:],
-            timeout: .seconds(60),
+            timeout: .seconds(600),
             jobs: 3,
             fallback: Scripted(answer: CompilerOutput(exitCode: 0, text: ""), asked: Asked())
         )
@@ -112,7 +118,7 @@ struct ModuleFanOutTests {
             manifest: BuildManifest(modules: modules),
             root: scratch.path,
             environment: [:],
-            timeout: .seconds(60),
+            timeout: .seconds(600),
             jobs: 2,
             fallback: Scripted(answer: CompilerOutput(exitCode: 0, text: ""), asked: Asked())
         )
