@@ -107,6 +107,64 @@ public struct Lister: Sendable {
         self.executable = executable
     }
 
+    /// One of a package's files, and whether a mutant may be put in it.
+    ///
+    /// A target holding C is a `library` like any other, so its `.c` files arrive here too.
+    /// They are digested and not parsed - swift-syntax reads `#define` and `#include` as
+    /// macro expansions, which this tool skips, so a package vendoring a C dependency once
+    /// got a per-line `macro-expansion` skip for somebody else's preprocessor, reported as
+    /// a finding about their code.
+    struct Subject: Sendable {
+        let path: WorkspaceRelativePath
+        let isMutable: Bool
+    }
+
+    /// What one file contributed.
+    ///
+    /// A `discovery` of nothing is not the same as no discovery: the first means a Swift
+    /// file this tool read and found nothing in, and `nil` means a file it only digested -
+    /// a test, a C source, one the selection excluded. Both are counted in the digest,
+    /// because what a test concludes rests on the test as much as on the code and an
+    /// answer remembered between runs has to rest on all of it. Only the first is a file
+    /// read.
+    struct Read: Sendable {
+        let path: WorkspaceRelativePath
+        let digest: Digest
+        let discovery: FileDiscovery?
+        let positions: LineIndex?
+    }
+
+    /// Reads one file and finds what is in it, or nothing when it cannot be read at all.
+    ///
+    /// Static and given everything it needs, so that it is work rather than a step: nothing
+    /// here touches what another file produced, which is what lets the files be read at
+    /// once and what makes this testable without a package to point it at.
+    static func reading(
+        _ subject: Subject,
+        in root: URL,
+        admitted selection: GlobSet,
+        as configuration: Configuration
+    ) -> Read? {
+        guard
+            let source = try? String(
+                contentsOf: root.appending(path: subject.path.rendered), encoding: .utf8)
+        else { return nil }
+
+        let digest = Digest.of(source)
+        guard subject.isMutable, subject.path.isSwift, selection.admits(subject.path) else {
+            return Read(path: subject.path, digest: digest, discovery: nil, positions: nil)
+        }
+        return Read(
+            path: subject.path,
+            digest: digest,
+            discovery: Discover.candidates(
+                in: source,
+                at: subject.path,
+                custom: Self.own(of: subject.path, in: configuration)),
+            positions: LineIndex(source)
+        )
+    }
+
     /// The mutants this project wrote for itself that name this file.
     ///
     /// Matched on the path the repository uses, which is how a project writes one down and
@@ -156,6 +214,25 @@ public struct Lister: Sendable {
             exclude: configuration.mutation.exclude
         )
 
+        // Flattened before anything is read, so that the work is a list and the answers
+        // come back where they went in. Reading and parsing a file is work no other file's
+        // work depends on - three passes over every byte, a full-fidelity parse, an
+        // operator fold and a walk - and doing it one file at a time leaves every core but
+        // one idle through the whole of the command people reach for *because* it is the
+        // fast one.
+        //
+        // Bounded by what the machine has rather than by `--jobs`. That knob is about how
+        // many processes may be running, and a process is bounded by its memory; this is
+        // work inside one process bounded by cores, and the two questions have different
+        // right answers.
+        let subjects = description.targets.flatMap { target in
+            target.sources.map { Subject(path: $0, isMutable: target.kind.isMutable) }
+        }
+        let found = await WorkerPool(jobs: ProcessInfo.processInfo.activeProcessorCount)
+            .run(over: subjects) { subject, _ in
+                Self.reading(subject, in: root, admitted: selection, as: configuration)
+            }
+
         var mutants: [Mutant] = []
         var skips: [(path: WorkspaceRelativePath, skip: Skip)] = []
         var unknown: [(path: WorkspaceRelativePath, suppression: UnknownSuppression)] = []
@@ -164,40 +241,21 @@ public struct Lister: Sendable {
         var digests: [WorkspaceRelativePath: Digest] = [:]
         var filesRead = 0
 
-        for target in description.targets {
-            // Every file is digested, including the tests and the C: what a test concludes
-            // rests on the test as much as on the code, and an answer remembered between
-            // runs has to rest on all of it. Only the mutable Swift is read for candidates.
-            //
-            // A target holding C is a `library` like any other, so its `.c` files arrive
-            // here and were parsed as Swift. swift-syntax reads `#define` and `#include` as
-            // macro expansions, which this tool skips - so a package vendoring a C
-            // dependency got a per-line `macro-expansion` skip for somebody else's
-            // preprocessor, reported as a finding about their code. Measured on a package
-            // vendoring Argon2: 79 of its 205 skips, and the first thing its author did to
-            // the output was grep them out.
-            let isMutable = target.kind.isMutable
-            for path in target.sources {
-                guard
-                    let source = try? String(
-                        contentsOf: root.appending(path: path.rendered),
-                        encoding: .utf8
-                    )
-                else { continue }
-                digests[path] = Digest.of(source)
-                guard isMutable, path.isSwift, selection.admits(path) else { continue }
-                filesRead += 1
-
-                let discovery = Discover.candidates(
-                    in: source, at: path, custom: Self.own(of: path, in: configuration))
-                positions[path] = LineIndex(source)
-                for skip in discovery.skips { skips.append((path, skip)) }
-                for stale in discovery.unanchored { unanchored.append((path, stale)) }
-                for suppression in discovery.unknownSuppressions {
-                    unknown.append((path, suppression))
-                }
-                mutants += Self.mutants(of: discovery, at: path)
+        // Merged in the order the files were given, never the order they finished. A
+        // catalogue that changed shape because a machine was busy could not be diffed
+        // against yesterday's, and a mutant's position in it is part of what a shard is.
+        for read in found {
+            guard let read else { continue }
+            digests[read.path] = read.digest
+            guard let discovery = read.discovery else { continue }
+            filesRead += 1
+            positions[read.path] = read.positions
+            for skip in discovery.skips { skips.append((read.path, skip)) }
+            for stale in discovery.unanchored { unanchored.append((read.path, stale)) }
+            for suppression in discovery.unknownSuppressions {
+                unknown.append((read.path, suppression))
             }
+            mutants += Self.mutants(of: discovery, at: read.path)
         }
 
         return Listing(
