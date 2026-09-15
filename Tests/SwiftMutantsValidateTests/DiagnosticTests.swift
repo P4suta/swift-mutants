@@ -29,6 +29,36 @@ struct DiagnosticTests {
         )
     }
 
+    /// The compiler's words arrive dressed for a terminal, and the dress is not the words.
+    ///
+    /// SwiftPM's build system colours diagnostics and wraps each diagnostic group name in
+    /// an OSC-8 hyperlink, whether or not anything is attached to a terminal. A parser
+    /// looking for a literal ": error: " then matches nothing at all - and matching
+    /// nothing is not a parse failure anybody sees. It is a compile that "refused no
+    /// mutant this tool could place", which sends validation into the bisection fallback:
+    /// one compile per halving instead of one compile in total. Measured on this
+    /// repository the day Swift 6.4 arrived: 1097 mutants, no attribution, and a halving
+    /// that had not finished after twenty minutes.
+    @Test("reads a diagnostic a terminal was meant to read")
+    func readsThroughTheColour() throws {
+        // Byte for byte what `swift build` writes into a pipe: CSI colour runs, and an
+        // OSC-8 hyperlink around the diagnostic group name at the end.
+        let escape = "\u{1B}"
+        let coloured =
+            "/tmp/tree/Sources/Core/Core.swift:104:33: \(escape)[1;31merror: \(escape)[1;39m"
+            + "no unsafe operations occur within 'unsafe' expression\(escape)[0;0m "
+            + "[#\(escape)]8;;https://docs.swift.org/x\(escape)\\UnnecessaryUnsafe"
+            + "\(escape)]8;;\(escape)\\]"
+
+        let diagnostic = try #require(CompilerDiagnostic.parse(coloured).first)
+        #expect(diagnostic.file == "/tmp/tree/Sources/Core/Core.swift")
+        #expect(diagnostic.position == SourcePosition(line: 104, column: 33))
+        #expect(diagnostic.severity == .error)
+        #expect(diagnostic.message.hasPrefix("no unsafe operations occur"))
+        // Nothing of the dressing survives into what a reader is shown.
+        #expect(!diagnostic.message.contains(escape))
+    }
+
     /// The whole point of one typecheck rather than a bisection: swiftc keeps going after
     /// the first error and reports every one of them.
     @Test("reads every diagnostic in one compile")

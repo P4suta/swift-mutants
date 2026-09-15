@@ -75,7 +75,87 @@ extension CompilerDiagnostic {
     /// rejecting mutants at positions nobody reported.
     public static func parse(_ output: String) -> [CompilerDiagnostic] {
         output.split(separator: "\n", omittingEmptySubsequences: false)
-            .compactMap { Self.parseLine(String($0)) }
+            .compactMap { Self.parseLine(Self.undressed(String($0))) }
+    }
+
+    /// The same line with the terminal control sequences taken out of it.
+    ///
+    /// SwiftPM's build system colours diagnostics and wraps each diagnostic group name in
+    /// an OSC-8 hyperlink whether or not anything is attached to a terminal, so a line
+    /// arrives as `path:4:70: ESC[1;31merror: ESC[1;39mmessage`. The strictness above then
+    /// reads it as not a diagnostic - and *that* is the dangerous part, because a line
+    /// nobody could parse is indistinguishable from a compile that refused nothing. The
+    /// run does not fail; it falls into the bisection fallback and pays a compile per
+    /// halving instead of one compile in total.
+    ///
+    /// Stripped rather than suppressed with a flag, because the colouring is added by
+    /// whatever ran the compiler rather than asked for by this tool, and a parser that
+    /// only worked when it had talked the other program out of formatting would break
+    /// again the next time something else was in the middle.
+    ///
+    /// Two shapes, which is all a compiler emits: `ESC[` ... a letter, and `ESC]` ... a
+    /// bell or `ESC\`. Anything else is left exactly as it was: this removes decoration
+    /// and must never remove a byte of the message.
+    static func undressed(_ line: String) -> String {
+        guard line.contains("\u{1B}") else { return line }
+        var plain = ""
+        var rest = Substring(line)
+        while let escape = rest.firstIndex(of: "\u{1B}") {
+            plain += rest[rest.startIndex..<escape]
+            guard let end = Self.endOfSequence(rest, at: escape) else {
+                // Not a sequence this understands. Keep the escape and carry on from the
+                // character after it, rather than guessing how much belonged to it.
+                plain.append("\u{1B}")
+                rest = rest[rest.index(after: escape)...]
+                continue
+            }
+            rest = rest[end...]
+        }
+        return plain + rest
+    }
+
+    /// Where the escape sequence starting at `escape` ends, or nothing if it is not one.
+    private static func endOfSequence(
+        _ text: Substring, at escape: Substring.Index
+    ) -> Substring.Index? {
+        var index = text.index(after: escape)
+        guard index < text.endIndex else { return nil }
+        let introducer = text[index]
+        index = text.index(after: index)
+        switch introducer {
+        case "[": return Self.endOfControl(text, from: index)
+        case "]": return Self.endOfString(text, from: index)
+        default: return nil
+        }
+    }
+
+    /// The end of a CSI run: parameter and intermediate bytes, then one final byte.
+    private static func endOfControl(
+        _ text: Substring, from start: Substring.Index
+    ) -> Substring.Index {
+        var index = start
+        while index < text.endIndex, !("@"..."~").contains(text[index]) {
+            index = text.index(after: index)
+        }
+        return index < text.endIndex ? text.index(after: index) : index
+    }
+
+    /// The end of an OSC string, which a bell or `ESC\` closes.
+    ///
+    /// The text it wraps is part of the message and is kept; only the two envelopes go.
+    private static func endOfString(
+        _ text: Substring, from start: Substring.Index
+    ) -> Substring.Index {
+        var index = start
+        while index < text.endIndex {
+            if text[index] == "\u{7}" { return text.index(after: index) }
+            let next = text.index(after: index)
+            if text[index] == "\u{1B}", next < text.endIndex, text[next] == "\\" {
+                return text.index(after: next)
+            }
+            index = next
+        }
+        return index
     }
 
     private static func parseLine(_ line: String) -> CompilerDiagnostic? {
