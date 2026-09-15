@@ -185,7 +185,9 @@ struct TypecheckArgumentsTests {
             "/usr/bin/swiftc", carrier, "-c", "-package-name", "pkg",
         ])
         #expect(asked.contains(carrier))
-        #expect(asked.suffix(4) == [carrier, "-c", "-package-name", "pkg"])
+        // Past the flag that has the last word on warnings, which is appended after
+        // everything the plan carried.
+        #expect(asked.dropLast().suffix(4) == [carrier, "-c", "-package-name", "pkg"])
     }
 
     /// The premise: swiftc's own `-c` really is dropped, so the pair above is a different
@@ -302,7 +304,7 @@ extension TypecheckArgumentsTests {
     @Test("gives itself a cache even when the plan named none")
     func cachesEvenWithoutOne() {
         let asked = Self.typecheck(["/usr/bin/swiftc", "-c"], cachingIn: "/pkg/.build/V")
-        #expect(asked.suffix(2) == ["-module-cache-path", "/pkg/.build/V"])
+        #expect(asked.dropLast().suffix(2) == ["-module-cache-path", "/pkg/.build/V"])
     }
 }
 

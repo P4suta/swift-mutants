@@ -40,6 +40,17 @@ extension SwiftPackageManager {
                 arguments: [
                     "build", "--build-tests", "--scratch-path", scratch,
                     "--force-resolved-versions",
+                    // Warnings stay warnings, whatever the package says. A mutation is
+                    // exactly the edit that produces one - a value stops being used, a
+                    // result is discarded - and under `.treatAllWarnings(as: .error)` the
+                    // compiler calls that an error. Here that is worse than a rejected
+                    // mutant: this build is the one that produces the test bundle, so a
+                    // strict package would have no run at all.
+                    //
+                    // The tree being built is a copy nobody ships, and what this asks is
+                    // whether the program is well formed. A warning is by definition not
+                    // ill-formedness.
+                    "-Xswiftc", "-no-warnings-as-errors",
                 ],
                 directory: root.path,
                 environment: environment,

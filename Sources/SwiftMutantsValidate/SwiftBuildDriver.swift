@@ -76,6 +76,13 @@ public struct SwiftBuildDriver: TypecheckDriver {
                     // package as it is, and re-resolving could measure a different one -
                     // as well as reaching for the network in the middle of a build.
                     "--force-resolved-versions",
+                    // Warnings stay warnings, whatever the package says. A mutation is
+                    // exactly the edit that produces one, and under
+                    // `.treatAllWarnings(as: .error)` the compiler calls it an error - so
+                    // a mutant that is a perfectly good question comes back rejected,
+                    // leaves the denominator, and the score of a strict package goes up
+                    // because it is strict.
+                    "-Xswiftc", "-no-warnings-as-errors",
                 ] + (narrates ? ["-v"] : []),
                 directory: root,
                 environment: environment,

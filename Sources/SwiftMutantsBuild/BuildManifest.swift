@@ -125,6 +125,22 @@ public struct BuildManifest: Sendable, Hashable {
                 ],
                 at: min(1, asked.count)
             )
+
+            // Last, because the compiler takes the last word on the subject and the
+            // package's own flag is somewhere in the middle of its plan.
+            //
+            // A mutation is exactly the edit that produces a warning: `a + b` becomes `a`,
+            // and a value stops being used. Under `.treatAllWarnings(as: .error)` the
+            // compiler then calls that an error, and a mutant that is a perfectly good
+            // question about somebody's tests comes back rejected - so it leaves the
+            // denominator, and the score of a strict package goes *up* because it is
+            // strict. The flattering direction, arrived at silently.
+            //
+            // What this compile asks is whether the mutant is a well-formed program, and a
+            // warning is by definition not ill-formedness. The mutant lives in a copy
+            // nobody ships, so nothing about the package's own build changes: this is a
+            // question, and a question must not write into the answer.
+            asked.append("-no-warnings-as-errors")
             return asked
         }
 
