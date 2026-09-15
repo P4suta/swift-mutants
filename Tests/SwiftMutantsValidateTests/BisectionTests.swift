@@ -5,6 +5,7 @@ import Foundation
 import SwiftMutantsCore
 import SwiftMutantsDiscover
 import SwiftMutantsInstrument
+import Synchronization
 import Testing
 
 @testable import SwiftMutantsValidate
@@ -188,5 +189,43 @@ struct BisectionTests {
         // The third file is untouched: its mutant produces `e <= f`, which nothing refuses.
         let third = try #require(validated.files.last)
         #expect(third.instrumented.mutants.map(\.rule.name) == ["lt-to-le"])
+    }
+}
+
+/// What a bisection says while it runs.
+///
+/// The halving is the one phase that can run for a long time saying nothing. Reported by
+/// somebody whose run printed `halving 802 mutants` and then nothing at all for forty
+/// minutes before exiting: from outside, a bisection working and a bisection that has died
+/// are the same silence, and the count that would have told them apart was being kept and
+/// never shown.
+@Suite("A bisection saying what it is doing")
+struct BisectionProgressTests {
+
+    @Test("says something for every compile it spends")
+    func speaksEveryCompile() async throws {
+        let scratch = try BisectionTests.scratch()
+        defer { scratch.cleanUp() }
+        // Refused, and unplaceable, so the loop has no choice but to halve.
+        let compiler = BisectionTests.Stub(refusing: [], refusingSilently: ["a >= b"])
+
+        let said = Mutex<[Validator.Progress]>([])
+        _ = try await Validator(compiler: compiler, directory: scratch.directory)
+            .validate(
+                [
+                    BisectionTests.subject(
+                        "func f(_ a: Int, _ b: Int) -> Bool { a < b }", named: "One.swift"),
+                    BisectionTests.subject(
+                        "func g(_ a: Int, _ b: Int) -> Bool { a > b }", named: "Two.swift"),
+                ]
+            ) { step in said.withLock { $0.append(step) } }
+
+        let halvings = said.withLock { $0 }.compactMap { step -> Int? in
+            guard case .halved(let compiles, _, _) = step else { return nil }
+            return compiles
+        }
+        #expect(!halvings.isEmpty, "the halving said nothing at all")
+        // A count that only goes up, so a reader watching it can tell progress from a hang.
+        #expect(halvings == halvings.sorted())
     }
 }

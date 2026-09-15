@@ -60,6 +60,17 @@ enum Narration {
                 : "  asking again, \(mutants) left"
         case .refused(_, let count):
             "  the compiler refused \(count)"
+        case .halved(let compiles, let narrowing, let refused):
+            // A line per compile. The halving is the one phase that can run for a long
+            // time saying nothing, and from outside a bisection working and a bisection
+            // that has died are the same silence. Reported by somebody whose run printed
+            // `halving 802 mutants` and then nothing for forty minutes.
+            //
+            // The compile count rather than a percentage, because nobody can say in
+            // advance how many it will take: it is one per halving and the halvings
+            // multiply with the number of refusals, which is the thing being found out.
+            "  compile \(compiles), narrowed to \(narrowing)"
+                + (refused > 0 ? " - this one is refused" : "")
         case .halving(let mutants, let unplaceable):
             "  the compiler would not say which, so halving \(mutants) mutants"
                 + (unplaceable.map {

@@ -52,7 +52,8 @@ extension Validator {
     func bisect(
         _ files: [FileUnderValidation],
         discoveries: [FileDiscovery],
-        trying narrowings: [[Located]]
+        trying narrowings: [[Located]],
+        progress: @Sendable (Validator.Progress) -> Void = { _ in }
     ) async throws(ValidationError) -> Bisection {
         // Nothing at all in, anywhere. If that does not build, the package does not build,
         // and none of the errors are about anything this tool did.
@@ -74,7 +75,9 @@ extension Validator {
         var searched: Set<Set<Located>> = []
         for narrowing in narrowings where !narrowing.isEmpty {
             guard searched.insert(Set(narrowing)).inserted else { continue }
-            let attempt = try await search(narrowing, files: files, discoveries: discoveries)
+            let attempt = try await search(
+                narrowing, files: files, discoveries: discoveries, progress: progress,
+                spent: found.rounds)
             found = (attempt.refused, found.rounds + attempt.rounds)
             if !attempt.refused.isEmpty { break }
         }
@@ -133,17 +136,30 @@ extension Validator {
     func search(
         _ subset: [Located],
         files: [FileUnderValidation],
-        discoveries: [FileDiscovery]
+        discoveries: [FileDiscovery],
+        progress: @Sendable (Validator.Progress) -> Void = { _ in },
+        spent: Int = 0
     ) async throws(ValidationError) -> (refused: [Located], rounds: Int) {
         let attempt = try await compiles(subset, files: files, discoveries: discoveries)
+        // Every compile, because this is the phase that can run for a long time while
+        // saying nothing - and from outside, a bisection working and a bisection that has
+        // died are the same silence.
+        progress(
+            .halved(
+                compiles: spent + attempt.rounds,
+                narrowing: subset.count,
+                refused: attempt.compiles ? 0 : (subset.count == 1 ? 1 : 0)
+            ))
         guard !attempt.compiles else { return ([], attempt.rounds) }
         guard subset.count > 1 else { return (subset, attempt.rounds) }
 
         let middle = subset.count / 2
         let left = try await search(
-            Array(subset[..<middle]), files: files, discoveries: discoveries)
+            Array(subset[..<middle]), files: files, discoveries: discoveries,
+            progress: progress, spent: spent + attempt.rounds)
         let right = try await search(
-            Array(subset[middle...]), files: files, discoveries: discoveries)
+            Array(subset[middle...]), files: files, discoveries: discoveries,
+            progress: progress, spent: spent + attempt.rounds + left.rounds)
         return (left.refused + right.refused, attempt.rounds + left.rounds + right.rounds)
     }
 

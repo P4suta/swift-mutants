@@ -132,12 +132,22 @@ TESTS
 
 say "running the shipped binary against a package whose answer is known"
 report="$subject/report.json"
-if ! "$binary" run --package-path "$subject" --no-tui --cache off --json >"$report"; then
-    status=$?
+complaint="$subject/stderr.txt"
+# The status of the command, not of the `if`. Reading `$?` inside the body gives the
+# latter, which is always 0 - so a gate written that way reports every failure as "exit
+# status: 0" and buries the signal it was watching for.
+status=0
+"$binary" run --package-path "$subject" --no-tui --cache off --json \
+    >"$report" 2>"$complaint" || status=$?
+if [[ "$status" -ne 0 ]]; then
     echo "the shipped binary did not complete a run of a two-function package" >&2
     echo "  exit status: $status" >&2
     echo "  (128+n is a signal: 139 is a segmentation fault, 134 an abort)" >&2
-    sed -n '1,40p' "$report" >&2
+    # Its own words. `--json` sends the report to stdout, so everything the tool says
+    # about a failure is on stderr - and a gate that showed only stdout would show an
+    # empty file and call it the evidence.
+    echo "  it said:" >&2
+    sed -n '1,40p' "$complaint" >&2
     exit 1
 fi
 

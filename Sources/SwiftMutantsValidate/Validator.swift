@@ -57,6 +57,15 @@ public struct Validator: Sendable {
         /// see it. Usually it means a diagnostic arrived from somewhere this tool did not
         /// put a mutant - a macro buffer, a synthesised declaration, a linker.
         case halving(mutants: Int, unplaceable: CompilerDiagnostic?)
+
+        /// One compile of the halving, and what it has cornered so far.
+        ///
+        /// Said because the halving is the one phase that can run for a long time while
+        /// saying nothing. Reported by somebody whose run printed `halving 802 mutants`
+        /// and then nothing at all for forty minutes: from outside, a bisection working
+        /// and a bisection that has died are the same silence, and the count that would
+        /// have told them apart was being kept and not shown.
+        case halved(compiles: Int, narrowing: Int, refused: Int)
     }
 
     /// Narrows each file to the mutants the compiler accepts.
@@ -171,7 +180,8 @@ public struct Validator: Sendable {
         return try await bisect(
             files,
             discoveries: state.discoveries,
-            trying: [pointed, byFile, everything]
+            trying: [pointed, byFile, everything],
+            progress: progress
         )
     }
 
