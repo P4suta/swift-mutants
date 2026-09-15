@@ -43,7 +43,11 @@ extension RunReport {
         self.tests = named.names
 
         self.mutants = outcome.results.map { Self.row(of: $0, at: positions, naming: seen) }
-        self.rejected = outcome.rejected.map(Self.refusal)
+        // The compiler named files inside the disposable copy. By the time anybody reads
+        // this the copy is gone, its path was different last run and will be different
+        // next, and nothing in it matches a file the reader has open.
+        let tree = outcome.bundles?.plans.first?.directory
+        self.rejected = outcome.rejected.map { Self.refusal($0, under: tree) }
         self.expectations = Expectations(of: outcome.expectations)
         self.invocation = Invocation(of: outcome.bundles, kept: kept)
     }
@@ -75,14 +79,14 @@ extension RunReport {
     }
 
     /// One refusal's row, with the compiler's own words in it.
-    private static func refusal(_ refusal: Rejection) -> Refusal {
+    private static func refusal(_ refusal: Rejection, under tree: String?) -> Refusal {
         Refusal(
             id: refusal.identity.digest.hexadecimal,
             rule: refusal.rule.rendered,
             span: Span(start: refusal.span.start, end: refusal.span.end),
             diagnostics: refusal.diagnostics.map {
                 Diagnostic(
-                    file: $0.file,
+                    file: Self.inTheWorkspace($0.file, under: tree),
                     line: $0.position.line,
                     column: $0.position.column,
                     severity: $0.severity.rawValue,
@@ -90,6 +94,24 @@ extension RunReport {
                 )
             }
         )
+    }
+
+    /// A compiler's path, said the way the rest of the report says paths.
+    ///
+    /// A run happens inside a disposable copy, so the compiler names files in it. That
+    /// path is gone by the time anybody reads the report, is different on every run - so
+    /// two reports of the same package cannot be diffed - and matches nothing a reader has
+    /// open. The same file relative to the copy's root is the path they wrote, which is
+    /// the one every other part of this report uses.
+    ///
+    /// A file outside the copy is left exactly as it is. A diagnostic about a dependency
+    /// or an SDK header is not the reader's file, and shortening it would be dressing it
+    /// up as one.
+    private static func inTheWorkspace(_ file: String, under tree: String?) -> String {
+        guard let tree, !tree.isEmpty else { return file }
+        let root = tree.hasSuffix("/") ? tree : tree + "/"
+        guard file.hasPrefix(root) else { return file }
+        return String(file.dropFirst(root.count))
     }
 
     /// Every test any mutant started, written once, with where each one is.

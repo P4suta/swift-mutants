@@ -49,9 +49,9 @@ swift test -c release $strict_flags \
     --scratch-path "$scratch" \
     --skip IntegrationTests --skip ToolchainTests
 
-# Everything, rather than one product: the executable is an `executableTarget` and not a
-# declared product, so it has no name `--product` would accept. Building the whole package
-# also produces the scripted toolchain the dogfood run needs.
+# Everything rather than one product: building the whole package also produces the
+# scripted toolchain the dogfood run needs, and a gate that built only what it was about
+# to run would not notice a target that stopped compiling.
 say "building the executable the way a release builds it"
 # shellcheck disable=SC2086
 swift build -c release $strict_flags --scratch-path "$scratch"

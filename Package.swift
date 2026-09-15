@@ -41,7 +41,14 @@ let package = Package(
     // does not run on macOS 14.
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "SwiftMutantsCore", targets: ["SwiftMutantsCore"])
+        // The tool itself, so that another package can depend on this one and run it -
+        // `swift run --package-path ... swift-mutants`, or a checkout pinned by tag. An
+        // executable target that is not a product is a program nobody outside this
+        // repository can start, and `swift build --product swift-mutants` has no name to
+        // accept. Reported by somebody trying to wire this into their own gate, who could
+        // not, and left the gate out rather than write a task that quietly does nothing.
+        .executable(name: "swift-mutants", targets: ["swift-mutants"]),
+        .library(name: "SwiftMutantsCore", targets: ["SwiftMutantsCore"]),
     ],
     dependencies: [
         // Foundation.Process has no structured-concurrency cancellation and deadlocks when
