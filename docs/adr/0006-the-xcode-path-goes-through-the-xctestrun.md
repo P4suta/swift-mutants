@@ -94,10 +94,25 @@ is a prerequisite rather than a refinement: it needs `xcodebuild` to compile the
 tree and its diagnostics attributed by byte span, which the existing attribution can do once
 something hands it the output.
 
-**Execution and probing need one seam.** The scheduler and the prober both go through
-`Trial`; the Xcode path would conform to the same shape with a different body. That is a
-small change and is deliberately not made yet, because a protocol with one conformance is a
-protocol nobody has checked the shape of.
+**Execution and probing share one seam, and this part is done.** `MutantHost` is that
+seam and has two conformances: `Trial` on the SwiftPM path and `XcodeHost` here. The
+scheduler and the prober reach both through it, and neither knows which it has. The
+paragraph that stood here said the change was deliberately not made because a protocol with
+one conformance is a protocol nobody has checked the shape of; it has two now, and the
+shape held — the only thing the second conformance changed was `probe`, which returns how
+long it took rather than a bare yes, because the SwiftPM path can measure that and this one
+cannot.
+
+That asymmetry is itself worth recording. A per-mutant deadline is split into what a trial
+costs before it runs any test and what its tests cost, and the first number comes from the
+probe phase. This path has no supervised process of its own to have measured one, so it
+reports that a probe finished and says nothing about its cost — and a deadline derived from
+nothing falls back to the floor, which is the direction to be wrong in.
+
+**One test bundle per test target is a SwiftPM problem and not this one.** SwiftPM's build
+system builds one bundle per test target, so the scheduler runs the ones a mutant's tests
+live in. An Xcode project names every test target in one `.xctestrun`, and `-only-testing:`
+narrows within it, so nothing here has to be divided.
 
 **Simulator destinations are untried.** Everything above was measured against
 `platform=macOS`. A simulator adds a device pool and a boot to manage, and claiming it works
