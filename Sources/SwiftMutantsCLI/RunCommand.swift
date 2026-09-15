@@ -265,6 +265,7 @@ struct RunCommand: AsyncParsableCommand {
         // fails an hour in, what it did is already written down - and this is what reads it
         // back out, because the moment somebody needs it is the moment the run is over.
         let settings = try ConfigurationFile.read(in: root)
+        let ledger = Self.keepingAnswers(for: root)
         let recorder = TraceRecorder(sinks: [LiveTrace(verbosity: verbosity)])
         let outcome: RunOutcome
         do {
@@ -275,7 +276,10 @@ struct RunCommand: AsyncParsableCommand {
                 workspace: workspace,
                 testArguments: testArguments,
                 changedSince: changed
-            ).run(environment: Ambient.environment) { progress.report($0) }
+            ).run(environment: Ambient.environment) {
+                if case .finished(let result) = $0 { ledger?.record(Ledger.answer(for: result)) }
+                progress.report($0)
+            }
         } catch {
             progress.finish()
             let written = FailureReport.write(
@@ -292,6 +296,9 @@ struct RunCommand: AsyncParsableCommand {
         // Whatever was drawn stays on the screen, and the summary starts below it.
         progress.finish()
         try publish(outcome, at: root)
+        // The report supersedes the running account, so it goes. What is left behind is a
+        // ledger for a run that did not get here, which is the only kind worth keeping.
+        try? FileManager.default.removeItem(at: Ledger.location(for: root))
         if let code = Gate.exitCode(
             survivors: Gate.survivors(of: outcome.summary),
             expectations: outcome.expectations,

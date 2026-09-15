@@ -42,6 +42,14 @@ struct ReportCommand: AsyncParsableCommand {
         func run() async throws {
             let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
             guard let report = ReportStore.read(from: ReportStore.location(for: root)) else {
+                // A run that did not get to the end left its answers behind anyway, and
+                // saying "nothing has been measured" to somebody who has just lost an hour
+                // is both untrue and the least useful thing to say.
+                if let interrupted = Narration.interrupted(
+                    Ledger.read(Ledger.location(for: root)))
+                {
+                    throw ValidationError(interrupted)
+                }
                 throw ValidationError(
                     """
                     nothing has been measured here yet. Run `swift-mutants run` first; this \

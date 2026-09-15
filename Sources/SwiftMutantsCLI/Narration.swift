@@ -8,6 +8,7 @@ import SwiftMutantsDiscover
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
+import SwiftMutantsReport
 import SwiftMutantsValidate
 
 /// Every word a run says, as a value.
@@ -21,6 +22,34 @@ import SwiftMutantsValidate
 /// Given the same stage it returns the same string, so two runs of the same package narrate
 /// themselves identically.
 enum Narration {
+
+    /// What the last run got to, when it did not get to the end.
+    ///
+    /// A report is written once, when a run finishes, so an interrupted one used to produce
+    /// the same sentence as a package nobody has measured: nothing has been measured here
+    /// yet. That is not true, and it is the least useful thing to say to somebody who has
+    /// just lost an hour - the answers exist, they were written down as they arrived.
+    ///
+    /// Counts and no score. A score has a denominator: the mutants a run decided not to
+    /// count, the ones it never reached, the ones somebody wrote down as expected. An
+    /// interrupted run has none of that, and a percentage taken from a prefix would be a
+    /// number nobody measured.
+    ///
+    /// Nothing at all when there is nothing, which is every package nobody has run.
+    static func interrupted(_ answers: [Ledger.Answer]) -> String? {
+        guard !answers.isEmpty else { return nil }
+        let killed = answers.count { $0.outcome == "killed" }
+        let survived = answers.count { $0.outcome == "survived" }
+        return """
+            the last run did not finish, and this is what it had got to. No score, because \
+            a score needs a denominator and an interrupted run has none.
+
+              \(answers.count) answered  \(killed) killed  \(survived) survived
+
+            Run it again for a score. Nothing here is lost by doing so: an answer this run \
+            already has is an answer the next one can take from its cache.
+            """
+    }
 
     /// What each phase says, or nothing for the ones that say it themselves.
     static func line(for stage: RunStage) -> String? {

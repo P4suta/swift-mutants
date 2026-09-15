@@ -85,6 +85,21 @@ extension RunCommand {
         return configuration
     }
 
+    /// Where a run's answers are written down as they are decided.
+    ///
+    /// The report is written once, at the end, so a run killed a second before that is
+    /// indistinguishable from a run that never started. Reported from a package of 755
+    /// mutants where the harness stopped the run for memory pressure at 755 of 755 - after
+    /// the last answer was in and before the summary was rendered. An hour of completed
+    /// work, and the same output as never having begun.
+    ///
+    /// Nothing fails for being unable to keep it. The record is insurance against an
+    /// interruption, and a run that refused to start without it would be a run lost to the
+    /// thing that was there to prevent losing one.
+    static func keepingAnswers(for root: URL) -> Ledger? {
+        Ledger(at: Ledger.location(for: root))
+    }
+
     /// How the process leaves when a run threw before it had an answer.
     ///
     /// Two, not the one a thrown error would otherwise reach the argument parser and
