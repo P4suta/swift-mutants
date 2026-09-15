@@ -28,7 +28,11 @@ enum Narration {
         case .discovering: "reading the sources"
         case .priming: "building your package as you wrote it, once"
         case .instrumenting(let files, let mutants):
-            "instrumenting \(mutants) mutants across \(files) files"
+            // "files with mutants in them", not "files": `list` counts the files it read
+            // and this counts the ones that got instrumentation, which is smaller. Two
+            // bare counts of "files" in two phases read as the same quantity disagreeing,
+            // and a reader concludes that files went missing between them.
+            "instrumenting \(mutants) mutants across \(files) files with mutants in them"
         case .proving: "proving every mutant is in the tree"
         case .building: "building the tests, once"
         case .baseline: "running the tests with nothing awake"

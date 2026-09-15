@@ -39,7 +39,7 @@ struct NarrationTests {
     func saysWhatItInstrumented() {
         #expect(
             Narration.line(for: .instrumenting(files: 61, mutants: 646))
-                == "instrumenting 646 mutants across 61 files"
+                == "instrumenting 646 mutants across 61 files with mutants in them"
         )
     }
 
@@ -266,5 +266,33 @@ struct HalvingNarrationTests {
         let said = Narration.validating(.halving(mutants: 42, unplaceable: nil))
         #expect(said.contains("42"))
         #expect(!said.contains("it said"))
+    }
+}
+
+/// Two counts of files, in two phases, that a reader has to be able to tell apart.
+///
+/// `list` says how many files it read; the run says how many it instrumented, and the
+/// second is smaller because a file with nothing to mutate is not instrumented. Read side
+/// by side as bare "N files" they look like the same quantity disagreeing, and a reader
+/// briefly concludes that sixteen files went missing between the phases. Reported by
+/// somebody who did exactly that.
+@Suite("Counting files")
+struct FileCountNarrationTests {
+
+    @Test("says what the files it instrumented are a count of")
+    func instrumentedSaysWhich() {
+        let said = Narration.line(for: .instrumenting(files: 122, mutants: 2256)) ?? ""
+        #expect(said.contains("122"))
+        #expect(said.contains("2256"))
+        // Not a bare "files", which is the half of the pair that misleads.
+        #expect(said.contains("files with mutants") || said.contains("files that have"))
+    }
+
+    /// And a file with nothing in it is the reason the two differ, so the line says so
+    /// rather than leaving a reader to work it out from two numbers in two phases.
+    @Test("does not call it a plain count of files")
+    func notAPlainCount() {
+        let said = Narration.line(for: .instrumenting(files: 1, mutants: 1)) ?? ""
+        #expect(!said.hasSuffix("1 files"))
     }
 }

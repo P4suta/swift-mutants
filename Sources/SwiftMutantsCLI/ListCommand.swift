@@ -72,8 +72,12 @@ struct ListCommand: AsyncParsableCommand {
 
         let hidden = listing.skips.reduce(0) { $0 + $1.skip.candidatesHidden }
         print(
+            // "files read", not "files": the run afterwards counts the files it
+            // *instruments*, which is smaller because a file with nothing to mutate is not
+            // instrumented. Two bare counts of "files" in two phases read as the same
+            // quantity disagreeing.
             "\(listing.catalog.mutants.count) mutants  \(listing.skips.count) skips"
-                + "  \(hidden) hidden  \(listing.filesRead) files"
+                + "  \(hidden) hidden  \(listing.filesRead) files read"
         )
         if !explain, !listing.skips.isEmpty {
             print("Run with --explain to see what was passed over and why.")
