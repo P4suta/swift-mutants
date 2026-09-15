@@ -171,6 +171,28 @@ enum Rules {
     static let neverDecides = Prune(
         side: .left, name: "condition-never-decides", family: "condition-decision")
 
+    /// A concatenation with its operands the other way round.
+    ///
+    /// `+` on something syntax alone can tell is not a number was passed over entirely:
+    /// `add-to-sub` on it would not compile, so the tool recorded a `non-numeric-operand`
+    /// skip and moved on. That left the lines where mutation testing is worth most -
+    /// domain separation, key derivation, authenticated associated data - contributing
+    /// nothing at all.
+    ///
+    /// Reported from a package doing exactly that, about
+    /// `[suite.rawValue] + account.bytes + operation.bytes`: swapping those operands makes
+    /// a frame movable between accounts, and their suite catches it. A score that says
+    /// nothing about the line cannot say they caught it.
+    ///
+    /// The cheapest mutation here to be confident about. Both sides keep their types, so it
+    /// compiles wherever the original did; concatenation does not commute, so it changes
+    /// the program wherever the operands differ - and where they do not, it is not offered.
+    ///
+    /// Its own family, because a project turning it off is making a different decision from
+    /// one turning off arithmetic.
+    static let concatSwap = Prune(
+        side: .left, name: "concat-swap", family: "concatenation")
+
     /// What a guard's condition becomes when it never bails.
     static let guardNoOp = "true"
 

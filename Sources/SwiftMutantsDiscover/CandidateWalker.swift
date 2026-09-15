@@ -110,12 +110,28 @@ final class CandidateWalker: SyntaxVisitor {
             return .visitChildren
         }
         if Rules.isArithmetic(swap), Self.isVisiblyNotANumber(node) {
+            // The arithmetic swap is still impossible, and still worth a skip: `+` to `-`
+            // on two arrays does not compile. But the operands turning round does, and on
+            // a concatenation it is the mutation that matters most.
             note(.nonNumericOperand, over: Syntax(token), hiding: 1)
+            if token.operator.text == "+" { recordConcatSwap(of: node) }
             return .visitChildren
         }
         record(swap, replacing: Syntax(token), within: Syntax(node))
         recordPrunes(of: node, spelled: token.operator.text)
         return .visitChildren
+    }
+
+    /// Offers a concatenation with its operands the other way round.
+    ///
+    /// Nothing when they are written the same way. `a + a` is the same program whichever
+    /// order it is in, and a mutant nothing can kill only drags a score down - this is the
+    /// one case of that the syntax can see, and the compiler cannot be asked about the rest.
+    private func recordConcatSwap(of node: InfixOperatorExprSyntax) {
+        let left = node.leftOperand.trimmedDescription
+        let right = node.rightOperand.trimmedDescription
+        guard left != right else { return }
+        record(Rules.concatSwap, replacing: Syntax(node), with: "\(right) + \(left)")
     }
 
     /// Whether an expression is one syntax alone can tell is not arithmetic.

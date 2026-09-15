@@ -235,8 +235,14 @@ struct NonNumericArithmeticTests {
         Self.found(expression).candidates.map(\.rule.name)
     }
 
+    /// No *arithmetic* swap. `+` to `-` on two arrays does not compile, so offering it
+    /// would be offering a mutant the compiler is certain to refuse.
+    ///
+    /// The concatenation turning round is a different question and is offered - see
+    /// `ConcatenationTests`. This asserted that such a line produced nothing at all, which
+    /// was true while it did and is the thing that changed.
     @Test(
-        "passes over an operand that is a literal of the wrong kind",
+        "offers no arithmetic swap for an operand that is a literal of the wrong kind",
         arguments: [
             #"a + ["x"]"#,
             #"["x"] + a"#,
@@ -245,7 +251,7 @@ struct NonNumericArithmeticTests {
         ]
     )
     func passesOverLiteralOperands(_ expression: String) {
-        #expect(Self.names(expression).isEmpty)
+        #expect(!Self.names(expression).contains("add-to-sub"), "\(Self.names(expression))")
     }
 
     /// Folding turns `x + y + z` into `(x + y) + z`, so a literal buried on the left of a
@@ -253,8 +259,8 @@ struct NonNumericArithmeticTests {
     /// exactly this way, and its outer `+` is one of the two the compiler gave up on.
     @Test("follows a chain to the literal at the end of it")
     func followsAChain() {
-        #expect(Self.names(#"["x"] + a + b"#).isEmpty)
-        #expect(Self.names(#"(["x"] + a) + b"#).isEmpty)
+        #expect(!Self.names(#"["x"] + a + b"#).contains("add-to-sub"))
+        #expect(!Self.names(#"(["x"] + a) + b"#).contains("add-to-sub"))
     }
 
     /// Skips are counted and named, never dropped. A reader who wonders why a `+` they can
