@@ -26,6 +26,30 @@
 /// The asymmetry sets every direction. A deadline met under load costs one serial retry; a
 /// deadline set too tight reports a survivor as a detection, which is the mistake nobody
 /// ever finds out about. So every unknown here resolves towards more time.
+///
+/// ## What this does not do
+///
+/// Both terms are measured once, at the start, and a machine that gets busier afterwards
+/// makes every one of them an underestimate for the rest of the run. Reported from a real
+/// package: a baseline of 898 seconds became 1767 because somebody started a full build in
+/// another window, and every deadline after that point was derived from the wrong number.
+/// A user with anything else running gets a budget their package did not earn, silently.
+///
+/// The fix needs no extra measurement, which is what makes it worth writing down rather
+/// than guessing at. Every trial already reports how long it took and this already predicts
+/// one, so a run that finds the last several trials all taking twice what was predicted
+/// knows the model has drifted — without asking anything, and without a second baseline.
+///
+/// The part that makes it safe to act on is not obvious and came from somebody who had
+/// caused the drift themselves: "the machine got busier" and "the model is wrong" are
+/// indistinguishable from inside, and they do not need to be told apart, because the safe
+/// reading of both is that the deadline is too tight. Widening on a busy machine costs a
+/// little time; not widening when the model is wrong costs a false detection. Only one of
+/// those is ever noticed.
+///
+/// It is not built. The state it needs is shared across workers that run concurrently, and
+/// this repository has already had one crash from mutable state carried across an `await` -
+/// so it wants a considered shape rather than a variable added at the end of a long day.
 public enum Budget: Sendable, Hashable {
 
     /// What somebody asked for, for every mutant alike.
