@@ -219,4 +219,69 @@ struct TOMLTests {
             Issue.record("unexpected error: \(error)")
         }
     }
+
+    /// A string whose content has newlines in it.
+    ///
+    /// A `[[mutation.custom]]` anchor is Swift somebody copied out of their own file, and
+    /// Swift spans lines. Written as an escape it works - `find = "a + b\\n    c"` - but
+    /// nobody copies code and then goes through it replacing newlines, and an anchor whose
+    /// every quote has to be escaped as well is an anchor nobody gets right first time.
+    ///
+    /// TOML has the answer already and this reader did not implement it. Raised by a project
+    /// migrating 320 hand-written mutations, whose previous format was TSV: a search string
+    /// containing a newline silently became two rows there, the second of which read as a
+    /// file path. A refusal is better than that and an expressible newline is better still.
+    @Test("reads a string written across lines")
+    func multilineBasic() throws {
+        let table = try TOMLParser.parse(
+            """
+            find = \"\"\"
+            a + b
+                c\"\"\"
+            """)
+        #expect(table["find"]?.string == "a + b\n    c")
+    }
+
+    /// The newline straight after the opening delimiter is not content. It is there so the
+    /// text can start on its own line, which is the whole reason for writing one this way.
+    @Test("does not count the line break that opens it")
+    func opensWithoutANewline() throws {
+        let table = try TOMLParser.parse("find = \"\"\"\nabc\"\"\"")
+        #expect(table["find"]?.string == "abc")
+    }
+
+    /// Quotes inside need no escaping, which is most of the point for a Swift anchor: a
+    /// string literal in somebody's code is quotes all the way down.
+    @Test("takes quotes inside it without escaping")
+    func quotesInside() throws {
+        let table = try TOMLParser.parse(
+            """
+            find = \"\"\"
+            greet("world")\"\"\"
+            """)
+        #expect(table["find"]?.string == #"greet("world")"#)
+    }
+
+    /// And the literal form, which takes backslashes as themselves - a regular expression,
+    /// a Windows path, a Swift escape somebody is anchoring on.
+    @Test("reads a literal string written across lines")
+    func multilineLiteral() throws {
+        let table = try TOMLParser.parse(
+            """
+            find = '''
+            a\\nb
+            c'''
+            """)
+        #expect(table["find"]?.string == "a\\nb\nc")
+    }
+
+    /// Unclosed is refused with the line it started on, like everything else this reader
+    /// refuses: a file that ends inside a string is a file somebody mistyped, and the place
+    /// to look is where it opened rather than where the file ran out.
+    @Test("refuses one that is never closed")
+    func unclosed() {
+        #expect(throws: TOMLParseError.self) {
+            try TOMLParser.parse("find = \"\"\"\nabc\n")
+        }
+    }
 }

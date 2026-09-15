@@ -28,9 +28,9 @@ public enum TOMLParser {
 
 /// The grammar. Where the scanner knows what character is next, this knows what a document
 /// is allowed to contain.
-private struct Parser {
+struct Parser {
 
-    private var scanner: TOMLScanner
+    var scanner: TOMLScanner
 
     /// The root, and the table that keys are currently being added to.
     private var root = TOMLTable()
@@ -184,8 +184,8 @@ private struct Parser {
 
     private mutating func key() throws(TOMLParseError) -> String {
         scanner.skipBlanks()
-        if scanner.peek() == "\"" { return try basicString() }
-        if scanner.peek() == "'" { return try literalString() }
+        if scanner.peek() == "\"" { return try anyBasicString() }
+        if scanner.peek() == "'" { return try anyLiteralString() }
         var name = ""
         while let next = scanner.peek(),
             next.isLetter || next.isNumber || next == "_" || next == "-"
@@ -200,8 +200,8 @@ private struct Parser {
     private mutating func value() throws(TOMLParseError) -> TOMLValue {
         guard let next = scanner.peek() else { throw scanner.failure("expected a value") }
         switch next {
-        case "\"": return .string(try basicString())
-        case "'": return .string(try literalString())
+        case "\"": return .string(try anyBasicString())
+        case "'": return .string(try anyLiteralString())
         case "[": return .array(try array())
         case "{":
             throw scanner.failure("an inline table is not part of a swift-mutants configuration")
@@ -275,7 +275,7 @@ private struct Parser {
         "b": "only decimal integers are",
     ]
 
-    private mutating func basicString() throws(TOMLParseError) -> String {
+    mutating func basicString() throws(TOMLParseError) -> String {
         try scanner.expect("\"")
         var text = ""
         while let next = scanner.advance() {
@@ -296,7 +296,7 @@ private struct Parser {
         throw scanner.failure("expected '\"' to close the string")
     }
 
-    private mutating func literalString() throws(TOMLParseError) -> String {
+    mutating func literalString() throws(TOMLParseError) -> String {
         try scanner.expect("'")
         var text = ""
         while let next = scanner.advance() {
@@ -311,7 +311,7 @@ private struct Parser {
     ///
     /// A short table on purpose: every escape is another thing that can be written two
     /// ways, and a configuration has no need for the Unicode forms.
-    private static let escapes: [Character: Character] = [
+    static let escapes: [Character: Character] = [
         "n": "\n", "t": "\t", "r": "\r", "\"": "\"", "\\": "\\", "0": "\0",
     ]
 }
