@@ -310,6 +310,31 @@ public struct Runner: Sendable {
 
     /// Spawns the child as its own process group leader, so that ending the group ends
     /// every descendant and no signal of ours ever reaches this process.
+    ///
+    /// ## What it costs, and what is not built
+    ///
+    /// The second half of that sentence cuts both ways: a signal sent to *this* process
+    /// does not reach the child either. So when swift-mutants is killed - `pkill`, a CI
+    /// step timing out, somebody closing a terminal - its compiles are reparented to
+    /// `init` and keep running. The deadline that would have ended them lives in this
+    /// process and died with it.
+    ///
+    /// Observed on this machine: a `swift build` and two `swift-frontend` processes from a
+    /// killed run, `ppid 1`, still going three and a half hours later with an hour and
+    /// fifty minutes of accumulated CPU each. They were found by somebody else wondering
+    /// what was competing with their build, and they had been taxing every measurement
+    /// taken on that machine all afternoon - including baselines, which is how a stale
+    /// process becomes a wrong deadline for a later run.
+    ///
+    /// The fix is a handler for SIGINT, SIGTERM and SIGHUP that ends every group this
+    /// process has started and then re-raises. It is not built, and the reason is that a
+    /// signal handler may allocate nothing and lock nothing, so the registry it reads has
+    /// to be a preallocated lock-free one - and killing a *group* by a remembered id has a
+    /// pid-reuse hazard that a careless version would turn into signalling somebody else's
+    /// processes. That is worth building carefully and is not worth building quickly.
+    ///
+    /// Until then, a killed run leaves its compiles behind, and `pkill -g` on the group
+    /// ids in `ps -eo pid,ppid,pgid` is the manual reaping.
     private static func ownProcessGroup() -> PlatformOptions {
         var options = PlatformOptions()
         options.processGroupID = 0
