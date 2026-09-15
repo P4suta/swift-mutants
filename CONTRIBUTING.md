@@ -27,6 +27,31 @@ A test that has never failed has not been shown to work. When you add a gate, pr
 fires: introduce the violation it is meant to catch, watch it fail, then take the
 violation away again.
 
+**And then a green test is worth something else: it rules explanations out.** The most
+useful test in this repository on one particular day never fired. A run had left orphaned
+compiler processes behind, the obvious explanation was a missing kill, and the test that
+asserts a grandchild outliving its parent gets killed was green — so the obvious
+explanation was wrong, and had to be, before any code was written. The real mechanism was
+one level further back: the isolation that makes a trial killable is the same isolation
+that stops a signal reaching it from the process that died.
+
+That only works if you can say precisely what a green test covers. A test whose coverage is
+vague is green for reasons nobody can enumerate, so it refuses nothing — which is what
+makes perturbation the thing that *earns* the constraint rather than a separate practice
+from it. Breaking the code is how you find out what a passing test is actually saying, and
+only then can its passing rule anything out. Two tests written on that same day passed
+against a rule that did nothing, because their subjects were never candidates; only
+breaking the rule showed it.
+
+**A survivor is the same instrument pointed at a belief.** It is usually read as a hole in
+the tests, and often that is all it is. But a mutant that lives says exactly one thing —
+nothing observed this change — and sometimes the reason nothing observed it is that the
+thing you believed was doing the work was not doing it. Reported from a real package: a
+survivor said "nothing can tell whether these keys were sorted", its author went to write
+the missing assertion, and it would not write, because the bytes were stable for a reason
+that had nothing to do with the sort. The hole was in a comment, and the tests were merely
+where it showed.
+
 **The diagnostic substrate comes before the thing it diagnoses.** A phase ships its own
 tracing, its own fake toolchain and its own failure evidence in the same change that
 introduces it. "We will add the logging later" is how a tool ends up unable to explain
