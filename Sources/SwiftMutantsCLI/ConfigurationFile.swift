@@ -36,6 +36,25 @@ enum ConfigurationFile {
     /// report a score about it. Every refusal names the file and the line, because the
     /// parser kept the positions for exactly this.
     static func read(in root: URL) throws -> Configuration {
+        do {
+            return try Self.decoded(in: root)
+        } catch {
+            // Said here rather than thrown, because the argument parser has one exit code
+            // for every error it does not recognise and it is `1` - the number this tool
+            // reserves for "a gate you asked for was not met". A configuration this tool
+            // could not read is not a score; it is this tool or this configuration being
+            // wrong, which the contract numbers `2`.
+            let leaving = Gate.unfinished(error)
+            FileHandle.standardError.write(Data((leaving.said + "\n").utf8))
+            throw ExitCode(leaving.code)
+        }
+    }
+
+    /// What the file says, refused with the line when it does not say a configuration.
+    ///
+    /// Apart from ``read(in:)`` so that the refusal is a value a test can read rather than
+    /// something already turned into an exit. What it says is the part that gets acted on.
+    static func decoded(in root: URL) throws -> Configuration {
         let location = root.appending(path: Self.name)
         guard let bytes = try? Data(contentsOf: location) else {
             // Unreadable rather than absent is still absent as far as this can tell, and

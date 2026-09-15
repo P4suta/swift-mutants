@@ -272,7 +272,7 @@ struct RunCommand: AsyncParsableCommand {
                 into: FailureReport.home(for: root)
             )
             if let written { print(Narration.diagnosed(written)) }
-            throw error
+            throw Self.leaving(error)
         }
 
         // Whatever was drawn stays on the screen, and the summary starts below it.

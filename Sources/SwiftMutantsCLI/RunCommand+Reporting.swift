@@ -85,6 +85,19 @@ extension RunCommand {
         return configuration
     }
 
+    /// How the process leaves when a run threw before it had an answer.
+    ///
+    /// Two, not the one a thrown error would otherwise reach the argument parser and
+    /// become. A run that never got to an answer and a run whose answer was "your tests
+    /// let three mutants through" want opposite things done about them, and a build system
+    /// has only this number to tell them apart. Said on the way out, because the code
+    /// alone leaves somebody with nothing to act on.
+    static func leaving(_ error: any Error) -> ExitCode {
+        let leaving = Gate.unfinished(error)
+        FileHandle.standardError.write(Data((leaving.said + "\n").utf8))
+        return ExitCode(leaving.code)
+    }
+
     /// Says it again where the person who caused it is looking, if anything is.
     ///
     /// Appended to the summary rather than written over it: a workflow has other steps and

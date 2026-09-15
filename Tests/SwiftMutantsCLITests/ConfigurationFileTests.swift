@@ -53,7 +53,7 @@ struct ConfigurationFileTests {
             """)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let configuration = try ConfigurationFile.read(in: root)
+        let configuration = try ConfigurationFile.decoded(in: root)
         #expect(configuration.mutation.profile == .strong)
         #expect(configuration.mutation.exclude.map(\.description) == ["Sources/Generated/**"])
     }
@@ -74,7 +74,7 @@ struct ConfigurationFileTests {
             """)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let custom = try ConfigurationFile.read(in: root).mutation.custom
+        let custom = try ConfigurationFile.decoded(in: root).mutation.custom
         #expect(custom.count == 1)
         #expect(custom.first?.file == "Sources/Compass/Direction.swift")
         #expect(custom.first?.reason.contains("half a turn") == true)
@@ -95,7 +95,7 @@ struct ConfigurationFileTests {
 
         var said = ""
         do {
-            _ = try ConfigurationFile.read(in: root)
+            _ = try ConfigurationFile.decoded(in: root)
             Issue.record("an unknown key was accepted")
         } catch {
             said = "\(error)"
@@ -111,7 +111,7 @@ struct ConfigurationFileTests {
     func defaultsWithoutAFile() throws {
         let root = try Self.scratch()
         defer { try? FileManager.default.removeItem(at: root) }
-        #expect(try ConfigurationFile.read(in: root) == Configuration())
+        #expect(try ConfigurationFile.decoded(in: root) == Configuration())
     }
 
     /// A flag is what somebody typed just now, so it wins over what they wrote down once.
@@ -128,7 +128,7 @@ struct ConfigurationFileTests {
         // has put them there - which is also how the flags reach it in a real invocation.
         let command = try RunCommand.parse(["--jobs", "9"])
         #expect(
-            command.asked(startingFrom: try ConfigurationFile.read(in: root))
+            command.asked(startingFrom: try ConfigurationFile.decoded(in: root))
                 .execution.jobs == 9)
     }
 
@@ -148,9 +148,30 @@ struct ConfigurationFileTests {
             """)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let file = try ConfigurationFile.read(in: root)
+        let file = try ConfigurationFile.decoded(in: root)
         let asked = try RunCommand.parse([]).asked(startingFrom: file)
         #expect(asked.execution.jobs == 2)
         #expect(asked.cache.mode == file.cache.mode)
+    }
+
+    /// The contract this tool documents: two is "this tool or this configuration is
+    /// wrong", and one is a gate somebody asked for. A configuration nobody could read is
+    /// the first, and it left as the second until this existed - because an error the
+    /// argument parser does not recognise becomes the one number it has.
+    @Test("leaves the way a configuration problem should, not the way a low score does")
+    func refusingLeavesWithTwo() throws {
+        let root = try Self.writing(
+            """
+            [mutation]
+            nosuchkey = 1
+            """)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        do {
+            _ = try ConfigurationFile.read(in: root)
+            Issue.record("an unknown key was accepted")
+        } catch let code as ExitCode {
+            #expect(code.rawValue == 2, "exited \(code.rawValue)")
+        }
     }
 }

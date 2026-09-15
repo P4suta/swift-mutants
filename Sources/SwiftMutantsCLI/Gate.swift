@@ -47,4 +47,23 @@ enum Gate {
         guard expectations.isSatisfied, unanchored.isEmpty else { return 2 }
         return strict && survivors > 0 ? 1 : nil
     }
+
+    /// How the process should leave when a run threw before it had an answer.
+    ///
+    /// Two, and never one. One means "a gate you asked for was not met", and the only way
+    /// to act on that is to write a test or delete a line. A run that never got as far as
+    /// measuring has nothing to say about anybody's tests, and sending somebody to look
+    /// for a hole that may not exist is the worst thing this number can do.
+    ///
+    /// It exited `1` until this existed, because a thrown error reaches the argument
+    /// parser and the argument parser has one number for every error it does not
+    /// recognise. Measured rather than assumed: `run` against a directory with no package
+    /// in it exited `1`, which is what `--strict` uses for a mutant the tests let through.
+    ///
+    /// The message comes back with the code rather than being printed here, so that what
+    /// stopped the run is part of the value and a test can hold it. A number on its own
+    /// leaves somebody with nothing to do.
+    static func unfinished(_ error: any Error) -> (said: String, code: Int32) {
+        ("Error: \(error)", 2)
+    }
 }

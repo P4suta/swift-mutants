@@ -170,3 +170,43 @@ struct UnanchoredGateTests {
                 == 2)
     }
 }
+
+/// What a run that never got to an answer exits with.
+///
+/// Measured before this existed: `swift-mutants run` against a directory with no package
+/// in it exited `1` - the same number `--strict` uses for "your tests let a mutant
+/// through". A build system reading that number cannot tell "your tests are thin" from
+/// "this never ran", and the two want opposite things done about them. A hand-written
+/// harness that conflated them called it its worst bug, and it is the same shape as every
+/// other failure this repository has had to dig out: the wrong answer and the right one
+/// look identical from outside.
+@Suite("What a run that could not finish exits with")
+struct UnfinishedRunTests {
+
+    struct Stopped: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    /// The property, stated as the two being different rather than as either being a
+    /// particular number: a build system needs to tell them apart, and which numbers they
+    /// are matters less than that they are not the same one.
+    @Test("does not leave looking like a run that found survivors")
+    func notTheSameAsSurvivors() {
+        let survivors = Gate.exitCode(
+            survivors: 3,
+            expectations: GateTests.verdict(),
+            strict: true
+        )
+        #expect(survivors == 1)
+        #expect(Gate.unfinished(Stopped(description: "no package")).code != survivors)
+        #expect(Gate.unfinished(Stopped(description: "no package")).code == 2)
+    }
+
+    /// The number alone leaves somebody with nothing to do. What stopped the run is the
+    /// part that gets acted on, and it has to survive being turned into an exit.
+    @Test("still says what stopped it")
+    func saysWhatHappened() {
+        let leaving = Gate.unfinished(Stopped(description: "the baseline was red"))
+        #expect(leaving.said.contains("the baseline was red"), "\(leaving.said)")
+    }
+}
