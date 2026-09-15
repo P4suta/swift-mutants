@@ -85,6 +85,24 @@ extension RunCommand {
         return configuration
     }
 
+    /// Writes down everything a failed run knows about itself, and says where.
+    ///
+    /// On the failure path only. A run that got an answer has the report; a run that did
+    /// not is the one whose account of itself is the only thing anybody has, and it is
+    /// written before the error is raised so that a process ending here still leaves it.
+    func diagnose(
+        _ error: any Error, recorder: TraceRecorder, workspace: URL, at root: URL
+    ) {
+        let written = FailureReport.write(
+            "\(error)",
+            recorder: recorder,
+            environment: Ambient.environment,
+            keptAt: keepTemp ? workspace : nil,
+            into: FailureReport.home(for: root)
+        )
+        if let written { print(Narration.diagnosed(written)) }
+    }
+
     /// Where a run's answers are written down as they are decided.
     ///
     /// The report is written once, at the end, so a run killed a second before that is

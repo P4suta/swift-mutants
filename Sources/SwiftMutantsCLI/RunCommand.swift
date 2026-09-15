@@ -282,14 +282,7 @@ struct RunCommand: AsyncParsableCommand {
             }
         } catch {
             progress.finish()
-            let written = FailureReport.write(
-                "\(error)",
-                recorder: recorder,
-                environment: Ambient.environment,
-                keptAt: keepTemp ? workspace : nil,
-                into: FailureReport.home(for: root)
-            )
-            if let written { print(Narration.diagnosed(written)) }
+            diagnose(error, recorder: recorder, workspace: workspace, at: root)
             throw Self.leaving(error)
         }
 
