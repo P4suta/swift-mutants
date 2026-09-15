@@ -64,15 +64,17 @@ test what it reaches and started no process for any mutant. The two runs took 41
 | | |
 | --- | --- |
 | **Pure core** | byte spans, SHA-256, content-addressed mutant identities, catalogue, score, glob, interval forest |
-| **Observability** | always-on trace with a bounded ring, one choke point that records every subprocess, a diagnostics bundle written when a run fails |
+| **Observability** | always-on trace with a bounded ring, one choke point that records every subprocess, a diagnostics bundle written when a run fails, `--trace` to keep the recording and `trace summary` to say where the time went |
+| **Durability** | answers are written down as they are decided, so a run killed at the last mutant is still a run somebody can read |
 | **A scripted toolchain** | a `swift` and an `xcodebuild` that hang, print garbage or leave a red baseline on demand, so the unit tier can test what happens when a real one misbehaves |
-| **Configuration** | a TOML reader that refuses an unknown key with the line it was written on |
+| **Configuration** | a TOML reader that refuses an unknown key with the line it was written on, read by every command alike; `init` writes a starter file with every setting explained |
 | **Snapshot** | a disposable copy that refuses links and special files, owned by the run that made it and swept when its owner is gone |
 | **Discovery** | comparisons, connectives and their operand prunes, boolean literals, arithmetic, compound assignment and bitwise — with precedence resolved, arid suppression, and comment pragmas |
 | **Instrumentation** | every mutant in one tree behind a runtime guard, the line count unchanged, and an activation proof |
 | **Validation** | every module asked at once, from SwiftPM's own plan, lowered rather than merely type-checked; halving is the fallback, not the mechanism |
 | **Coverage** | each test asked once what it reaches, so a mutant faces the handful that can catch it — and a test whose probe did not finish is offered to everything rather than treated as reaching nothing |
-| **Execution** | one build, the event stream watched live, mutants that share no test batched into one process that stops the moment all of them are decided |
+| **Execution** | one build, the event stream watched live, mutants that share no test batched into one process that stops the moment all of them are decided — the whole catalogue at once, so a batch is not confined to one file |
+| **Limits** | a mutant is bounded by the processor time it uses, derived from your own suite and enforced by the kernel, so a busy machine cannot turn a survivor into a detection; the clock remains as the backstop for a deadlock, which spends no processor at all |
 | **Remembering** | an answer kept between runs while everything it rests on is unchanged, including the test files |
 | **Equivalence** | the compiler asked which survivors could never have been caught, by fingerprinting each one's optimised SIL against the original's |
 | **Expectations** | survivors a project wrote down are measured every run and never answered from the cache; one that is caught, or whose identity has left the catalogue, fails the run |
@@ -104,6 +106,9 @@ swift build -c release
 .build/release/swift-mutants browse        # walk the survivors, one at a time
 .build/release/swift-mutants apply <id>    # the same mutant as a patch, to step through
 .build/release/swift-mutants report latest # the last run, as JSON
+.build/release/swift-mutants init          # a settings file, with every setting explained
+.build/release/swift-mutants cache status  # what answers are kept, and how to clear them
+.build/release/swift-mutants trace summary # where a recorded run's time went
 ```
 
 ### Flags worth knowing
@@ -120,6 +125,35 @@ swift build -c release
 | `--quiet` | say nothing but errors — the exit code is the answer |
 | `--no-tui` | print lines rather than drawing, even on a terminal |
 | `--keep-temp` | keep the copy the run happened in, so `explain`'s command is one you can paste |
+| `--trace` | keep a recording of everything the run starts; `trace summary` says where the time went |
+| `-j`, `--jobs` | how many mutants at once. Defaults to this machine's cores |
+| `--timeout` | one deadline for every mutant, instead of the allowance derived from your suite |
+
+### What bounds a mutant
+
+A mutation is the edit most likely to make a program stop terminating — a loop bound moved,
+a comparison flipped, an index arithmetic changed. Something has to stop one, and what that
+something measures decides whether a verdict is about your program or about your machine.
+
+It is **processor time**, not the clock. A process doing the same work consumes the same
+user and system seconds whether it is alone on the machine or sharing it with seventeen
+others; the scheduler hands it fewer per wall second, not fewer in total. The allowance
+comes from your own suite, measured in the same unit, and the kernel enforces it through
+`RLIMIT_CPU` — so nothing polls, nothing drifts, and two runs at different `--jobs` agree
+about what did not terminate.
+
+A deadline is still there, widened well past the allowance, for the one thing an allowance
+cannot see: waiting is not working, so a mutant that deadlocks spends no processor at all.
+
+`--timeout` overrides both with one number for every mutant, which is an answer rather than
+an input — so nothing is derived and nothing is second-guessed.
+
+### Settings
+
+`swift-mutants init` writes a `.swift-mutants.toml` with every setting commented out and
+explained, and `init --check` says whether the one you have can be read — exit 2 if not,
+which is the shape for a gate. Every command reads it, `list` and `why-skipped` included,
+so what `list` describes is what `run` would do.
 
 ### Survivors you have accounted for
 
