@@ -70,6 +70,16 @@ enum ScriptedBundle {
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: 0o755)], ofItemAtPath: file.path)
 
+        // Made empty before anything runs, so that "nothing ran" is an empty file rather
+        // than a missing one. The two are the same absence otherwise, and a test that
+        // reads one of these would throw a file error on a machine where a process failed
+        // to start - reporting a missing file instead of the count it was asserting.
+        // Exactly the distinction the probe log is built around, and a flake found here.
+        for written in ["argv.txt", "inflight.txt", "tokens.txt"] {
+            FileManager.default.createFile(
+                atPath: scratch.appending(path: written).path, contents: Data())
+        }
+
         if !script.failingBaselineTests.isEmpty {
             try Self.baselineEvents(script.failingBaselineTests, in: scratch)
         }

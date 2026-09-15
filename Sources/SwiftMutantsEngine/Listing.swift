@@ -96,6 +96,22 @@ public struct Lister: Sendable {
         self.executable = executable
     }
 
+    /// The mutants this project wrote for itself that name this file.
+    ///
+    /// Matched on the path the repository uses, which is how a project writes one down and
+    /// how every other part of this tool names a file. A row naming a file the package does
+    /// not have is nobody's file and is caught where the run accounts for its rows, not
+    /// here - discovery reads one file and cannot know what the package holds.
+    static func own(
+        of path: WorkspaceRelativePath, in configuration: Configuration
+    ) -> [CustomMutant] {
+        configuration.mutation.custom
+            .filter { $0.file == path.rendered }
+            .map {
+                CustomMutant(find: $0.find, replace: $0.replace, reason: $0.reason, line: $0.line)
+            }
+    }
+
     /// Turns one file's candidates into mutants, which is where an identity is fixed.
     private static func mutants(
         of discovery: FileDiscovery, at path: WorkspaceRelativePath
@@ -152,7 +168,8 @@ public struct Lister: Sendable {
                 guard isMutable, selection.admits(path) else { continue }
                 filesRead += 1
 
-                let discovery = Discover.candidates(in: source, at: path)
+                let discovery = Discover.candidates(
+                    in: source, at: path, custom: Self.own(of: path, in: configuration))
                 positions[path] = LineIndex(source)
                 for skip in discovery.skips { skips.append((path, skip)) }
                 for suppression in discovery.unknownSuppressions {

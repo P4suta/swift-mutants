@@ -20,9 +20,14 @@ public import SwiftMutantsCore
 public enum Discover {
 
     /// Reads one file.
+    /// `custom` are the mutants this project wrote for itself that name this file. They
+    /// sit beside the generated ones rather than instead of them, because they ask a
+    /// different question: the catalogue asks whether an operator is correct, and a
+    /// project's own usually asks whether a piece of it is load-bearing.
     public static func candidates(
         in source: String,
-        at path: WorkspaceRelativePath
+        at path: WorkspaceRelativePath,
+        custom: [CustomMutant] = []
     ) -> FileDiscovery {
         let tree = Parser.parse(source: source)
         let folded = OperatorTable.standardOperators.foldAll(tree) { _ in }
@@ -34,11 +39,12 @@ public enum Discover {
         )
         walker.walk(folded)
 
+        let own = Self.anchored(custom, in: source, lines: LineIndex(source))
         return FileDiscovery(
             path: path,
             sourceDigest: Digest.of(source),
-            candidates: walker.candidates.sorted { $0.span < $1.span },
-            skips: walker.skips.sorted { $0.span < $1.span },
+            candidates: (walker.candidates + own.candidates).sorted { $0.span < $1.span },
+            skips: (walker.skips + own.skips).sorted { $0.span < $1.span },
             unknownSuppressions: suppressions.unknownFamilies
                 .map { UnknownSuppression(line: $0.line, name: $0.name) }
                 .sorted { ($0.line, $0.name) < ($1.line, $1.name) }

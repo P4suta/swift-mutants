@@ -86,7 +86,11 @@ extension Run {
                 FileUnderValidation(
                     name: path.rendered,
                     source: source,
-                    discovery: Discover.candidates(in: source, at: path)
+                    // The same rows the listing was made with. Two discoveries that
+                    // disagreed would be a catalogue naming mutants the validation never
+                    // saw - and a project's own mutants would be listed and never run.
+                    discovery: Discover.candidates(
+                        in: source, at: path, custom: Lister.own(of: path, in: configuration))
                 )
             )
         }

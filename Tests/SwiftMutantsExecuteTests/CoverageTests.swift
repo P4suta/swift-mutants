@@ -66,9 +66,12 @@ struct CoverageTests {
         #expect(results.count == mutants.count)
         #expect(results.allSatisfy { $0.verdict.outcome == .survived })
         #expect(results.allSatisfy { $0.attempts == 0 })
-        // Nothing ran, so the bundle never wrote down an invocation.
-        #expect(
-            !FileManager.default.fileExists(atPath: fake.scratch.appending(path: "argv.txt").path))
+        // Nothing ran, so the bundle wrote down no invocation. Empty rather than absent:
+        // the fixture makes the file before anything starts, so that this says "none" and
+        // not "the file is missing, which might mean none".
+        let argv = try String(
+            contentsOf: fake.scratch.appending(path: "argv.txt"), encoding: .utf8)
+        #expect(argv.isEmpty)
     }
 
     /// Without coverage every mutant is offered the whole suite, because any test might

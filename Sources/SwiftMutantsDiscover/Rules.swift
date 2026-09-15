@@ -229,7 +229,7 @@ enum Rules {
         Self.identifier(named: prune.name)
     }
 
-    private static func identifier(named name: String) -> RuleIdentifier {
+    static func identifier(named name: String) -> RuleIdentifier {
         guard let rule = RuleIdentifier(name, version: 1) else {
             fatalError("'\(name)' is not a well-formed rule name")
         }

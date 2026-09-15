@@ -127,6 +127,21 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     case loopConditionLiteral = "loop-condition-literal"
 
     /// A configuration pattern removed the file.
+    /// A project's own mutant whose anchor is not in the file any more.
+    ///
+    /// Code moved and the row stopped testing anything. Silence here is the failure this
+    /// tool exists to prevent, one level up: somebody carries on believing they have
+    /// coverage they do not, and believes it specifically about the code they just changed.
+    case customAnchorNotFound = "custom-anchor-not-found"
+
+    /// A project's own mutant whose anchor is in the file more than once.
+    ///
+    /// A different mistake from a moved one and it wants a different fix - a longer anchor
+    /// rather than a re-anchoring - so it is said differently. Never "all the matches": a
+    /// row that silently became forty mutants is a project measuring something it did not
+    /// write down.
+    case customAnchorNotUnique = "custom-anchor-not-unique"
+
     case excluded
 }
 
