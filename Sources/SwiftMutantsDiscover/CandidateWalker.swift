@@ -202,6 +202,40 @@ final class CandidateWalker: SyntaxVisitor {
         }
     }
 
+    override func visit(_ node: GuardStmtSyntax) -> SyntaxVisitorContinueKind {
+        recordNoOp(of: node.conditions, becoming: Rules.guardNoOp)
+        return .visitChildren
+    }
+
+    override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
+        recordNoOp(of: node.conditions, becoming: Rules.ifNoOp)
+        return .visitChildren
+    }
+
+    /// Offers a single-clause condition replaced by the constant that makes it a no-op.
+    ///
+    /// One clause only. A list is the clause-dropping family's question, asked of each
+    /// clause in turn, and asking it here as well would ask the same thing twice and count
+    /// it twice in the score.
+    ///
+    /// Not a binding: the body names what it bound, so a constant in its place does not
+    /// compile. A single-clause `if let` therefore yields nothing, which is right.
+    ///
+    /// Not a literal either - a condition that is already a constant is already this
+    /// mutant, and the boolean literal family has it.
+    ///
+    /// `while` is absent on purpose. A loop is not a decision, and a loop whose condition is
+    /// a constant either never runs or never stops; the second hangs a suite, and the
+    /// deadline would report it as a detection about this tool rather than about the tests.
+    private func recordNoOp(of conditions: ConditionElementListSyntax, becoming constant: String) {
+        let clauses = Array(conditions)
+        guard clauses.count == 1, let only = clauses.first,
+            case .expression(let expression) = only.condition,
+            expression.as(BooleanLiteralExprSyntax.self) == nil
+        else { return }
+        record(Rules.neverDecides, replacing: Syntax(expression), with: constant)
+    }
+
     override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind {
         guard let swap = Rules.booleanLiterals[node.literal.text] else { return .skipChildren }
         if Self.isWholeConditionOfALoop(node) {

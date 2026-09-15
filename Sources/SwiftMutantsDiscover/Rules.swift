@@ -153,6 +153,30 @@ enum Rules {
     static let dropCondition = Prune(
         side: .left, name: "drop-condition", family: "boolean-connective")
 
+    /// A conditional made into a no-op.
+    ///
+    /// The same question as dropping a clause - is this condition load-bearing - asked of a
+    /// condition that has only one clause, which is where most of them are.
+    ///
+    /// The constant depends on the keyword, and that is the whole of the design. A guard's
+    /// condition is the case that *continues*, so `true` is the no-op; an `if`'s condition
+    /// is the case that *runs*, so `false` is. Generating both constants for both keywords
+    /// would generate the uninteresting half of each: `if c` made `true` is not "does this
+    /// body ever run", it is "does the else branch matter" - a different and much noisier
+    /// question, which a package measured at five useful instances in two hundred and
+    /// ninety hand-written mutations.
+    ///
+    /// Its own family, because it is its own question: a project turning it off should not
+    /// lose the operator swaps inside the same conditions.
+    static let neverDecides = Prune(
+        side: .left, name: "condition-never-decides", family: "condition-decision")
+
+    /// What a guard's condition becomes when it never bails.
+    static let guardNoOp = "true"
+
+    /// What an `if`'s condition becomes when its body never runs.
+    static let ifNoOp = "false"
+
     /// Every binary operator this tool has a meaning for.
     ///
     /// An operator that is not here is left alone. Swift lets a package define its own, and
@@ -183,7 +207,7 @@ enum Rules {
     /// Every family a rule belongs to.
     static let families: Set<String> = [
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
-        "arithmetic-assignment", "bitwise",
+        "arithmetic-assignment", "bitwise", "condition-decision",
     ]
 
     /// The identifier for a swap, at the version this build emits.

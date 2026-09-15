@@ -182,3 +182,47 @@ struct DroppedConditionTests {
         #expect(dropped.allSatisfy { $0.replacement == "true" })
     }
 }
+
+/// A conditional made into a no-op, compiled.
+///
+/// The same reason the dropped clauses have one: the discovery tests were all green
+/// against a first version of clause dropping that was not Swift, and only compiling what
+/// discovery offers found it.
+@Suite("A no-op conditional compiles", .tags(.integration))
+struct NoOpConditionTests {
+
+    static let subject = """
+        public func clamp(_ value: Double) -> Double {
+            guard value.isFinite else { return 0 }
+            if value < 0 { return 0 }
+            return value
+        }
+
+        public func pick(_ a: Int?, _ b: Bool) -> Int {
+            guard let a else { return -1 }
+            if b { return a }
+            return 0
+        }
+        """
+
+    @Test("compiles every conditional it makes a no-op of")
+    func compiles() throws {
+        let file = try InlinableTests.instrument(Self.subject, named: "NoOps")
+        let noOps = file.mutants.filter { $0.rule.name == "condition-never-decides" }
+        // Three: the guard, the `if value < 0`, and the `if b`. Not the `guard let a`.
+        #expect(noOps.count == 3)
+        #expect(!noOps.contains { $0.original.contains("let a") })
+
+        let result = try InlinableTests.compile(["NoOps": file.source])
+        #expect(result.exitCode == 0, "\(result.text)")
+    }
+
+    /// Each keyword gets the constant that makes it do nothing, which is the whole design.
+    @Test("gives a guard true and an if false")
+    func theRightConstants() throws {
+        let file = try InlinableTests.instrument(Self.subject, named: "NoOps")
+        let noOps = file.mutants.filter { $0.rule.name == "condition-never-decides" }
+        #expect(noOps.filter { $0.replacement == "true" }.count == 1)
+        #expect(noOps.filter { $0.replacement == "false" }.count == 2)
+    }
+}
