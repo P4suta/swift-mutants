@@ -291,14 +291,14 @@ public struct Validator: Sendable {
     }
 
     /// What identifies a candidate inside one file: the bytes it edits and the rule.
-    ///
-    /// Both fields exist to be hashed and compared, which the compiler does for us - so
-    /// nothing in this package reads either of them by name, and an indexer looking for
-    /// readers finds none.
     struct Key: Hashable {
-        // periphery:ignore
+
+        /// Where in the file the user wrote. Read when halving is ordered by position, and
+        /// hashed the rest of the time.
         let span: SourceSpan
-        // periphery:ignore
+
+        // periphery:ignore - hashed and compared by the compiler, never read by name
+        /// Which rule made it.
         let rule: RuleIdentifier
         init(_ span: SourceSpan, _ rule: RuleIdentifier) {
             self.span = span
