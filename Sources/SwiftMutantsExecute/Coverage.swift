@@ -172,43 +172,37 @@ public struct Prober: Sendable {
         var reach: [String: Set<UInt32>] = [:]
         var untrusted: [String] = []
         var cheapest: Int?
-        await withTaskGroup(of: Asked.self) { group in
-            var next = 0
-            while next < min(jobs, tests.count) {
-                let test = tests[next]
-                let worker = next
-                group.addTask { [self] in
-                    await self.probing(test, worker: worker)
-                }
-                next += 1
-            }
-            var done = 0
-            while let answer = await group.next() {
-                let (test, cost) = (answer.test, answer.costMilliseconds)
-                if let indices = answer.reached {
-                    reach[test] = indices
-                    for index in indices.sorted() { reached[index, default: []].append(test) }
-                } else {
-                    untrusted.append(test)
-                }
-                // The cheapest one, because every probe is one test in its own process and
-                // the least expensive of them is the closest thing to a trial that runs
-                // nothing at all. Cheapest rather than average: a probe's cost is what a
-                // trial costs plus what its one test costs, and the test that cost least
-                // leaves the most of what remains being the trial.
-                if let cost { cheapest = min(cheapest ?? cost, cost) }
-                done += 1
-                progress(done)
+        var done = 0
 
-                guard next < tests.count else { continue }
-                let waiting = tests[next]
-                let worker = next % jobs
-                group.addTask { [self] in
-                    await self.probing(waiting, worker: worker)
-                }
-                next += 1
-            }
+        // Through the pool, which is where the rule that two live workers never share a
+        // token is written down. It matters more here than anywhere: a probe writes its
+        // log under its token and a non-hermetic suite keys its fixtures on it, so two
+        // probes sharing one produce a test that establishes nothing - and a test that
+        // establishes nothing is offered to no mutant, which turns a mutant it catches
+        // every day into a survivor nobody looks at.
+        let asked = await WorkerPool(jobs: jobs).run(over: tests) { [self] test, token in
+            await probing(test, worker: token)
+        } asEachFinishes: { _, _ in
+            done += 1
+            progress(done)
         }
+
+        for answer in asked {
+            let (test, cost) = (answer.test, answer.costMilliseconds)
+            if let indices = answer.reached {
+                reach[test] = indices
+                for index in indices.sorted() { reached[index, default: []].append(test) }
+            } else {
+                untrusted.append(test)
+            }
+            // The cheapest one, because every probe is one test in its own process and
+            // the least expensive of them is the closest thing to a trial that runs
+            // nothing at all. Cheapest rather than average: a probe's cost is what a
+            // trial costs plus what its one test costs, and the test that cost least
+            // leaves the most of what remains being the trial.
+            if let cost { cheapest = min(cheapest ?? cost, cost) }
+        }
+
         return Probed(
             coverage: Coverage(byMutant: reached, reach: reach, untrusted: untrusted),
             cheapestMilliseconds: cheapest
@@ -230,7 +224,14 @@ public struct Prober: Sendable {
     private func measuring(
         reachedBy test: String, worker: Int
     ) async -> (Set<UInt32>?, Int?) {
-        let log = scratch.appending(path: "probe-\(worker)-\(abs(test.hashValue)).log")
+        // The bit pattern rather than the absolute value: `abs` is partial, and the one
+        // value it is not defined at is a value a hash can take. A trap here would take
+        // down the phase that establishes what every later answer rests on, to save
+        // nothing. Two tests that hash alike share a name, which costs nothing: they can
+        // only share a name while they share a worker, and a worker runs its probes one
+        // after another, each into a log made empty first.
+        let name = String(UInt(bitPattern: test.hashValue), radix: 16)
+        let log = scratch.appending(path: "probe-\(worker)-\(name).log")
         try? FileManager.default.removeItem(at: log)
         // Made empty before the run, so that the file existing means the process got to
         // the end of its job and the file being empty means the test reached nothing. The

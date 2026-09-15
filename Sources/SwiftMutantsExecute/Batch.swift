@@ -46,6 +46,37 @@ public struct Batch: Sendable {
         using coverage: Coverage,
         limit: Int = 8
     ) -> [Self] {
+        grouping(mutants, using: coverage, limit: limit).batches
+    }
+
+    /// How many candidate groups a scan may look through before opening a new one.
+    ///
+    /// The specification of what grouping is allowed to cost. Without a bound, an entry is
+    /// compared against every group opened so far, which is quadratic in the catalogue -
+    /// and the input that makes it bite is not exotic. A package with one broad test that
+    /// touches most of the code gives every mutant a coverage set containing that test, so
+    /// every pair conflicts, no group is ever joined, and the list of open groups grows to
+    /// the size of the catalogue. That package - thin tests, wide reach - is the one this
+    /// tool is most worth running on.
+    ///
+    /// Sixty-four is eight times ``group(_:using:limit:)``'s default batch size, so five
+    /// hundred mutants can be in flight looking for a partner. Beyond that the oldest open
+    /// group is closed as it stands: a batch smaller than it might have been, never an
+    /// unsound one, because the rule that decides what may share a process is checked
+    /// inside the window exactly as it was outside it.
+    static let window = 64
+
+    /// The same grouping, and how much work finding it took.
+    ///
+    /// The count is here so that the cost can be asserted rather than timed. A grouping
+    /// that quietly went quadratic would still produce exactly the right batches, so no
+    /// test about *what* it produces can catch it; the number of candidate groups examined
+    /// is what changes, and unlike a stopwatch it is a deterministic function of the input.
+    static func grouping(
+        _ mutants: [InstrumentedMutant],
+        using coverage: Coverage,
+        limit: Int = 8
+    ) -> (batches: [Self], examined: Int) {
         // Partitioned by the bundles a mutant's tests live in, before anything is grouped.
         //
         // A batch used to cost one process. It now costs one per bundle it spans, because
@@ -69,22 +100,50 @@ public struct Batch: Sendable {
         }
 
         var batches: [Self] = []
+        var examined = 0
         for span in spans {
+            // Groups still looking for members, oldest first, and never more than
+            // ``window`` of them: a full group is closed the moment it fills and the
+            // oldest is closed to make room for a new one. Nothing else appends here, so
+            // that ceiling is what makes the scan below cost a bounded amount rather than
+            // growing with the catalogue.
             var open: [Group] = []
             for entry in bySpan[span] ?? [] {
-                let joined = open.firstIndex { group in
-                    group.mutants.count < limit && group.tests.isDisjoint(with: entry.tests)
+                var joined: Int?
+                // At most `window` of them, which is what keeps this linear in the
+                // catalogue. Unbounded, an entry is compared against every group opened so
+                // far - and on a package whose mutants all share one broad test no group
+                // is ever joined, so the list grows to the size of the catalogue and the
+                // scan with it. Counted rather than timed: four hundred mutants sharing
+                // one test cost 79,800 comparisons before the ceiling existed.
+                for position in open.indices {
+                    examined += 1
+                    guard open[position].tests.isDisjoint(with: entry.tests) else { continue }
+                    joined = position
+                    break
                 }
                 if let joined {
                     open[joined].mutants.append(entry.mutant)
                     open[joined].tests.formUnion(entry.tests)
-                } else {
-                    open.append(Group(mutants: [entry.mutant], tests: entry.tests))
+                    if open[joined].mutants.count >= limit {
+                        batches.append(Self(open[joined].mutants, using: coverage))
+                        open.remove(at: joined)
+                    }
+                    continue
                 }
+                // Nothing within reach would have it, so it opens a group of its own. If
+                // the window is already full, the oldest is closed as it stands: a batch
+                // smaller than it might have been, never an unsound one, because what may
+                // share a process was checked the same way inside the window as outside it.
+                if open.count >= Self.window {
+                    batches.append(Self(open[0].mutants, using: coverage))
+                    open.removeFirst()
+                }
+                open.append(Group(mutants: [entry.mutant], tests: entry.tests))
             }
             batches += open.map { Self($0.mutants, using: coverage) }
         }
-        return batches
+        return (batches, examined)
     }
 
     /// A batch while it is still being filled.

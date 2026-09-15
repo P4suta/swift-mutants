@@ -246,60 +246,16 @@ public struct Scheduler: Sendable {
     ) async -> [MutantResult] {
         guard !mutants.isEmpty else { return [] }
         let units = self.units(for: mutants)
-        var finished = [[MutantResult]](repeating: [], count: units.count)
 
-        await withTaskGroup(of: Done.self) { group in
-            var next = 0
-
-            // The tokens nobody is holding. A token is what a worker keys its scratch
-            // directory, its derived data and its non-hermetic fixtures on, so the one
-            // thing that must never happen is two live workers with the same one - and a
-            // token taken from here is held until its unit is finished and gives it back.
-            //
-            // This was `position % jobs`, which is the position of the unit rather than
-            // the worker that is free. Units start as earlier ones finish and they do not
-            // finish in order, so unit `jobs` - which takes unit 0's number - starts the
-            // moment *any* of the first batch finishes, and unit 0 is usually not the one
-            // that did. Two workers then shared a directory, and a suite that lost a
-            // fixture underneath it fails in a way indistinguishable from a kill.
-            //
-            // Most recently returned first, because that worker's directory is the one
-            // whose build products and caches are warm. Which token a unit gets is not
-            // visible in the report: results are put back into catalogue order, and a
-            // token names a scratch directory rather than anything a verdict depends on.
-            var free = Array((0..<jobs).reversed())
-
-            // One task per worker to begin with, and one more started for each that
-            // finishes. The alternative - every unit as a task at once - would have the
-            // task group holding a task per unit, and on a package of any size that is a
-            // lot of nothing waiting to start.
-            while next < units.count, let token = free.popLast() {
-                let position = next
-                group.addTask { [self] in
-                    Done(
-                        position: position,
-                        token: token,
-                        answers: await answers(for: units[position], in: path, worker: token)
-                    )
-                }
-                next += 1
-            }
-            while let done = await group.next() {
-                finished[done.position] = done.answers
-                for answer in done.answers { progress(answer) }
-                free.append(done.token)
-                guard next < units.count, let token = free.popLast() else { continue }
-                let position = next
-                group.addTask { [self] in
-                    Done(
-                        position: position,
-                        token: token,
-                        answers: await self.answers(
-                            for: units[position], in: path, worker: token)
-                    )
-                }
-                next += 1
-            }
+        // Through the pool, which is where the rule that two live workers never share a
+        // token is written down. A token names a worker's scratch directory, its derived
+        // data and the fixtures a non-hermetic suite keys on, and this loop used to derive
+        // it from the position of the unit - so two workers shared a directory on
+        // essentially every run.
+        let answered = await WorkerPool(jobs: jobs).run(over: units) { [self] unit, token in
+            await answers(for: unit, in: path, worker: token)
+        } asEachFinishes: { _, answers in
+            for answer in answers { progress(answer) }
         }
 
         // Back into catalogue order. Which worker finished first is a fact about the
@@ -307,22 +263,9 @@ public struct Scheduler: Sendable {
         // because of either could not be diffed against yesterday's.
         let order = Dictionary(
             uniqueKeysWithValues: mutants.enumerated().map { ($1.identity, $0) })
-        return finished.flatMap { $0 }.sorted {
+        return answered.flatMap { $0 }.sorted {
             (order[$0.identity] ?? 0) < (order[$1.identity] ?? 0)
         }
-    }
-
-    /// A finished unit: where it goes in the report, and the token it is giving back.
-    ///
-    /// The token travels with the answer because it has to be returned by whoever observes
-    /// the completion, and the only thing that observes a completion is the loop reading
-    /// this. A task group hands back values, not identities, so a token that was not in
-    /// the value would have to be guessed at from the position - which is the mistake this
-    /// type exists to have already made once.
-    private struct Done: Sendable {
-        let position: Int
-        let token: Int
-        let answers: [MutantResult]
     }
 
     func result(
