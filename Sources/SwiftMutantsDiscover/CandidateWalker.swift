@@ -167,6 +167,41 @@ final class CandidateWalker: SyntaxVisitor {
         }
     }
 
+    /// Offers a condition list with one of its clauses taken out.
+    ///
+    /// `guard`, `if` and `while` all hold one of these, so visiting the list covers the
+    /// three at once - and a `case ... where` holds an expression rather than a list, which
+    /// is why it is not here.
+    ///
+    /// One clause at a time, and the whole list is what gets replaced. A span covering one
+    /// clause would leave the commas around it behind and produce `if , b`; a mutant that
+    /// dropped several at once would ask about none of them in particular.
+    override func visit(_ node: ConditionElementListSyntax) -> SyntaxVisitorContinueKind {
+        recordClauseDrops(of: node)
+        return .visitChildren
+    }
+
+    /// Each clause of a list that can be dropped, dropped.
+    ///
+    /// Dropping a clause *is* replacing it with `true`, and that matters: a condition list
+    /// is not an expression, so it cannot be wrapped in a ternary, and a mutant that
+    /// rewrote the list would need a statement-level guard. One clause is an expression,
+    /// and `guard a, (awake ? true : b), c else` is both ordinary Swift and exactly the
+    /// same program as `guard a, c else`.
+    ///
+    /// Only plain expressions. A binding - `let x = f()`, or a `case` pattern - is named by
+    /// the clauses after it and by the body, and is not an expression to begin with. The
+    /// compiler would say so and validation would drop the mutant, but a compile is the
+    /// expensive thing here and this is knowable from the syntax.
+    private func recordClauseDrops(of node: ConditionElementListSyntax) {
+        let clauses = Array(node)
+        guard clauses.count > 1 else { return }
+        for clause in clauses {
+            guard case .expression(let expression) = clause.condition else { continue }
+            record(Rules.dropCondition, replacing: Syntax(expression), with: "true")
+        }
+    }
+
     override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind {
         guard let swap = Rules.booleanLiterals[node.literal.text] else { return .skipChildren }
         if Self.isWholeConditionOfALoop(node) {
@@ -287,6 +322,28 @@ final class CandidateWalker: SyntaxVisitor {
                 original: expression.trimmedDescription,
                 replacement: operand.trimmedDescription,
                 guardSpan: region,
+                enclosingDeclaration: declarationPath.joined(separator: ".")
+            )
+        )
+    }
+
+    /// Records a prune whose replacement is built rather than taken from the tree.
+    ///
+    /// A condition list with one clause removed is not a subtree of anything, so there is
+    /// no node to point at - only text to put in its place.
+    private func record(_ prune: Rules.Prune, replacing region: Syntax, with text: String) {
+        guard let span = Self.span(of: region) else { return }
+        if !countOnly, isSuppressed(prune.family, at: region) {
+            skips.append(Skip(reason: .disabledByComment, span: span, candidatesHidden: 1))
+            return
+        }
+        candidates.append(
+            Candidate(
+                rule: Rules.identifier(for: prune),
+                span: span,
+                original: region.trimmedDescription,
+                replacement: text,
+                guardSpan: span,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
         )

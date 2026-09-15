@@ -134,6 +134,25 @@ enum Rules {
         ],
     ]
 
+    /// Dropping one clause of a comma-separated condition list.
+    ///
+    /// The same rule as a connective prune, in the syntax people actually write conditions
+    /// in. `guard a, b else` is `guard a && b else`, so "is this clause load-bearing" is
+    /// the question ``Prune`` already asks - it just never fired here, because it looks for
+    /// the operator and the source has commas.
+    ///
+    /// Spelled as replacing the clause with `true` rather than as rewriting the list, and
+    /// the two are the same program: a list is not an expression, so it cannot be wrapped
+    /// in a ternary, while one clause of it can.
+    ///
+    /// Measured on a real package whose author had written the mutations by hand: clauses
+    /// dropped from condition lists were the largest family they had that a tool could
+    /// generate, and three of the six holes they closed in one session were a guard clause
+    /// that could never fire. A clause that reads as the thing keeping something honest and
+    /// is in fact dead is a shape nothing else in this catalogue looks for.
+    static let dropCondition = Prune(
+        side: .left, name: "drop-condition", family: "boolean-connective")
+
     /// Every binary operator this tool has a meaning for.
     ///
     /// An operator that is not here is left alone. Swift lets a package define its own, and

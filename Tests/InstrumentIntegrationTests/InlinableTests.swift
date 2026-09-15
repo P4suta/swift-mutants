@@ -128,3 +128,57 @@ struct InlinableTests {
         #expect(result.exitCode == 0, "\(result.text)")
     }
 }
+
+/// A dropped condition clause, compiled.
+///
+/// The discovery tests fix which clauses are offered; this fixes that the offered ones are
+/// Swift. A condition list sits inside a statement rather than inside an expression, so it
+/// is instrumented differently from an operator - and a family that generated mutants the
+/// compiler refuses would cost a compile per mutant to learn nothing.
+@Suite("A dropped condition clause compiles", .tags(.integration))
+struct DroppedConditionTests {
+
+    static let subject = """
+        public func scale(_ text: String) -> Double? {
+            guard let value = Double(text), value > 0, value.isFinite else { return nil }
+            return value
+        }
+
+        public func both(_ a: Bool, _ b: Bool) -> Int {
+            if a, b { return 1 }
+            return 0
+        }
+
+        public func counting(_ limit: Int, _ on: Bool) -> Int {
+            var total = 0
+            var index = 0
+            while index < limit, on {
+                total += 1
+                index += 1
+            }
+            return total
+        }
+        """
+
+    @Test("compiles with every clause it offers to drop")
+    func compiles() throws {
+        let file = try InlinableTests.instrument(Self.subject, named: "Conditions")
+        let dropped = file.mutants.filter { $0.rule.name == "drop-condition" }
+        #expect(dropped.count >= 5)
+
+        let result = try InlinableTests.compile(["Conditions": file.source])
+        #expect(result.exitCode == 0, "\(result.text)")
+    }
+
+    /// And the guard's binding is still there in every one of them, which is what stops
+    /// the body from naming something that is gone.
+    @Test("keeps a binding every clause after it depends on")
+    func keepsTheBinding() throws {
+        let file = try InlinableTests.instrument(Self.subject, named: "Conditions")
+        let dropped = file.mutants.filter { $0.rule.name == "drop-condition" }
+        // Never the binding itself, which is not an expression and which everything
+        // after it names.
+        #expect(!dropped.contains { $0.original.contains("Double(text)") })
+        #expect(dropped.allSatisfy { $0.replacement == "true" })
+    }
+}
