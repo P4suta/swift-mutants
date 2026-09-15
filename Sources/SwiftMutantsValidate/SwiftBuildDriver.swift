@@ -26,15 +26,23 @@ public struct SwiftBuildDriver: TypecheckDriver {
     private let scratch: String
     private let environment: [String: String]
     private let timeout: Duration?
+    private let narrates: Bool
 
     /// Prepares to build the package at `root` into `scratch`.
+    ///
+    /// `narrates` asks the build to print the command it runs for each module. That output
+    /// is the only place the plan survives now that SwiftPM's build system has stopped
+    /// writing `debug.yaml`, and it is asked for exactly once - by the build that primes
+    /// the tree - because the rounds that follow want the compiler's diagnostics and not
+    /// eight thousand lines around them.
     public init(
         runner: Runner,
         executable: String = "/usr/bin/swift",
         root: String,
         scratch: String,
         environment: [String: String] = [:],
-        timeout: Duration? = .seconds(1800)
+        timeout: Duration? = .seconds(1800),
+        narrates: Bool = false
     ) {
         self.runner = runner
         self.executable = executable
@@ -42,6 +50,7 @@ public struct SwiftBuildDriver: TypecheckDriver {
         self.scratch = scratch
         self.environment = environment
         self.timeout = timeout
+        self.narrates = narrates
     }
 
     /// Builds the package, ignoring the paths it is handed.
@@ -67,7 +76,7 @@ public struct SwiftBuildDriver: TypecheckDriver {
                     // package as it is, and re-resolving could measure a different one -
                     // as well as reaching for the network in the middle of a build.
                     "--force-resolved-versions",
-                ],
+                ] + (narrates ? ["-v"] : []),
                 directory: root,
                 environment: environment,
                 timeout: timeout

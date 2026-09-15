@@ -82,12 +82,13 @@ struct SwiftBuildDriverTests {
             .reduce(into: [:]) { kept, name in kept[name] = ambient[name] }
     }
 
-    static func driver(_ fixture: Fixture) -> SwiftBuildDriver {
+    static func driver(_ fixture: Fixture, narrates: Bool = false) -> SwiftBuildDriver {
         SwiftBuildDriver(
             runner: Runner(recorder: TraceRecorder()),
             root: fixture.root.path,
             scratch: fixture.scratch.path,
-            environment: Self.environment()
+            environment: Self.environment(),
+            narrates: narrates
         )
     }
 

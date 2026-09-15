@@ -126,7 +126,9 @@ extension Run {
             scratch: scratch,
             environment: environment,
             runner: runner,
-            executable: executable
+            executable: executable,
+            // The one build that asks for the plan out loud.
+            narrates: true
         ).typecheck([])
         guard output.exitCode == 0 else {
             throw RunError(
@@ -137,14 +139,7 @@ extension Run {
                 """
             )
         }
-        guard
-            let text = try? String(
-                contentsOf: scratch.appending(path: "debug.yaml"), encoding: .utf8),
-            let manifest = BuildManifest(parsing: text)
-        else {
-            return nil
-        }
-        return manifest
+        return BuildManifest(ofBuild: output.text, plannedBeside: scratch.path)
     }
 
     /// The driver that builds the whole package, which is always correct and never quick.
@@ -153,14 +148,16 @@ extension Run {
         scratch: URL,
         environment: [String: String],
         runner: Runner,
-        executable: String
+        executable: String,
+        narrates: Bool = false
     ) -> SwiftBuildDriver {
         SwiftBuildDriver(
             runner: runner,
             executable: executable,
             root: tree.path,
             scratch: scratch.path,
-            environment: environment
+            environment: environment,
+            narrates: narrates
         )
     }
 

@@ -160,6 +160,11 @@ public struct BuildManifest: Sendable, Hashable {
             "-c", "-emit-module", "-emit-dependencies", "-emit-objc-header",
             "-serialize-diagnostics", "-parseable-output", "-incremental",
             "-enable-batch-mode", "-whole-module-optimization",
+            // Constant extraction derives its output path from `-o`, so a question sent to
+            // `/dev/null` asks the compiler to open `/dev/Core.swiftconstvalues` - which
+            // nobody may write, and the refusal arrives as `Operation not permitted` in
+            // the middle of deciding what the package refused.
+            "-emit-const-values", "-save-temps",
         ]
 
         /// Flags that produce a file named by the word after them.
@@ -167,6 +172,11 @@ public struct BuildManifest: Sendable, Hashable {
             "-o", "-emit-module-path", "-emit-objc-header-path", "-output-file-map",
             "-index-store-path", "-emit-dependencies-path", "-serialize-diagnostics-path",
             "-module-cache-path",
+            // The list constant extraction reads, which means nothing once the extraction
+            // itself is gone, and a bare path left behind is an input file the compiler
+            // complains about.
+            "-const-gather-protocols-list", "-const-gather-protocols-file",
+            "-dependency-scan-serialize-diagnostics-path",
         ]
     }
 

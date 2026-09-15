@@ -52,12 +52,19 @@ struct ModuleDriverIntegrationTests {
         """
 
     /// Builds the package as the user wrote it, and reads the plan SwiftPM made.
+    ///
+    /// Through the same lookup the engine uses, rather than reading `debug.yaml` here. It
+    /// read the file directly until the toolchain stopped writing one, at which point
+    /// these tests failed with a missing file while the engine failed by silently
+    /// building the whole package every round - the same cause, reported as two unrelated
+    /// things, and only one of them visible.
     static func prime(_ fixture: SwiftBuildDriverTests.Fixture) async throws -> BuildManifest {
-        let output = await SwiftBuildDriverTests.driver(fixture).typecheck([])
+        let output = await SwiftBuildDriverTests.driver(fixture, narrates: true).typecheck([])
         #expect(output.exitCode == 0, "the fixture must build before anything is broken")
-        let text = try String(
-            contentsOf: fixture.scratch.appending(path: "debug.yaml"), encoding: .utf8)
-        return try #require(BuildManifest(parsing: text), "SwiftPM's plan could not be read")
+        return try #require(
+            BuildManifest(ofBuild: output.text, plannedBeside: fixture.scratch.path),
+            "SwiftPM's plan could not be read, from either place it has been written"
+        )
     }
 
     static func driver(
@@ -220,7 +227,16 @@ struct ModuleDriverIntegrationTests {
         defer { fixture.cleanUp() }
         let manifest = try await Self.prime(fixture)
 
-        let modules = fixture.scratch.appending(path: "arm64-apple-macosx/debug/Modules")
+        // Where this toolchain put them, read out of the plan rather than assumed. The
+        // directory was spelled `<scratch>/arm64-apple-macosx/debug/Modules` until
+        // SwiftPM's build system changed it, at which point this test failed with "the
+        // folder does not exist" - a true statement about the wrong question.
+        let core = try #require(manifest.modules.first { $0.name == "Core" })
+        let emitted = try #require(
+            core.arguments.firstIndex(of: "-emit-module-path").map { core.arguments[$0 + 1] },
+            "the plan names no module path for Core"
+        )
+        let modules = URL(filePath: emitted).deletingLastPathComponent()
         let before = try FileManager.default.contentsOfDirectory(atPath: modules.path).sorted()
         let stamps = try before.map {
             try FileManager.default.attributesOfItem(

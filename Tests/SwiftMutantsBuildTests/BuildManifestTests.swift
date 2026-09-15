@@ -126,6 +126,30 @@ struct TypecheckArgumentsTests {
         #expect(Self.typecheck(["/usr/bin/swiftc"]).contains("-diagnostic-style=llvm"))
     }
 
+    /// Constant extraction writes a file the flag does not name.
+    ///
+    /// `-emit-const-values` derives its output from `-o`, so a question redirected to
+    /// `/dev/null` asks the compiler to open `/dev/Core.swiftconstvalues` - which is not a
+    /// path anybody may write, and the refusal arrives as `error opening ... Operation not
+    /// permitted`: an error about neither the package nor any mutant in it, in the middle
+    /// of deciding what the package refused.
+    ///
+    /// Found by the integration tier the day SwiftPM's build system started passing it.
+    @Test("drops constant extraction, which writes a file it does not name")
+    func dropsConstantExtraction() {
+        let asked = Self.typecheck([
+            "/usr/bin/swiftc", "-emit-const-values",
+            "-const-gather-protocols-list", "/pkg/.build/Core_const_extract_protocols.json",
+            "-swift-version", "6",
+        ])
+        #expect(!asked.contains("-emit-const-values"), "\(asked)")
+        #expect(!asked.contains("-const-gather-protocols-list"), "\(asked)")
+        #expect(!asked.contains { $0.hasSuffix("_const_extract_protocols.json") }, "\(asked)")
+        // And nothing else went with them.
+        #expect(asked.contains("-swift-version"), "\(asked)")
+        #expect(asked.contains("6"), "\(asked)")
+    }
+
     @Test(
         "drops what would write a file",
         arguments: [
