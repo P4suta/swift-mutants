@@ -166,19 +166,32 @@ public struct FileDiscovery: Sendable, Hashable {
     /// comment: somebody wrote it, believed a mutant was dealt with, and it is still there.
     public let unknownSuppressions: [UnknownSuppression]
 
+    /// A project's own mutants that had nothing in this file to anchor to.
+    ///
+    /// Carried rather than counted, because what somebody needs is *which row*. Code moved
+    /// and the row stopped testing anything - and they will be told about it while they
+    /// still remember why they moved it, which is the only moment the fix is cheap.
+    ///
+    /// Apart from ``skips`` rather than inside them: a skip is a decision this tool made
+    /// about somebody's code, and this is somebody's own row that no longer applies. The
+    /// counts still include it as a skip, so a listing's arithmetic adds up.
+    public let unanchored: [UnanchoredMutant]
+
     /// Records what was found in one file.
     public init(
         path: WorkspaceRelativePath,
         sourceDigest: Digest,
         candidates: [Candidate],
         skips: [Skip],
-        unknownSuppressions: [UnknownSuppression] = []
+        unknownSuppressions: [UnknownSuppression] = [],
+        unanchored: [UnanchoredMutant] = []
     ) {
         self.path = path
         self.sourceDigest = sourceDigest
         self.candidates = candidates
         self.skips = skips
         self.unknownSuppressions = unknownSuppressions
+        self.unanchored = unanchored
     }
 
     /// The same discovery with only the candidates that pass `isKept`.
@@ -195,7 +208,8 @@ public struct FileDiscovery: Sendable, Hashable {
             sourceDigest: sourceDigest,
             candidates: candidates.filter(isKept),
             skips: skips,
-            unknownSuppressions: unknownSuppressions
+            unknownSuppressions: unknownSuppressions,
+            unanchored: unanchored
         )
     }
 }

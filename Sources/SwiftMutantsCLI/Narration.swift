@@ -4,6 +4,7 @@
 import Foundation
 import SwiftMutantsConfig
 import SwiftMutantsConsole
+import SwiftMutantsDiscover
 import SwiftMutantsCore
 import SwiftMutantsEngine
 import SwiftMutantsExecute
@@ -181,7 +182,7 @@ enum Narration {
             "score \(summary.score.rendered)"
                 + "  of covered code \(summary.score.renderedForCoveredCode)",
         ]
-        return lines + expectations(outcome.expectations)
+        return lines + expectations(outcome.expectations) + unanchored(outcome.unanchored)
     }
 
     /// What a project's `[[mutation.expect]]` rows amounted to.
@@ -226,6 +227,31 @@ enum Narration {
     /// name is. A line somebody reads holds the twenty they would type.
     private static func short(_ identity: String) -> String {
         String(identity.prefix(Digest.shortFormLength))
+    }
+
+    /// The project's own mutants that had nothing to anchor to.
+    ///
+    /// Named by what each row says rather than by where it was, because where it was is
+    /// exactly what is no longer true. Reported by somebody who hit ten of these in one
+    /// session of refactoring: being told which row, in their own words, is what made each
+    /// a two-minute fix rather than a hunt.
+    ///
+    /// The count, because the two failures want opposite fixes - none means the code moved
+    /// and the row needs re-anchoring, more than one means the anchor is too short and
+    /// wants lengthening.
+    static func unanchored(_ rows: [UnanchoredMutant]) -> [String] {
+        guard !rows.isEmpty else { return [] }
+        return [
+            "",
+            "these of your own mutants had nothing to anchor to, so nothing measured them:",
+        ]
+            + rows.map { stale in
+                let trouble =
+                    stale.occurrences == 0
+                    ? "not there any more"
+                    : "there \(stale.occurrences) times, so the anchor is too short"
+                return "  \"\(stale.row.reason)\"\n    \(stale.row.find)  -  \(trouble)"
+            }
     }
 
     /// Where a document a run was asked for went.

@@ -47,7 +47,8 @@ public enum Discover {
             skips: (walker.skips + own.skips).sorted { $0.span < $1.span },
             unknownSuppressions: suppressions.unknownFamilies
                 .map { UnknownSuppression(line: $0.line, name: $0.name) }
-                .sorted { ($0.line, $0.name) < ($1.line, $1.name) }
+                .sorted { ($0.line, $0.name) < ($1.line, $1.name) },
+            unanchored: own.unanchored
         )
     }
 }

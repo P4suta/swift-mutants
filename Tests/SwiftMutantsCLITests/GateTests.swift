@@ -3,6 +3,7 @@
 
 import SwiftMutantsConfig
 import SwiftMutantsCore
+import SwiftMutantsDiscover
 import SwiftMutantsEngine
 import Testing
 
@@ -117,5 +118,55 @@ struct GateTests {
             Gate.exitCode(
                 survivors: 0, expectations: Self.verdict(met: 3, superseded: 2), strict: true)
                 == nil)
+    }
+}
+
+/// What a run exits with when a project's own mutant stopped applying.
+///
+/// The same news as an expectation naming a mutant that no longer exists, and the same
+/// exit. A row whose anchor has moved is a measurement silently not taken: somebody
+/// carries on believing they have coverage they do not, and believes it specifically about
+/// the code they just changed.
+///
+/// Reported by somebody who hit ten of these in one session of refactoring - four when they
+/// split a file, four more when they moved an extension - and said the sharpness was right:
+/// the refactoring cost is real and small, and it lands at the moment they still remember
+/// why they moved the code.
+@Suite("What a run exits with for a row that stopped applying")
+struct UnanchoredGateTests {
+
+    static func stale(_ count: Int) -> [UnanchoredMutant] {
+        (0..<count).map {
+            UnanchoredMutant(
+                row: CustomMutant(find: "gone\($0)()", replace: "x", reason: "reason \($0)"),
+                occurrences: 0
+            )
+        }
+    }
+
+    @Test("exits two for one that could not be anchored")
+    func staleIsTwo() {
+        #expect(
+            Gate.exitCode(
+                survivors: 0, expectations: .unasked, unanchored: Self.stale(1), strict: false)
+                == 2)
+    }
+
+    @Test("exits zero when every one anchored")
+    func noneIsZero() {
+        #expect(
+            Gate.exitCode(
+                survivors: 0, expectations: .unasked, unanchored: [], strict: false) == nil)
+    }
+
+    /// Two beats one, for the reason it beats it everywhere: a run that is over the gate
+    /// *and* has a row that stopped applying has one thing to fix first, and exiting `1`
+    /// would send somebody to write tests while a measurement is missing.
+    @Test("says two rather than one when both are true")
+    func twoBeatsOne() {
+        #expect(
+            Gate.exitCode(
+                survivors: 5, expectations: .unasked, unanchored: Self.stale(1), strict: true)
+                == 2)
     }
 }

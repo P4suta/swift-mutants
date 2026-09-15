@@ -3,6 +3,7 @@
 
 import Foundation
 import SwiftMutantsCore
+import SwiftMutantsDiscover
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsRunner
@@ -294,5 +295,75 @@ struct FileCountNarrationTests {
     func notAPlainCount() {
         let said = Narration.line(for: .instrumenting(files: 1, mutants: 1)) ?? ""
         #expect(!said.hasSuffix("1 files"))
+    }
+}
+
+/// What a run says about a row of its own that stopped applying.
+///
+/// The message somebody acts on. Reported by an author who hit ten of these in one session
+/// of refactoring: the thing that made each a two-minute fix rather than a hunt was being
+/// told *which* row, by what it says. "hold frames until the memory runs out" identifies it
+/// instantly; a span identifies nothing and a digest less than that.
+///
+/// And the count, because the two failures want opposite fixes: none means the code moved
+/// and the row needs re-anchoring, more than one means the anchor is too short.
+@Suite("Narrating a row that stopped applying")
+struct UnanchoredNarrationTests {
+
+    static func row(_ find: String, _ reason: String, found: Int) -> UnanchoredMutant {
+        UnanchoredMutant(
+            row: CustomMutant(find: find, replace: "x", reason: reason),
+            occurrences: found
+        )
+    }
+
+    static func lines(_ rows: [UnanchoredMutant]) -> [String] {
+        Narration.unanchored(rows)
+    }
+
+    @Test("says nothing when every row anchored")
+    func silentWhenFine() {
+        #expect(Self.lines([]).isEmpty)
+    }
+
+    /// By what it says, which is the whole point.
+    @Test("names the row by what it says")
+    func namesTheRow() {
+        let said = Self.lines([
+            Self.row(
+                "input.isReadyForMoreMediaData", "hold frames until the memory runs out", found: 0)
+        ]).joined(separator: "\n")
+        #expect(said.contains("hold frames until the memory runs out"))
+        #expect(said.contains("input.isReadyForMoreMediaData"))
+    }
+
+    /// The two failures read differently, because they want different fixes.
+    @Test("tells a moved anchor from a short one")
+    func tellsThemApart() {
+        let moved = Self.lines([Self.row("gone()", "a reason", found: 0)]).joined(separator: "\n")
+        let short = Self.lines([Self.row("wrong", "a reason", found: 4)]).joined(separator: "\n")
+        #expect(moved != short)
+        #expect(short.contains("4"))
+        #expect(moved.lowercased().contains("moved") || moved.lowercased().contains("not there"))
+    }
+
+    /// All of them, because somebody fixing ten after a refactor wants the list rather than
+    /// ten runs.
+    @Test("says every one of them")
+    func saysAllOfThem() {
+        let said = Self.lines([
+            Self.row("one()", "first reason", found: 0),
+            Self.row("two()", "second reason", found: 0),
+        ]).joined(separator: "\n")
+        #expect(said.contains("first reason"))
+        #expect(said.contains("second reason"))
+    }
+
+    /// And says what it means, because a reader seeing this for the first time has to know
+    /// why a row not applying is worth stopping for.
+    @Test("says why it matters")
+    func saysWhyItMatters() {
+        let said = Self.lines([Self.row("gone()", "a reason", found: 0)]).joined(separator: "\n")
+        #expect(said.lowercased().contains("measur") || said.lowercased().contains("test"))
     }
 }

@@ -4,6 +4,7 @@
 import Foundation
 import SwiftMutantsConfig
 import SwiftMutantsCore
+import SwiftMutantsDiscover
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsRunner
@@ -182,7 +183,8 @@ enum NarrationFixture {
     static func outcome(
         results: [MutantResult],
         summary: RunSummary? = nil,
-        expectations: Expectations.Verdict = .unasked
+        expectations: Expectations.Verdict = .unasked,
+        unanchored: [UnanchoredMutant] = []
     ) -> RunOutcome {
         let derived = counts(
             killed: results.count { $0.verdict.outcome == .killed },
@@ -199,7 +201,8 @@ enum NarrationFixture {
             contendedBaseline: verdict(.survived, tests: []),
             filesInstrumented: 1,
             scope: .everything,
-            expectations: expectations
+            expectations: expectations,
+            unanchored: unanchored
         )
     }
 

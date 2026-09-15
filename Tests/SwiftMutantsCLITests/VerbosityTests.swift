@@ -4,6 +4,7 @@
 import ArgumentParser
 import SwiftMutantsConsole
 import SwiftMutantsCore
+import SwiftMutantsDiscover
 import SwiftMutantsEngine
 import SwiftMutantsExecute
 import SwiftMutantsTrace
@@ -320,5 +321,39 @@ struct DrawnFramesTests {
         )
         progress.report(.discovering)
         #expect(frames.withLock { $0 }.isEmpty)
+    }
+}
+
+/// The summary says it too, not only a command somebody has to think to run.
+///
+/// A row that stopped applying fails the run, and a run that failed for a reason only
+/// `why-skipped` could tell you is a run whose exit code is a mystery.
+@Suite("A summary says what stopped applying")
+struct SummaryUnanchoredTests {
+
+    @Test("says which of a project's own mutants had nothing to anchor to")
+    func saysThem() {
+        let outcome = NarrationFixture.outcome(
+            results: [],
+            unanchored: [
+                UnanchoredMutant(
+                    row: CustomMutant(
+                        find: "input.isReady",
+                        replace: "true",
+                        reason: "hold frames until the memory runs out"
+                    ),
+                    occurrences: 0
+                )
+            ]
+        )
+        let said = Narration.summary(of: outcome).joined(separator: "\n")
+        #expect(said.contains("hold frames until the memory runs out"))
+    }
+
+    @Test("says nothing when every one anchored")
+    func silentWhenFine() {
+        let said = Narration.summary(of: NarrationFixture.outcome(results: []))
+            .joined(separator: "\n")
+        #expect(!said.contains("anchor"))
     }
 }

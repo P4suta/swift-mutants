@@ -317,6 +317,7 @@ struct NarrowingTests {
             skips: skips,
             unknownSuppressions: unknown,
             positions: positions,
+            unanchored: [],
             filesRead: sources.count,
             digests: sources.mapValues { Digest.of($0) }
         )

@@ -36,6 +36,26 @@ public struct CustomMutant: Sendable, Hashable {
     }
 }
 
+/// A project's own mutant that had nothing to anchor to.
+///
+/// The row and how many times its anchor was found, which together are everything somebody
+/// needs: the count says whether the code moved or the anchor is too short - different
+/// fixes - and the row says which of theirs it was, in their own words.
+public struct UnanchoredMutant: Sendable, Hashable {
+
+    /// The row, as the project wrote it.
+    public let row: CustomMutant
+
+    /// How many times its anchor was in the file. Never one; one is a mutant.
+    public let occurrences: Int
+
+    /// Records a row that could not be placed.
+    public init(row: CustomMutant, occurrences: Int) {
+        self.row = row
+        self.occurrences = occurrences
+    }
+}
+
 extension Discover {
 
     /// The rule every one of a project's own mutants is filed under.
@@ -56,10 +76,11 @@ extension Discover {
     /// nobody could find.
     static func anchored(
         _ rows: [CustomMutant], in source: String, lines: LineIndex
-    ) -> (candidates: [Candidate], skips: [Skip]) {
+    ) -> Anchoring {
         let bytes = Array(source.utf8)
         var candidates: [Candidate] = []
         var skips: [Skip] = []
+        var unanchored: [UnanchoredMutant] = []
 
         for row in rows {
             let places = Self.occurrences(of: row.find, in: bytes)
@@ -71,6 +92,7 @@ extension Discover {
                 let span = SourceSpan(start: start, end: start + row.find.utf8.count)
             else {
                 skips.append(Self.missing(found: places.count))
+                unanchored.append(UnanchoredMutant(row: row, occurrences: places.count))
                 continue
             }
             candidates.append(
@@ -84,7 +106,18 @@ extension Discover {
                 )
             )
         }
-        return (candidates, skips)
+        return Anchoring(candidates: candidates, skips: skips, unanchored: unanchored)
+    }
+
+    /// What a file's worth of a project's own rows came to.
+    ///
+    /// A value rather than three lists loose, because they are three answers to one
+    /// question and a caller taking two of them would be a caller quietly dropping the
+    /// third - which here means a row that stopped applying going unsaid.
+    struct Anchoring {
+        let candidates: [Candidate]
+        let skips: [Skip]
+        let unanchored: [UnanchoredMutant]
     }
 
     /// A row whose anchor is nowhere usable, as a skip.

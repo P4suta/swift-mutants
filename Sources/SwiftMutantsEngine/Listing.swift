@@ -32,6 +32,13 @@ public struct Listing: Sendable {
     /// Where each file's candidates were, for a listing that shows line and column.
     public let positions: [WorkspaceRelativePath: LineIndex]
 
+    /// A project's own mutants that had nothing to anchor to, by file.
+    ///
+    /// Carried all the way out because a row that stopped applying is a measurement
+    /// silently not taken - the same failure as an expectation naming a mutant that no
+    /// longer exists, and it fails a run for the same reason.
+    public let unanchored: [(path: WorkspaceRelativePath, mutant: UnanchoredMutant)]
+
     /// How many files were read.
     public let filesRead: Int
 
@@ -57,6 +64,10 @@ public struct Listing: Sendable {
             skips: skips.filter { isKept($0.path) },
             unknownSuppressions: unknownSuppressions.filter { isKept($0.path) },
             positions: positions.filter { isKept($0.key) },
+            // Every one, whatever the scope. A run narrowed to four files still has to say
+            // that a row somewhere else stopped applying: narrowing what is measured does
+            // not narrow what a project wrote down.
+            unanchored: unanchored,
             filesRead: filesRead,
             // Every file, still: narrowing what is *measured* does not narrow what the
             // answers rest on. A run scoped to four files is still wrong if a fifth one
@@ -148,6 +159,7 @@ public struct Lister: Sendable {
         var mutants: [Mutant] = []
         var skips: [(path: WorkspaceRelativePath, skip: Skip)] = []
         var unknown: [(path: WorkspaceRelativePath, suppression: UnknownSuppression)] = []
+        var unanchored: [(path: WorkspaceRelativePath, mutant: UnanchoredMutant)] = []
         var positions: [WorkspaceRelativePath: LineIndex] = [:]
         var digests: [WorkspaceRelativePath: Digest] = [:]
         var filesRead = 0
@@ -172,6 +184,7 @@ public struct Lister: Sendable {
                     in: source, at: path, custom: Self.own(of: path, in: configuration))
                 positions[path] = LineIndex(source)
                 for skip in discovery.skips { skips.append((path, skip)) }
+                for stale in discovery.unanchored { unanchored.append((path, stale)) }
                 for suppression in discovery.unknownSuppressions {
                     unknown.append((path, suppression))
                 }
@@ -184,6 +197,7 @@ public struct Lister: Sendable {
             skips: skips,
             unknownSuppressions: unknown,
             positions: positions,
+            unanchored: unanchored,
             filesRead: filesRead,
             digests: digests
         )

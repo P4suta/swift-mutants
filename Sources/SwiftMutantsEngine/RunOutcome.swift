@@ -3,6 +3,7 @@
 
 public import SwiftMutantsBuild
 public import SwiftMutantsCore
+public import SwiftMutantsDiscover
 public import SwiftMutantsExecute
 public import SwiftMutantsValidate
 
@@ -67,6 +68,14 @@ public struct RunOutcome: Sendable {
     /// the second one is somebody's to fix. The summary counts; this says what to do.
     public let expectations: Expectations.Verdict
 
+    /// The project's own mutants that had nothing to anchor to.
+    ///
+    /// A row that stopped applying is a measurement silently not taken, and the moment to
+    /// say so is now: somebody who has just moved the code still remembers why, and the
+    /// row still means something to them. Months later it has been meaningless for a
+    /// hundred commits and nobody can tell what it was for.
+    public let unanchored: [UnanchoredMutant]
+
     /// Which share of the catalogue this machine took, when it took one.
     ///
     /// Apart from ``scope`` because it is a different kind of narrowing and the two
@@ -87,6 +96,7 @@ public struct RunOutcome: Sendable {
         positions: [WorkspaceRelativePath: LineIndex] = [:],
         digests: [WorkspaceRelativePath: Digest] = [:],
         expectations: Expectations.Verdict = .unasked,
+        unanchored: [UnanchoredMutant] = [],
         plan: TestPlan? = nil,
         shard: Shard? = nil
     ) {
@@ -100,6 +110,7 @@ public struct RunOutcome: Sendable {
         self.positions = positions
         self.digests = digests
         self.expectations = expectations
+        self.unanchored = unanchored
         self.plan = plan
         self.shard = shard
     }

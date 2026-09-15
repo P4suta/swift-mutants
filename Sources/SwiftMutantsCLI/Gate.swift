@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import SwiftMutantsCore
+import SwiftMutantsDiscover
 import SwiftMutantsEngine
 
 /// What a finished run exits with.
@@ -34,9 +35,16 @@ enum Gate {
     /// configuration has one thing to fix first, and exiting `1` would send somebody to
     /// write tests for a mutant whose identity no longer exists.
     static func exitCode(
-        survivors: Int, expectations: Expectations.Verdict, strict: Bool
+        survivors: Int,
+        expectations: Expectations.Verdict,
+        unanchored: [UnanchoredMutant] = [],
+        strict: Bool
     ) -> Int32? {
-        guard expectations.isSatisfied else { return 2 }
+        // A row whose anchor has moved is a measurement silently not taken, which is the
+        // same news as an expectation naming a mutant that no longer exists - and the same
+        // exit, because the alternative is somebody believing they have coverage they do
+        // not, about the code they just changed.
+        guard expectations.isSatisfied, unanchored.isEmpty else { return 2 }
         return strict && survivors > 0 ? 1 : nil
     }
 }

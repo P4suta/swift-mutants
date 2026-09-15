@@ -269,6 +269,7 @@ struct RunCommand: AsyncParsableCommand {
         if let code = Gate.exitCode(
             survivors: Gate.survivors(of: outcome.summary),
             expectations: outcome.expectations,
+            unanchored: outcome.unanchored,
             strict: strict
         ) {
             throw ExitCode(code)
