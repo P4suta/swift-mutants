@@ -22,7 +22,8 @@ struct ExplanationTests {
         id: String = String(repeating: "a", count: 64),
         outcome: String = "survived",
         killedBy: [String] = [],
-        testsStarted: Int = 3
+        testsStarted: Int = 3,
+        rule: String = "lt-to-le@1"
     ) -> RunReport.Mutant {
         RunReport.Mutant(
             id: id,
@@ -30,7 +31,7 @@ struct ExplanationTests {
             line: .init(42),
             column: .init(9),
             span: RunReport.Span(start: 100, end: 101),
-            rule: "lt-to-le@1",
+            rule: rule,
             original: "<",
             replacement: "<=",
             outcome: outcome,

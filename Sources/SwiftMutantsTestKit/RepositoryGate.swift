@@ -84,6 +84,18 @@ public enum RepositoryGate {
         ".build", ".git", ".swiftpm", "vendor", "Fixtures", "DerivedData", "reports", "dist",
     ]
 
+    /// Whether a directory is one of this project's rather than one to read.
+    ///
+    /// A build directory is matched by prefix rather than by name. The release gate builds
+    /// in `.build-release`, which is a build directory by every meaning of the word and was
+    /// not in the list - so the gates walked into it, read the dependencies' own sources,
+    /// and reported this repository as containing Japanese that belongs to swift-syntax.
+    /// A rule naming exactly one spelling of "the build directory" is a rule that breaks
+    /// the next time somebody needs a second one.
+    public static func isUnscanned(_ name: String) -> Bool {
+        unscannedDirectories.contains(name) || name.hasPrefix(".build")
+    }
+
     /// Every text file in the tree, in sorted order.
     ///
     /// Extension-based rather than content-sniffing, so that adding a binary format to the
@@ -103,7 +115,7 @@ public enum RepositoryGate {
         }
         var found: [URL] = []
         for case let url as URL in walker {
-            if unscannedDirectories.contains(url.lastPathComponent) {
+            if Self.isUnscanned(url.lastPathComponent) {
                 walker.skipDescendants()
                 continue
             }

@@ -18,3 +18,4 @@ projects and, where swift-mutants departs from them, why.
 | [0005](0005-an-answer-may-be-remembered-while-what-it-rests-on-is-unchanged.md) | An answer may be remembered while everything it rests on is unchanged |
 | [0006](0006-the-xcode-path-goes-through-the-xctestrun.md) | The Xcode path wakes a mutant through the `.xctestrun`, beside the original |
 | [0007](0007-the-shipped-configuration-gets-its-own-tier.md) | The shipped configuration gets its own tier, built from nothing |
+| [0008](0008-a-guard-wraps-an-expression-and-nothing-else.md) | A guard wraps an expression, and a declaration cannot be guarded at all |

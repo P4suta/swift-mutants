@@ -152,9 +152,38 @@ enum Explanation {
             ]
         case "rejected":
             return ["the compiler would not accept this change, so nothing could run it."]
+                + Self.advice(forRefusing: mutant)
         default:
             return ["\(mutant.outcome)."]
         }
+    }
+
+    /// What to do about a refusal, when there is something to do.
+    ///
+    /// Almost never. A refused mutant is a fact about the program: the compiler would not
+    /// accept that edit there, and nobody has anything to fix. The exception is a mutant a
+    /// project wrote itself, where the refusal is about a row in their configuration
+    /// rather than about their code - and where the usual cause has one answer.
+    ///
+    /// A guard is a ternary around the text the row matched, so that text has to be an
+    /// expression. `n += 1` is one and works; `let dropped = Array(entries[limit...])` is a
+    /// declaration and does not.
+    ///
+    /// And there is no form of guard that would. Wrapping the declaration in `if awake { }
+    /// else { }` binds `dropped` inside a scope that ends at the brace, so everything after
+    /// it stops compiling - the shape is not a limitation of this tool's chosen form, it is
+    /// a property of what a declaration is. Anchoring on the initialiser instead costs
+    /// nothing and works today.
+    private static func advice(forRefusing mutant: RunReport.Mutant) -> [String] {
+        guard mutant.rule.hasPrefix("custom") else { return [] }
+        return [
+            "",
+            "This is a mutant your project wrote, so the refusal is about the row rather",
+            "than about your code. A guard is a ternary around the text the row matched, so",
+            "that text has to be an expression: `n += 1` is one, `let x = f()` is not.",
+            "Anchor on the initialiser rather than the declaration - `f()` rather than",
+            "`let x = f()` - and write the replacement as an expression of the same type.",
+        ]
     }
 
     /// A list of tests, cut where it stops being readable.

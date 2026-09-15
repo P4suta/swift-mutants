@@ -21,6 +21,12 @@
 # tree nobody can reproduce, which is the failure this whole project exists to refuse: a
 # result indistinguishable from a real one.
 #
+# Everything that was *compiled*, and nothing that was *downloaded*. The dependency
+# checkouts are sources pinned by `Package.resolved` and are the same bytes every run, so
+# deleting them measures nothing new - it only makes the gate re-clone, which needs a
+# `git checkout --force` that a machine may quite reasonably refuse. What goes is every
+# product and intermediate, which is what "recompiled from nothing" means.
+#
 # In its own scratch directory. `.build` belongs to the inner loop, and a gate that wiped
 # it would cost a full debug rebuild every time somebody ran the gate once. Separate trees
 # also mean the release gate cannot inherit anything from a debug build, which is the only
@@ -35,8 +41,27 @@ cd "$root"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
-say "wiping $scratch, so this measures a tree that was built from nothing"
-rm -rf "${scratch:?}"
+say "wiping what $scratch compiled, so this measures a tree built from nothing"
+for built in "${scratch:?}"/*; do
+    case "$(basename "$built")" in
+    checkouts | repositories | artifacts | workspace-state.json | CACHEDIR.TAG) continue ;;
+    *) rm -rf "$built" ;;
+    esac
+done
+
+# The dependencies come from wherever they already are, rather than being cloned again.
+#
+# They are pinned by `Package.resolved`, so a second copy is the same bytes by definition -
+# fetching it costs the network, and checking it out costs a `git checkout --force` that a
+# machine may quite reasonably refuse. Copying what the inner loop already resolved is the
+# same sources, arrived at without asking anybody's permission to reset a repository.
+#
+# Absent is fine: SwiftPM resolves them itself, which is what a fresh checkout does.
+for shared in checkouts repositories workspace-state.json; do
+    if [[ ! -e "$scratch/$shared" && -e ".build/$shared" ]]; then
+        cp -R ".build/$shared" "$scratch/$shared"
+    fi
+done
 
 # `-enable-testing` because the suite uses `@testable import` in 134 places, and without
 # it a release test build fails to load the modules rather than telling the truth about
