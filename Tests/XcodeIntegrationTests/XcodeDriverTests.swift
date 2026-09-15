@@ -6,6 +6,7 @@ import SwiftMutantsRunner
 import SwiftMutantsTrace
 import SwiftMutantsCore
 import SwiftMutantsExecute
+@testable import SwiftMutantsInstrument
 import SwiftMutantsXcode
 import Testing
 
@@ -61,26 +62,16 @@ struct XcodeDriverTests {
                 ]
             )
             """, to: root.appending(path: "Package.swift"))
-        // The guard the instrumenter would have written, spelled by hand: this is about
-        // xcodebuild carrying the variable, not about instrumenting.
+        // The runtime the instrumenter actually generates, not a hand-spelled stand-in.
+        // What is being tested is whether Xcode carries a variable to it and whether what
+        // it writes comes back, and a fixture with its own runtime would prove neither.
         try Self.write(
             """
-            #if canImport(Darwin)
-            import Darwin
-            #else
-            import Glibc
-            #endif
-
-            private let __sm_active: UInt32 = {
-                guard let text = getenv("SWIFT_MUTANTS_ACTIVE"),
-                    let index = UInt32(String(cString: text))
-                else { return .max }
-                return index
-            }()
-
             public func atLeast(_ value: Int, _ limit: Int) -> Bool {
-                __sm_active == 7 ? (value > limit) : (value >= limit)
+                \(Runtime.guardCall(token: Self.token, index: 7)) \
+                ? (value > limit) : (value >= limit)
             }
+            \(Runtime.source(token: Self.token, count: 8))
             """, to: root.appending(path: "Sources/Subject/Subject.swift"))
         try Self.write(
             """
@@ -92,6 +83,10 @@ struct XcodeDriverTests {
             """, to: root.appending(path: "Tests/SubjectTests/SubjectTests.swift"))
         return fixture
     }
+
+    /// A token of the shape the instrumenter makes, fixed so the fixture is the same
+    /// every time.
+    static let token = "fixture00cafe"
 
     static func write(_ contents: String, to file: URL) throws {
         try FileManager.default.createDirectory(
@@ -268,6 +263,47 @@ struct XcodeHostTests {
             activating: 7, onlyTests: ["SubjectTests/NoSuchTest/doesNotExist()"])
         #expect(verdict.outcome == .errored)
         #expect(verdict.startedTests.isEmpty)
+    }
+
+    /// The other half of what a build system has to do: ask one test what it reaches.
+    ///
+    /// Without it every mutant is offered the whole suite, which is the difference between
+    /// a run that costs mutants times tests and one that costs mutants times a handful. It
+    /// is also the half that fails silently: a probe that establishes nothing looks exactly
+    /// like a test that reaches nothing, and the second is a finding.
+    @Test("asks one test what it reaches, and gets an answer", .tags(.toolchain))
+    func probesOneTest() async throws {
+        let (fixture, host) = try await Self.built()
+        defer { fixture.cleanUp() }
+
+        let log = fixture.scratch.appending(path: "probe.log")
+        try FileManager.default.createDirectory(
+            at: fixture.scratch, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: log.path, contents: Data())
+
+        let finished = await host.probe("SubjectTests/boundary()", writingTo: log)
+        #expect(finished)
+
+        // The fixture's one test runs the one guard, so the log holds its index and
+        // nothing else.
+        let written = try String(contentsOf: log, encoding: .utf8)
+        #expect(Set(written.split(separator: "\n").compactMap { UInt32($0) }) == [7])
+    }
+
+    /// A probe of a test that is not there starts nothing, and starting nothing establishes
+    /// nothing - which is not the same as a test that reaches nothing. Reading them as the
+    /// same is how a mutant a test catches every day comes back unreachable.
+    @Test("establishes nothing from a test that is not there", .tags(.toolchain))
+    func probeOfAMissingTest() async throws {
+        let (fixture, host) = try await Self.built()
+        defer { fixture.cleanUp() }
+
+        let log = fixture.scratch.appending(path: "probe-missing.log")
+        try FileManager.default.createDirectory(
+            at: fixture.scratch, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: log.path, contents: Data())
+
+        #expect(await !host.probe("SubjectTests/NoSuchTest/nope()", writingTo: log))
     }
 
     /// Two workers must not write one document, or each would wake the other's mutant -

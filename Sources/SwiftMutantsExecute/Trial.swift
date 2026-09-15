@@ -107,6 +107,37 @@ public struct Trial: MutantHost {
         launch.specification(writingEventsTo: path, waking: indices, onlyTests: onlyTests)
     }
 
+    /// Runs one test with nothing awake, telling the runtime where to write what it
+    /// reached.
+    ///
+    /// No event stream and no early stop: the whole point is to let the test finish, since
+    /// what it reached is only complete when it has. The answer is in the log rather than
+    /// in anything this reads, so all this says is whether the process got that far.
+    ///
+    /// The probe runs with nothing awake, so the suite passes and the process exits zero.
+    /// Anything else is a process that did not get to the end of its job, and whatever it
+    /// managed to write is a prefix rather than an answer.
+    public func probe(_ test: String, writingTo log: URL) async -> Bool {
+        var environment = plan.environment
+        environment["SWIFT_MUTANTS"] = "1"
+        environment["SWIFT_MUTANTS_TEST_TOKEN"] = "\(worker)"
+        environment[Prober.probeVariable] = log.path
+
+        let outcome = await runner.run(
+            ProcessSpec(
+                kind: .probe,
+                executable: plan.executable,
+                arguments: plan.arguments + [
+                    "--no-parallel", "--filter", Prober.exactly(test),
+                ],
+                directory: plan.directory,
+                environment: environment,
+                timeout: timeout
+            )
+        )
+        return outcome.exitCode == 0
+    }
+
     private static func termination(of outcome: ProcessOutcome) -> Termination {
         if let failure = outcome.startFailure { return .couldNotStart(failure) }
         if outcome.timedOut { return .timedOut }

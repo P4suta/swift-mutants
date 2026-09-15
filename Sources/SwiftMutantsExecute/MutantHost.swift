@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-/// Something that can run a package's tests with chosen mutants awake.
+public import Foundation
+
+/// Something that can run a package's tests: with mutants awake, or one at a time to
+/// see what it reaches.
 ///
 /// The one thing scheduling needs from a build system, and deliberately the only thing.
 /// Which mutants are worth running together, which tests to offer them, when a timeout is
@@ -33,6 +36,22 @@ public protocol MutantHost: Sendable {
         onlyTests: [String]?,
         settling: StreamWatcher.Settlement
     ) async -> Verdict
+
+    /// Runs one test with nothing awake, telling the runtime to write what it reached.
+    ///
+    /// The other half of what a build system has to do, and it belongs beside the first:
+    /// both are "run this package's tests in a particular way", and a host that could do
+    /// one of them would be a build system this tool can measure half of.
+    ///
+    /// - Parameters:
+    ///   - test: the one test to run, and no other.
+    ///   - log: where the runtime is told to write the guards it evaluated. The caller made
+    ///     it empty first, so a file that exists and is empty means the test reached
+    ///     nothing while a file that could not be read means the process did not finish.
+    /// - Returns: whether the process got to the end of its job. `false` establishes
+    ///   nothing about the test, which is not the same as the test reaching nothing - and
+    ///   the difference is a mutant reported as unreachable that a test catches every day.
+    func probe(_ test: String, writingTo log: URL) async -> Bool
 }
 
 extension MutantHost {

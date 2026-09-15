@@ -45,12 +45,17 @@ public struct XcodeHost: MutantHost {
         self.worker = worker
     }
 
-    /// What this host calls the document it wakes mutants in.
+    /// What this host calls the document it writes before every run.
     ///
-    /// One per worker. Two workers writing one document would be two workers waking each
-    /// other's mutants - and the run would still finish, with a score about a program
-    /// nobody ran. A value rather than a literal inside the call, so that the claim is
-    /// something a test can hold without starting Xcode twice.
+    /// One per worker, and one *is* enough: a worker runs one thing at a time, and the
+    /// document is written fresh each time from the one xcodebuild produced, so whatever it
+    /// held before is gone. A second name for probing would be a distinction no test could
+    /// justify.
+    ///
+    /// Per worker is the part that matters. Two workers writing one document would be two
+    /// workers waking each other's mutants - and the run would still finish, with a score
+    /// about a program nobody ran. A value rather than a literal inside the call, so that
+    /// the claim is something a test can hold without starting Xcode twice.
     public var documentName: String { "swift-mutants-\(worker)" }
 
     /// Runs the tests with these mutants awake.
@@ -87,6 +92,43 @@ public struct XcodeHost: MutantHost {
             // having failed. Saying so keeps it out of both columns of the score.
             return Self.failed(error.description)
         }
+    }
+
+    /// Runs one test with nothing awake, telling the runtime where to write what it
+    /// reached.
+    ///
+    /// The same document trick as waking a mutant, with a different variable in it: there
+    /// is no way to hand `test-without-building` an environment except through the
+    /// `.xctestrun`, and the runtime reads where to write from the environment.
+    ///
+    /// Whether the process got to the end of its job is read from the result bundle rather
+    /// than from the exit status, for the reason everything here is: `xcodebuild` exits
+    /// non-zero for a failing test and for a project that will not load, and only one of
+    /// those means the probe established nothing.
+    public func probe(_ test: String, writingTo log: URL) async -> Bool {
+        let woken: URL
+        do {
+            woken =
+                try document
+                .waking(["SWIFT_MUTANTS": "1", Prober.probeVariable: log.path])
+                .write(named: documentName)
+        } catch {
+            return false
+        }
+        let bundle = scratch.appending(path: "probe-\(worker)-\(abs(test.hashValue)).xcresult")
+        guard
+            let results = try? await driver.test(
+                xctestrun: woken,
+                destination: destination,
+                resultBundle: bundle,
+                onlyTests: [test]
+            )
+        else {
+            return false
+        }
+        // A probe runs with nothing awake, so a test that failed is a suite that was
+        // already failing - and what it reached is not something to build a run on.
+        return !results.started.isEmpty && !results.anythingFailed
     }
 
     /// A copy of the document with these mutants awake, written where Xcode will find it.

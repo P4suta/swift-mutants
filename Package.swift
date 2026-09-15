@@ -258,8 +258,8 @@ let package = Package(
         .testTarget(
             name: "XcodeIntegrationTests",
             dependencies: [
-                "SwiftMutantsCore", "SwiftMutantsExecute", "SwiftMutantsRunner",
-                "SwiftMutantsTrace", "SwiftMutantsXcode",
+                "SwiftMutantsCore", "SwiftMutantsExecute", "SwiftMutantsInstrument",
+                "SwiftMutantsRunner", "SwiftMutantsTrace", "SwiftMutantsXcode",
             ],
             swiftSettings: strict
         ),

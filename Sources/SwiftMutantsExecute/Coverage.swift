@@ -119,13 +119,26 @@ public struct Coverage: Sendable {
 /// in is reachable, and the mutated branch is never taken during a probe.
 public struct Prober: Sendable {
 
-    private let plan: TestPlan
-    private let runner: Runner
+    /// What runs the tests, one per worker.
+    private let host: @Sendable (Int) -> any MutantHost
+
+    /// Where the probe logs go. A worker's log is a worker's, so two of them probing at
+    /// once do not read each other's findings.
     private let scratch: URL
-    private let timeout: Duration?
     private let jobs: Int
 
-    /// Prepares to probe inside `scratch`.
+    /// Prepares to probe inside `scratch`, through whatever starts the tests.
+    public init(
+        host: @escaping @Sendable (Int) -> any MutantHost,
+        scratch: URL,
+        jobs: Int = 4
+    ) {
+        self.host = host
+        self.scratch = scratch
+        self.jobs = max(1, jobs)
+    }
+
+    /// The same, for the SwiftPM path: one ``Trial`` per worker, from one built plan.
     public init(
         plan: TestPlan,
         runner: Runner,
@@ -133,11 +146,19 @@ public struct Prober: Sendable {
         timeout: Duration? = .seconds(120),
         jobs: Int = 4
     ) {
-        self.plan = plan
-        self.runner = runner
-        self.scratch = scratch
-        self.timeout = timeout
-        self.jobs = max(1, jobs)
+        self.init(
+            host: { worker in
+                Trial(
+                    plan: plan,
+                    runner: runner,
+                    scratch: scratch,
+                    timeout: timeout,
+                    worker: worker
+                )
+            },
+            scratch: scratch,
+            jobs: jobs
+        )
     }
 
     /// Asks each of these tests what it reaches.
@@ -198,39 +219,22 @@ public struct Prober: Sendable {
         // same to it as one it made. Without this the two would be the same absence, and
         // "reached nothing" is a finding while "did not finish" is a failure.
         FileManager.default.createFile(atPath: log.path, contents: Data())
-
-        var environment = plan.environment
-        environment["SWIFT_MUTANTS"] = "1"
-        environment["SWIFT_MUTANTS_TEST_TOKEN"] = "\(worker)"
-        environment[Self.probeVariable] = log.path
-
-        let outcome = await runner.run(
-            ProcessSpec(
-                kind: .probe,
-                executable: plan.executable,
-                arguments: plan.arguments + [
-                    "--no-parallel", "--filter", Self.exactly(test),
-                ],
-                directory: plan.directory,
-                environment: environment,
-                timeout: timeout
-            )
-        )
         defer { try? FileManager.default.removeItem(at: log) }
-        // The probe runs with nothing awake, so the suite passes and the process exits
-        // zero. Anything else is a process that did not get to the end of its job, and
-        // whatever it managed to write is a prefix rather than an answer.
-        guard outcome.exitCode == 0,
+
+        guard await host(worker).probe(test, writingTo: log),
             let text = try? String(contentsOf: log, encoding: .utf8)
         else {
             return nil
         }
-
         return Set(text.split(separator: "\n").compactMap { UInt32($0) })
     }
 
     /// The environment variable the generated runtime writes its findings to.
-    static let probeVariable = "SWIFT_MUTANTS_PROBE"
+    ///
+    /// Public because every build system this tool measures has to set it, and the name is
+    /// one the instrumented runtime reads: a second spelling of it anywhere would be a
+    /// probe that found nothing and a run that offered every test to every mutant.
+    public static let probeVariable = "SWIFT_MUTANTS_PROBE"
 
     /// A pattern that matches one test and nothing else.
     ///
