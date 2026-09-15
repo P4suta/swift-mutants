@@ -86,12 +86,20 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
 
     /// Inside a default argument value.
     ///
-    /// A guard cannot go there. Swift refuses a default argument value that references a
-    /// private declaration, and the runtime this tool appends is private by design - it
-    /// has to be, or two instrumented files in one module would collide. The compiler's
-    /// complaint is about the guard rather than about the mutant, so it lands nowhere
-    /// attribution can place it, and a run then halves its way through the whole
-    /// catalogue for a mutant that could never have compiled.
+    /// Kept as a name so that a catalogue written by an older build still decodes, and no
+    /// longer produced by anything. The reason was true when it was written: Swift refuses a
+    /// default argument value that references a `private` declaration, and the runtime this
+    /// tool appends was private - so a guard there produced a complaint about the guard
+    /// rather than about the mutant, which lands nowhere attribution can place it.
+    ///
+    /// The runtime stopped being private for an unrelated reason: Swift will not let an
+    /// `@inlinable` function reference a private symbol either, so a package with inlinable
+    /// inner loops had every mutant in them refused, and the fix was to make the runtime
+    /// `@usableFromInline internal`. That fixed this as a side effect and nobody noticed.
+    ///
+    /// Measured directly on this toolchain before removing it: a guard in a default
+    /// argument compiles in a public function, in an `@inlinable` one, in an initialiser,
+    /// and under library evolution, which is the strictest of the four.
     case defaultArgument = "default-argument"
 
     /// Arithmetic where an operand is visibly not a number.

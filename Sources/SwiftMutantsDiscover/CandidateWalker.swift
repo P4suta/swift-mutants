@@ -89,13 +89,6 @@ final class CandidateWalker: SyntaxVisitor {
     }
     override func visitPost(_ node: InitializerDeclSyntax) { leave() }
 
-    override func visit(_ node: InitializerClauseSyntax) -> SyntaxVisitorContinueKind {
-        // Only the `= value` of a parameter. The same syntax spells `let x = 1`, which is
-        // ordinary code and stays mutable.
-        guard node.parent?.is(FunctionParameterSyntax.self) == true else { return .visitChildren }
-        return skipRegion(Syntax(node.value), reason: .defaultArgument)
-    }
-
     // MARK: - Candidates
 
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
