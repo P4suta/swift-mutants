@@ -29,10 +29,23 @@ public struct WorkspaceRelativePath: Sendable, Hashable, Comparable, CustomStrin
     /// Whether this names a Swift file.
     ///
     /// A target holding C is a `library` target like any other, so its `.c` and `.h` files
-    /// arrive wherever its Swift does. Parsed as Swift they are not an error - swift-syntax
-    /// reads `#define` and `#include` as macro expansions, which this tool skips - so a
-    /// package vendoring a C dependency got a per-line skip for somebody else's
-    /// preprocessor, reported as a finding about their own code.
+    /// arrive wherever its Swift does. Parsed as Swift they are not an error, and that is
+    /// the trap: the parser accepts them and produces findings.
+    ///
+    /// It had two faces, and the one anybody could see was the harmless one. The visible
+    /// half was noise - swift-syntax reads `#define` and `#include` as macro expansions,
+    /// which this tool skips, so a package vendoring Argon2 got 79 per-line skips for
+    /// somebody else's preprocessor, reported as findings about their own code. Its author
+    /// reported that, and grepped them out.
+    ///
+    /// The half nobody could see was fatal. C and Swift share operator syntax, so
+    /// `return a < b;` in `blake2.c` is a perfectly good `lt-to-le` site to a parser that
+    /// does not know what it is reading - 365 of them in that one package. Those were
+    /// instrumented: Swift ternary guards written into `.c` files that no C compiler
+    /// accepts. Validation then failed, could not attribute the errors to anything, and
+    /// fell to bisection - one full package build per step, cornering several hundred
+    /// refusals. From outside it was a run that printed one progress line and stopped after
+    /// forty minutes.
     ///
     /// By extension rather than by sniffing the contents, because the extension is what
     /// the compiler decides by too.
