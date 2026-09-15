@@ -30,6 +30,37 @@ struct NarrationSummaryTests {
         #expect(lines.count { $0.hasPrefix("  ") } == 2)
     }
 
+    /// A confirmed deadline is a finding about the program, not a gap in the measurement.
+    ///
+    /// It means this change makes the program stop finishing - a stronger statement than
+    /// most survivors make, and one nobody can act on while it is a digit in a tally. The
+    /// scheduler has already ruled out the busy machine by running it again, alone.
+    @Test("names the mutants that never finished, rather than counting them")
+    func namesTimeouts() {
+        let results = [
+            NarrationFixture.result(.timedOut, tests: ["MathTests/testAdd"]),
+            NarrationFixture.result(.killed, tests: ["MathTests/testAdd"]),
+        ]
+        let lines = Narration.summary(of: NarrationFixture.outcome(results: results))
+        #expect(lines.contains { $0.contains("never finished") }, "\(lines)")
+        // Where it is, what it did, and the name to type into `explain` - the same row a
+        // survivor gets, because it is the same kind of news. Exactly one row: the killed
+        // mutant is not one of these.
+        let rows = lines.filter { $0.hasPrefix("  ") }
+        #expect(rows.count == 1, "\(lines)")
+        #expect(rows.first?.contains("Sources/Codec/Header.swift") == true, "\(lines)")
+        #expect(rows.first?.contains("lt-to-le") == true, "\(lines)")
+    }
+
+    /// Nothing at all when nothing ran out of time, for the same reason the survivor
+    /// headings are silent when empty.
+    @Test("says nothing about deadlines when none were met")
+    func noTimeoutHeadingWithoutTimeouts() {
+        let results = [NarrationFixture.result(.killed, tests: ["MathTests/testAdd"])]
+        let lines = Narration.summary(of: NarrationFixture.outcome(results: results))
+        #expect(!lines.contains { $0.contains("never finished") }, "\(lines)")
+    }
+
     /// A heading with nothing under it reads as a claim that the list is empty when it was
     /// never gathered. Silence is the honest shape.
     @Test("prints no heading for a kind of survivor it has none of")

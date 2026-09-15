@@ -37,6 +37,7 @@ enum Narration {
         case .proving: "proving every mutant is in the tree"
         case .building: "building the tests, once"
         case .baseline: "running the tests with nothing awake"
+        case .attributing: "they failed; building your package as you wrote it to see whose fault"
         case .validating(let step): validating(step)
         default: measurement(for: stage)
         }
@@ -169,6 +170,19 @@ enum Narration {
             lines +=
                 ["", "these ran and nothing noticed:"]
                 + unnoticed.map { "  \(describe($0, at: outcome.positions[$0.path]))" }
+        }
+        // Named rather than counted, because a confirmed deadline is a finding about the
+        // program and not a gap in the measurement. The scheduler has already ruled out
+        // the busy machine: a mutant that ran out of time once is retried alone and comes
+        // back `inconclusive` if it then finishes, so everything here failed to finish
+        // twice, the second time with the machine to itself. "This change makes your
+        // program stop terminating" is a stronger statement than most survivors make, and
+        // it is unactionable while it is a digit in a tally.
+        let stuck = outcome.results.filter { $0.verdict.outcome == .timedOut }
+        if !stuck.isEmpty {
+            lines +=
+                ["", "these never finished, twice, the second time on a quiet machine:"]
+                + stuck.map { "  \(describe($0, at: outcome.positions[$0.path]))" }
         }
         lines += [
             "",
