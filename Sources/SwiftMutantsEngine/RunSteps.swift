@@ -119,7 +119,7 @@ extension Run {
         _ tree: URL,
         environment: [String: String],
         progress: @Sendable (RunStage) -> Void
-    ) async throws(RunError) -> BuildManifest? {
+    ) async throws(RunError) -> Primed {
         progress(.priming)
         let scratch = Self.buildDirectory(in: tree)
         let output = await Self.buildDriver(
@@ -140,7 +140,21 @@ extension Run {
                 """
             )
         }
-        return BuildManifest(ofBuild: output.text, plannedBeside: scratch.path)
+        return Primed(
+            manifest: BuildManifest(ofBuild: output.text, plannedBeside: scratch.path),
+            milliseconds: output.milliseconds
+        )
+    }
+
+    /// What building the package as it was written told us.
+    ///
+    /// Two things, and they travel together because the same build produced both: the plan
+    /// SwiftPM made, which is what lets each module be asked on its own, and how long the
+    /// build took, which is the only measurement of what compiling this package costs and
+    /// therefore the only honest source for every compile deadline after it.
+    struct Primed {
+        let manifest: BuildManifest?
+        let milliseconds: Int?
     }
 
     /// The driver that builds the whole package, which is always correct and never quick.
@@ -150,6 +164,7 @@ extension Run {
         environment: [String: String],
         runner: Runner,
         executable: String,
+        timeout: Duration = CompileDeadline.unmeasured,
         narrates: Bool = false
     ) -> SwiftBuildDriver {
         SwiftBuildDriver(
@@ -158,6 +173,7 @@ extension Run {
             root: tree.path,
             scratch: scratch.path,
             environment: environment,
+            timeout: timeout,
             narrates: narrates
         )
     }
@@ -165,10 +181,17 @@ extension Run {
     func validate(
         _ subjects: [FileUnderValidation],
         in tree: URL,
-        using manifest: BuildManifest?,
+        using primed: Primed,
         environment: [String: String],
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Validation {
+        // Derived from the build this run already made, rather than a flat half hour for
+        // every package alike. That number was wrong in both directions: half an hour to
+        // notice a ten-second package has hung, and less than six of its own builds for a
+        // package that takes five minutes - and a compile killed part way is a tree
+        // reported as refusing mutants it would have accepted.
+        let deadline = CompileDeadline.after(
+            primed.milliseconds.map { Duration.milliseconds($0) })
         // SwiftPM rather than a bare `swiftc`, because a package is not a pile of files:
         // each target compiles on its own, against its own dependencies and search paths.
         // With SwiftPM's own plan in hand each module can be asked separately, against the
@@ -179,10 +202,11 @@ extension Run {
             scratch: Self.buildDirectory(in: tree),
             environment: environment,
             runner: runner,
-            executable: executable
+            executable: executable,
+            timeout: deadline
         )
         let validator = Validator(
-            compiler: manifest.map {
+            compiler: primed.manifest.map {
                 ModuleTypecheckDriver(
                     runner: runner,
                     manifest: $0,
@@ -190,6 +214,7 @@ extension Run {
                     cachingModulesIn: Self.buildDirectory(in: tree)
                         .appending(path: "ValidationModuleCache").path,
                     environment: environment,
+                    timeout: deadline,
                     // The same ceiling the mutants will run under. A compiler is heavier
                     // than a test process, so if either number were to be the smaller one
                     // it should be this - and a user who turned `--jobs` down because
@@ -230,7 +255,7 @@ extension Run {
     }
 
     func buildTests(
-        in tree: URL, environment: [String: String]
+        in tree: URL, environment: [String: String], within deadline: Duration
     ) async throws(RunError) -> TestBundles {
         do {
             let bundles = try await SwiftPackageManager(
@@ -238,7 +263,10 @@ extension Run {
             ).buildForTesting(
                 scratch: Self.buildDirectory(in: tree).path,
                 environment: environment,
-                timeout: .seconds(1800)
+                // The same derivation as a validation compile, and the same reason: this
+                // is a full build of the same package with guards in it, and the run
+                // already measured what a full build of it costs.
+                timeout: deadline
             )
             guard !testArguments.isEmpty else { return bundles }
             // The user's arguments go to every bundle, because they are a scope over the

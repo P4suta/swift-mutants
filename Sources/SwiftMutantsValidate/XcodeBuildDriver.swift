@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+
+public import SwiftMutantsCore
 public import SwiftMutantsRunner
 
 /// Asks Xcode to build a scheme's tests, and reports what the compiler said.
@@ -48,7 +50,7 @@ public struct XcodeBuildDriver: TypecheckDriver {
         destination: String,
         derivedData: String,
         environment: [String: String] = [:],
-        timeout: Duration? = .seconds(1800)
+        timeout: Duration? = CompileDeadline.unmeasured
     ) {
         self.runner = runner
         self.executable = executable
@@ -98,6 +100,10 @@ public struct XcodeBuildDriver: TypecheckDriver {
         let said =
             String(decoding: outcome.standardError, as: UTF8.self)
             + String(decoding: outcome.standardOutput, as: UTF8.self)
-        return CompilerOutput(exitCode: Int32(truncatingIfNeeded: outcome.exitCode), text: said)
+        return CompilerOutput(
+            exitCode: Int32(truncatingIfNeeded: outcome.exitCode),
+            text: said,
+            milliseconds: outcome.durationMilliseconds
+        )
     }
 }

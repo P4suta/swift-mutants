@@ -19,10 +19,21 @@ public struct CompilerOutput: Sendable, Hashable {
     /// interleaving order is not something to build a parser on.
     public let text: String
 
+    /// How long the compiler took, when a real one was asked.
+    ///
+    /// Carried because the one build a run makes before it touches anything is the only
+    /// measurement of what compiling this package costs, and every deadline after it was a
+    /// number from nowhere until this was here. `nil` when nothing was measured - a
+    /// scripted driver, or an answer that never reached a process - because nothing
+    /// measured is not zero measured, and a deadline derived from zero is the floor for
+    /// every package alike.
+    public let milliseconds: Int?
+
     /// Records what a compiler said.
-    public init(exitCode: Int32, text: String) {
+    public init(exitCode: Int32, text: String, milliseconds: Int? = nil) {
         self.exitCode = exitCode
         self.text = text
+        self.milliseconds = milliseconds
     }
 }
 

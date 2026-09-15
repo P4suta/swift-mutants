@@ -18,11 +18,13 @@ extension Run {
     func provedBaseline(
         _ scheduler: Scheduler,
         environment: [String: String],
+        within deadline: Duration,
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Verdict {
         let baseline = await scheduler.baseline()
         guard baseline.outcome == .survived else {
-            throw await attributing(baseline, environment: environment, progress: progress)
+            throw await attributing(
+                baseline, environment: environment, within: deadline, progress: progress)
         }
         return baseline
     }
@@ -44,11 +46,14 @@ extension Run {
     func attributing(
         _ baseline: Verdict,
         environment: [String: String],
+        within deadline: Duration,
         progress: @Sendable (RunStage) -> Void
     ) async -> RunError {
         progress(.attributing)
         return RunError(
-            Self.blame(red: baseline, asWritten: await asWritten(environment: environment)))
+            Self.blame(
+                red: baseline,
+                asWritten: await asWritten(environment: environment, within: deadline)))
     }
 
     /// Which of the two failures this is, from the two verdicts and nothing else.
@@ -102,12 +107,14 @@ extension Run {
     /// `nil` rather than a verdict, and the difference decides what gets said. A copy that
     /// would not build establishes nothing about whose failure the red baseline is, and an
     /// outcome invented for it would read exactly like a measurement.
-    func asWritten(environment: [String: String]) async -> Verdict? {
+    func asWritten(environment: [String: String], within deadline: Duration) async -> Verdict? {
         let tree = workspace.appending(path: "as-written")
         guard (try? Snapshot.create(of: root, at: tree)) != nil else { return nil }
         let named = CanonicalPath.of(tree)
         Self.lendDependencies(from: root, to: named)
-        guard let bundles = try? await buildTests(in: named, environment: environment),
+        guard
+            let bundles = try? await buildTests(
+                in: named, environment: environment, within: deadline),
             let pipes = try? pipesDirectory()
         else {
             return nil

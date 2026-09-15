@@ -83,17 +83,27 @@ public struct Run: Sendable {
         progress(.proving)
         try prove(validated.files.map(\.instrumented))
 
+        // Every compile after the first one is bounded by what the first one cost. That
+        // build was the same package, cold, with code generation; everything here is
+        // warmer and does less, so a compile taking many times as long is not slow but
+        // stuck. A flat number was wrong in both directions at once.
+        let deadline = CompileDeadline.after(built.milliseconds.map { .milliseconds($0) })
+
         progress(.building)
-        let bundles = try await buildTests(in: tree, environment: environment)
+        let bundles = try await buildTests(in: tree, environment: environment, within: deadline)
 
         let pipes = try pipesDirectory()
         let calibration = try await calibrate(
-            bundles, in: pipes, environment: environment, progress: progress)
+            bundles,
+            in: pipes,
+            environment: environment,
+            rebuildingWithin: deadline,
+            progress: progress)
         let baseline = calibration.baseline
         let measured = await ask(
             Work(validated: validated, subjects: subjects),
             calibration,
-            at: Site(tree: tree, pipes: pipes, plan: built, environment: environment),
+            at: Site(tree: tree, pipes: pipes, plan: built.manifest, environment: environment),
             listing: listing,
             progress: progress
         )
@@ -171,6 +181,7 @@ public struct Run: Sendable {
         _ bundles: TestBundles,
         in pipes: URL,
         environment: [String: String],
+        rebuildingWithin deadline: Duration,
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Calibration {
         let jobs = Self.jobs(asked: configuration.execution.jobs)
@@ -183,7 +194,7 @@ public struct Run: Sendable {
         )
         progress(.baseline)
         let baseline = try await provedBaseline(
-            calibrating, environment: environment, progress: progress)
+            calibrating, environment: environment, within: deadline, progress: progress)
 
         // Measured the way the mutants will be run, because that is the only figure a
         // deadline can be derived from. It also asks whether this suite can run beside
@@ -340,52 +351,6 @@ public struct Run: Sendable {
     }
 
     /// Runs every mutant of every file, in catalogue order.
-    /// How long the baseline itself is given, before anything is known about the suite.
-    ///
-    /// Generous, because it is spent once and the alternative is a run that gives up on a
-    /// package whose tests are simply long.
-    public static let calibrationBudget: Duration = .seconds(1800)
-
-    /// How long one mutant gets, once the run knows how much of the suite it faces.
-    ///
-    /// This was one number for every mutant - five times the whole contended suite, floor
-    /// of thirty seconds - and coverage was not consulted at all. Coverage is this tool's
-    /// largest saving and it was being spent in one direction only: a mutant reached by
-    /// forty-five of a package's 1333 tests ran forty-five tests and was then given the
-    /// budget of all 1333. Reported from a real package: 898 seconds for a trial that
-    /// runs 3.4% of the suite.
-    ///
-    /// ``Budget`` carries the shape and the reasoning; this supplies the measurements.
-    /// The suite's cost is the *contended* baseline, because that is the figure the
-    /// mutants will live under - measured here, thirty-five seconds alone and over five
-    /// times that with eight at once. The intercept is the cheapest thing the probe phase
-    /// saw, which is a trial that ran one test, on this machine, under this contention.
-    ///
-    /// The asymmetry still sets the direction. A deadline met under load costs one serial
-    /// retry; a deadline set too tight reports a survivor as a detection, which is the
-    /// mistake nobody ever finds out about.
-    public static func budget(
-        from baseline: Verdict, cheapestTrial: Int?, asked: Duration?
-    ) -> Budget {
-        if let asked { return .flat(asked) }
-        return Budget.deriving(
-            suiteMilliseconds: max(baseline.durationMilliseconds, 1),
-            tests: baseline.testsStarted,
-            oneTestMilliseconds: cheapestTrial
-        )
-    }
-
-    /// Where the instrumented copy is built.
-    ///
-    /// Inside the copy, where the package expects to be built, rather than off to one
-    /// side. A test that reaches for something the build produced - a helper executable, a
-    /// generated resource, a fixture binary - looks in `.build` relative to its package,
-    /// and a build placed anywhere else leaves it looking at nothing. Measured on this
-    /// repository: twelve tests failed with nothing awake because the scripted toolchain
-    /// they drive was built somewhere they do not look.
-    ///
-    /// Nothing is polluted by this. The copy is disposable and the tree the user pointed
-    /// at is never written to at all.
     static func buildDirectory(in tree: URL) -> URL {
         tree.appending(path: ".build")
     }

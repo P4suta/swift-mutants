@@ -4,7 +4,7 @@
 import Foundation
 
 public import SwiftMutantsBuild
-import SwiftMutantsCore
+public import SwiftMutantsCore
 public import SwiftMutantsRunner
 
 /// Asks each module on its own, all at once.
@@ -48,7 +48,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         root: String,
         cachingModulesIn cache: String? = nil,
         environment: [String: String] = [:],
-        timeout: Duration? = .seconds(1800),
+        timeout: Duration? = CompileDeadline.unmeasured,
         jobs: Int = 4,
         fallback: any TypecheckDriver
     ) {
@@ -104,7 +104,8 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         return CompilerOutput(
             exitCode: Int32(truncatingIfNeeded: outcome.exitCode),
             text: String(decoding: outcome.standardError, as: UTF8.self)
-                + String(decoding: outcome.standardOutput, as: UTF8.self)
+                + String(decoding: outcome.standardOutput, as: UTF8.self),
+            milliseconds: outcome.durationMilliseconds
         )
     }
 
@@ -153,7 +154,10 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
     static func merged(_ said: [CompilerOutput]) -> CompilerOutput {
         CompilerOutput(
             exitCode: said.first { $0.exitCode != 0 }?.exitCode ?? 0,
-            text: said.map(\.text).joined()
+            text: said.map(\.text).joined(),
+            // The longest of them, because the modules were asked at once: a round of this
+            // costs what its slowest module cost, not what all of them cost added up.
+            milliseconds: said.compactMap(\.milliseconds).max()
         )
     }
 }

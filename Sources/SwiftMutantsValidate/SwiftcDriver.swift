@@ -61,6 +61,10 @@ public struct SwiftcDriver: TypecheckDriver {
         let said =
             String(decoding: outcome.standardError, as: UTF8.self)
             + String(decoding: outcome.standardOutput, as: UTF8.self)
-        return CompilerOutput(exitCode: Int32(truncatingIfNeeded: outcome.exitCode), text: said)
+        return CompilerOutput(
+            exitCode: Int32(truncatingIfNeeded: outcome.exitCode),
+            text: said,
+            milliseconds: outcome.durationMilliseconds
+        )
     }
 }

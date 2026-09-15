@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 public import Foundation
+
+public import SwiftMutantsCore
 import SwiftMutantsRunner
 
 extension SwiftPackageManager {
@@ -19,7 +21,7 @@ extension SwiftPackageManager {
     public func buildForTesting(
         scratch: String,
         environment: [String: String] = [:],
-        timeout: Duration? = .seconds(1800)
+        timeout: Duration? = CompileDeadline.unmeasured
     ) async throws(BuildSystemError) -> TestBundles {
         try await build(scratch: scratch, environment: environment, timeout: timeout)
         let binary = try await binaryPath(scratch: scratch, environment: environment)

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+
+public import SwiftMutantsCore
 public import SwiftMutantsRunner
 
 /// Asks SwiftPM to build a package, and reports what the compiler said.
@@ -41,7 +43,7 @@ public struct SwiftBuildDriver: TypecheckDriver {
         root: String,
         scratch: String,
         environment: [String: String] = [:],
-        timeout: Duration? = .seconds(1800),
+        timeout: Duration? = CompileDeadline.unmeasured,
         narrates: Bool = false
     ) {
         self.runner = runner
@@ -92,6 +94,10 @@ public struct SwiftBuildDriver: TypecheckDriver {
         let said =
             String(decoding: outcome.standardError, as: UTF8.self)
             + String(decoding: outcome.standardOutput, as: UTF8.self)
-        return CompilerOutput(exitCode: Int32(truncatingIfNeeded: outcome.exitCode), text: said)
+        return CompilerOutput(
+            exitCode: Int32(truncatingIfNeeded: outcome.exitCode),
+            text: said,
+            milliseconds: outcome.durationMilliseconds
+        )
     }
 }
