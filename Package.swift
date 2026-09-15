@@ -328,7 +328,9 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftMutantsValidateTests",
-            dependencies: ["SwiftMutantsValidate", "SwiftMutantsDiscover"],
+            dependencies: [
+                "SwiftMutantsDiscover", "SwiftMutantsSnapshot", "SwiftMutantsValidate",
+            ],
             swiftSettings: strict
         ),
         .testTarget(

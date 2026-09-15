@@ -41,10 +41,18 @@ extension Validator {
         let key: Key
     }
 
+    /// Halves until the refusals are cornered, trying each narrowing before the next.
+    ///
+    /// `narrowings` are candidate sets to search, smallest first, and the last one should
+    /// be everything: a narrowing that explains nothing is not a finding, so the search
+    /// falls through to the next rather than concluding. Nothing is rejected on the
+    /// strength of a narrowing - it only decides where to look, and the halving still
+    /// decides what is true - which is why a narrowing may be a guess where attribution
+    /// may not.
     func bisect(
         _ files: [FileUnderValidation],
         discoveries: [FileDiscovery],
-        suspecting suspects: Set<Int> = []
+        trying narrowings: [[Located]]
     ) async throws(ValidationError) -> Bisection {
         // Nothing at all in, anywhere. If that does not build, the package does not build,
         // and none of the errors are about anything this tool did.
@@ -59,13 +67,16 @@ extension Validator {
             )
         }
 
-        // Narrow first, wide only if that explains nothing.
-        let narrowed = Self.candidates(in: discoveries, restrictedTo: suspects)
-        var found = try await search(narrowed, files: files, discoveries: discoveries)
-        if found.refused.isEmpty, !suspects.isEmpty {
-            let everything = Self.candidates(in: discoveries, restrictedTo: [])
-            let wider = try await search(everything, files: files, discoveries: discoveries)
-            found = (wider.refused, found.rounds + wider.rounds)
+        // Smallest first, widening only when a narrowing explains nothing. A narrowing
+        // that is empty, or the same as the one before it, is skipped: searching it would
+        // be a compile spent proving what the last one proved.
+        var found: (refused: [Located], rounds: Int) = ([], 0)
+        var searched: Set<Set<Located>> = []
+        for narrowing in narrowings where !narrowing.isEmpty {
+            guard searched.insert(Set(narrowing)).inserted else { continue }
+            let attempt = try await search(narrowing, files: files, discoveries: discoveries)
+            found = (attempt.refused, found.rounds + attempt.rounds)
+            if !attempt.refused.isEmpty { break }
         }
 
         var result = Bisection(discoveries: discoveries, rounds: bare.rounds + found.rounds)

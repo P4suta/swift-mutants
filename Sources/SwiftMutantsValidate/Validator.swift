@@ -115,6 +115,7 @@ public struct Validator: Sendable {
                 files,
                 from: Rounds(discoveries: discoveries),
                 blaming: attribution.unattributed,
+                written: Written(instrumented, at: paths),
                 progress: progress
             )
             bisected = true
@@ -140,21 +141,97 @@ public struct Validator: Sendable {
         _ files: [FileUnderValidation],
         from state: Rounds,
         blaming unplaceable: [CompilerDiagnostic],
+        written: Written,
         progress: @Sendable (Progress) -> Void
     ) async throws(ValidationError) -> Bisection {
-        // The errors nobody could place still name files. A `missing return` is reported
-        // at a closing brace, nowhere near the mutant that removed the return - but it is
-        // reported in the file that mutant is in. Halving that file's candidates first
-        // costs a compile per halving of twenty rather than of six hundred, and widening
-        // to everything is still there for when it finds nothing.
+        // Three narrowings, smallest first, and each of them is what the compiler already
+        // said read as narrowly as it can be.
+        //
+        // An error nobody could attribute still has a *position*, and the mutants whose
+        // site surrounds that position are the ones worth halving. Attribution refuses to
+        // guess between them - rejecting a mutant that compiles is the expensive mistake -
+        // but halving does not reject anything on a guess: it only decides where to look,
+        // and the compiles still decide what is true. Reported from a real package: a
+        // ternary too expensive to type-check once guards were in it, named down to the
+        // column, and 255 mutants halved because nothing used the column.
+        //
+        // Failing that, the file. A `missing return` is reported at a closing brace,
+        // nowhere near the mutant that removed the return - but in the file that mutant is
+        // in. Failing that, everything, because a narrowing that explains nothing is not a
+        // finding.
+        let pointed = Self.pointedAt(unplaceable, in: written)
         let suspects = Self.suspects(named: unplaceable, among: files)
+        let byFile = Self.candidates(in: state.discoveries, restrictedTo: suspects)
+        let everything = Self.candidates(in: state.discoveries, restrictedTo: [])
         progress(
             .halving(
-                mutants: Self.candidates(in: state.discoveries, restrictedTo: suspects).count,
+                mutants: (pointed.isEmpty ? byFile : pointed).count,
                 unplaceable: unplaceable.first
             ))
         return try await bisect(
-            files, discoveries: state.discoveries, suspecting: suspects)
+            files,
+            discoveries: state.discoveries,
+            trying: [pointed, byFile, everything]
+        )
+    }
+
+    /// The candidates a located diagnostic points at, by file and key.
+    ///
+    /// The mutants whose *site* surrounds the position, not only the copy it fell inside:
+    /// a ternary is one type-checking problem, so an error caused by one branch is often
+    /// reported in the other, and an error about the whole expression is reported at its
+    /// start where no copy reaches.
+    ///
+    /// Empty when nothing can be placed, which is a narrowing that says nothing rather
+    /// than one that says "none of them".
+    static func pointedAt(
+        _ diagnostics: [CompilerDiagnostic], in written: Written
+    ) -> [Located] {
+        var found: Set<Located> = []
+        for diagnostic in diagnostics {
+            guard let position = written.file(named: diagnostic.file) else { continue }
+            let source = written.instrumented[position]
+            guard let offset = LineIndex(source.source).offset(of: diagnostic.position) else {
+                continue
+            }
+            for mutant in source.mutants
+            where mutant.siteSpan.contains(offset: offset)
+                || mutant.instrumentedSpan.contains(offset: offset)
+            {
+                found.insert(Located(file: position, key: Key(mutant.span, mutant.rule)))
+            }
+        }
+        // Ordered, so two runs over the same tree halve the same way and a difference
+        // between two runs is a difference that matters.
+        return found.sorted { ($0.file, $0.key.span.start) < ($1.file, $1.key.span.start) }
+    }
+
+    /// The instrumented files of one round, and where each was written.
+    ///
+    /// One value because they travel together everywhere and are the same list twice: a
+    /// caller holding one without the other could not say which file a diagnostic is in.
+    struct Written {
+
+        /// What was written, in the order the files are in.
+        let instrumented: [InstrumentedFile]
+
+        /// Where each one went, keyed with its links resolved - because the compiler
+        /// resolves them and this tool does not, and on macOS one temporary file has two
+        /// spellings.
+        private let byPath: [String: Int]
+
+        init(_ instrumented: [InstrumentedFile], at paths: [String]) {
+            self.instrumented = instrumented
+            self.byPath = Dictionary(
+                paths.enumerated().map { (Attribute.resolved($0.element), $0.offset) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
+        /// Which of them a compiler was talking about, if any.
+        func file(named path: String) -> Int? {
+            byPath[Attribute.resolved(path)].flatMap { $0 < instrumented.count ? $0 : nil }
+        }
     }
 
     /// Reads what the compiler said and works out which mutants it was about.
