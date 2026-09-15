@@ -88,8 +88,12 @@ public struct Scheduler: Sendable {
     /// The same scheduler, now knowing which tests reach which mutants.
     public func offering(_ coverage: Coverage?) -> Self {
         Self(
-            host: host, jobs: jobs, coverage: coverage, budget: budget,
-            bundleCount: bundleCount)
+            host: host,
+            jobs: jobs,
+            coverage: coverage,
+            budget: budget,
+            bundleCount: bundleCount
+        )
     }
 
     /// The same scheduler, now knowing what a mutant's share of the suite is worth.
@@ -98,8 +102,12 @@ public struct Scheduler: Sendable {
     /// the same phase, and folding them into one call would hide that either can be absent.
     public func budgeting(_ budget: Budget) -> Self {
         Self(
-            host: host, jobs: jobs, coverage: coverage, budget: budget,
-            bundleCount: bundleCount)
+            host: host,
+            jobs: jobs,
+            coverage: coverage,
+            budget: budget,
+            bundleCount: bundleCount
+        )
     }
 
     /// How many processes a catalogue will take, before any of them start.
