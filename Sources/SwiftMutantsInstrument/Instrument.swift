@@ -58,15 +58,19 @@ public enum Instrument {
             sites[candidate.guardSpan, default: []].append(candidate)
         }
 
-        guard
-            let forest = IntervalForest(
-                sites.keys.sorted().map { (span: $0, value: sites[$0] ?? []) }
-            )
-        else {
+        let arranged = sites.keys.sorted().map { (span: $0, value: sites[$0] ?? []) }
+        guard let forest = IntervalForest(arranged) else {
+            // Named, both of them. "Somewhere in this file" leaves a reader grepping a
+            // catalogue for a filename - which is what somebody did, and it worked only
+            // because they already suspected their own rows. Two spans is two lines to go
+            // and look at.
+            let conflict = IntervalForest<[Candidate]>.conflict(in: arranged)
             throw InstrumentError(
                 """
-                \(discovery.path) holds mutation sites that overlap without nesting, which no \
-                splice order can satisfy. This is a defect in discovery rather than in the file.
+                \(discovery.path) holds two mutation sites that overlap without either \
+                containing the other, and no splice order satisfies both - whichever were \
+                written first would destroy the bytes the other was measured against. \
+                \(Self.naming(conflict, in: discovery))
                 """
             )
         }

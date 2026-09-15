@@ -71,6 +71,44 @@ public struct IntervalForest<Value>: Sendable where Value: Sendable {
     /// by start ascending and then by end *descending*, which puts an enclosing span
     /// immediately before everything it encloses.
     public init?(_ entries: [(span: SourceSpan, value: Value)]) {
+        var conflict: Conflict?
+        let built = Self.arranging(entries, refusing: &conflict)
+        guard conflict == nil else { return nil }
+        roots = built
+    }
+
+    /// Two sites no splice order can satisfy, if this set holds any.
+    ///
+    /// The same rule the forest is built by, asked as a question rather than answered with
+    /// a refusal. A caller told only that a file cannot be spliced has to read the file and
+    /// guess which two places are at fault - and somebody did, by grepping a catalogue for
+    /// the filename, which worked only because they already suspected their own rows.
+    public static func conflict(in entries: [(span: SourceSpan, value: Value)]) -> Conflict? {
+        var conflict: Conflict?
+        _ = Self.arranging(entries, refusing: &conflict)
+        return conflict
+    }
+
+    /// Two spans that overlap without either containing the other.
+    ///
+    /// Whichever were written first would destroy the bytes the other was measured
+    /// against, so there is no order in which both can be written.
+    public struct Conflict: Sendable, Hashable {
+
+        /// The one that starts first, or is the wider of two that start together.
+        public let earlier: SourceSpan
+
+        /// The one that runs past the end of it without being inside it.
+        public let later: SourceSpan
+    }
+
+    /// Arranges the spans, and records the first pair that cannot be.
+    ///
+    /// One loop for both questions, so that "can this be spliced" and "what stopped it"
+    /// can never come to different answers.
+    private static func arranging(
+        _ entries: [(span: SourceSpan, value: Value)], refusing conflict: inout Conflict?
+    ) -> [Node] {
         let sorted = entries.enumerated().sorted { left, right in
             if left.element.span.start != right.element.span.start {
                 return left.element.span.start < right.element.span.start
@@ -99,7 +137,10 @@ public struct IntervalForest<Value>: Sendable where Value: Sendable {
             // satisfies both, because whichever is written first destroys the bytes the
             // other was measured against.
             while let top = stack.last, !top.span.contains(span) {
-                guard !top.span.overlaps(span) else { return nil }
+                guard !top.span.overlaps(span) else {
+                    conflict = conflict ?? Conflict(earlier: top.span, later: span)
+                    return finishedRoots
+                }
                 let node = close(stack.removeLast())
                 if stack.isEmpty {
                     finishedRoots.append(node)
@@ -127,6 +168,6 @@ public struct IntervalForest<Value>: Sendable where Value: Sendable {
             }
         }
 
-        roots = finishedRoots
+        return finishedRoots
     }
 }
