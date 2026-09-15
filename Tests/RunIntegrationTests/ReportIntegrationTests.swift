@@ -204,3 +204,58 @@ struct ReproductionIntegrationTests {
         return Int32(outcome.exitCode)
     }
 }
+
+/// What `--json` puts on standard output, and what it must not.
+///
+/// The flag means the report goes to stdout, and a consumer pipes that into `jq`. Progress
+/// went there too, so what they piped began with eleven lines of narration and was not JSON
+/// at all - `jq` fails at column 8 of line 1, and the tool looks broken in a way that has
+/// nothing to do with the run.
+///
+/// Found by this repository's own release gate, which reads two numbers out of the report
+/// with `jq` and could never have worked. A gate that passed without this being noticed
+/// would have been a gate asserting nothing.
+@Suite("What --json writes where")
+struct JsonStreamTests {
+
+    /// Parsed rather than pattern-matched, because "is it JSON" is the whole question and
+    /// a substring check would pass on narration with a brace in it.
+    @Test("puts nothing but the report on standard output", .tags(.integration))
+    func standardOutputIsOnlyTheReport() async throws {
+        let fixture = try RunIntegrationTests.fixture()
+        defer { fixture.cleanUp() }
+
+        let binary = RepositoryGate.root.appending(path: ".build/debug/swift-mutants")
+        try #require(
+            FileManager.default.isExecutableFile(atPath: binary.path),
+            "build the tool before running this"
+        )
+
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = [
+            "run", "--package-path", fixture.root.path, "--no-tui", "--cache", "off", "--json",
+        ]
+        process.environment = RunIntegrationTests.environment()
+        let out = Pipe()
+        let err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        try process.run()
+        let written = out.fileHandleForReading.readDataToEndOfFile()
+        let complained = err.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        try #require(
+            process.terminationStatus == 0,
+            "the run failed: \(String(decoding: complained, as: UTF8.self).suffix(400))"
+        )
+        let parsed = try JSONSerialization.jsonObject(with: written) as? [String: Any]
+        #expect(parsed?["schemaVersion"] as? Int == 2)
+
+        // And the narration still happened, on the other stream, because somebody watching
+        // a long run wants to see it move.
+        let said = String(decoding: complained, as: UTF8.self)
+        #expect(said.contains("reading the sources"), "\(said)")
+    }
+}

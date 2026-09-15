@@ -232,9 +232,38 @@ struct RunCommand: AsyncParsableCommand {
             }
         }
 
+        // With `--json`, standard output carries the report and nothing else. Progress
+        // went there too, so the report a script parsed began with eleven lines of
+        // narration and was not JSON at all - `jq` on it fails at column 8 of line 1.
+        //
+        // Found by this repository's own release gate, which reads two numbers out of the
+        // report with `jq` and could never have worked. A gate that had passed without
+        // that being noticed would have been a gate asserting nothing.
+        //
+        // Stderr rather than silence, because somebody watching a forty-minute run still
+        // wants to see it move, and a terminal shows both.
+        let narrating = json
+        let say: @Sendable (String) -> Void = { line in
+            let text = Data((line + "\n").utf8)
+            if narrating {
+                FileHandle.standardError.write(text)
+            } else {
+                FileHandle.standardOutput.write(text)
+            }
+        }
+        let draw: @Sendable (String) -> Void = { frame in
+            let text = Data(frame.utf8)
+            if narrating {
+                FileHandle.standardError.write(text)
+            } else {
+                FileHandle.standardOutput.write(text)
+            }
+        }
         let progress = RunProgress(
             verbosity: verbosity,
-            drawing: draws(onATerminal: Ambient.isTerminal)
+            drawing: draws(onATerminal: Ambient.isTerminal),
+            say: say,
+            draw: draw
         )
         // One recorder for the whole run. Every subprocess passes through it, so when a run
         // fails an hour in, what it did is already written down - and this is what reads it
