@@ -131,7 +131,12 @@ final class CandidateWalker: SyntaxVisitor {
         let left = node.leftOperand.trimmedDescription
         let right = node.rightOperand.trimmedDescription
         guard left != right else { return }
-        record(Rules.concatSwap, replacing: Syntax(node), with: "\(right) + \(left)")
+        // Parenthesised, because the operands may be chains themselves. `(x + y) + z`
+        // swapped is `z + (x + y)`, and writing that as `z + x + y` re-parses as
+        // `(z + x) + y` - the same value only if `+` associates, which it does for the
+        // standard library and need not for somebody's own operator. The mutation is meant
+        // to be "these two the other way round" and this is that, exactly.
+        record(Rules.concatSwap, replacing: Syntax(node), with: "(\(right)) + (\(left))")
     }
 
     /// Whether an expression is one syntax alone can tell is not arithmetic.
