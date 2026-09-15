@@ -242,28 +242,10 @@ struct RunCommand: AsyncParsableCommand {
         //
         // Stderr rather than silence, because somebody watching a forty-minute run still
         // wants to see it move, and a terminal shows both.
-        let narrating = json
-        let say: @Sendable (String) -> Void = { line in
-            let text = Data((line + "\n").utf8)
-            if narrating {
-                FileHandle.standardError.write(text)
-            } else {
-                FileHandle.standardOutput.write(text)
-            }
-        }
-        let draw: @Sendable (String) -> Void = { frame in
-            let text = Data(frame.utf8)
-            if narrating {
-                FileHandle.standardError.write(text)
-            } else {
-                FileHandle.standardOutput.write(text)
-            }
-        }
-        let progress = RunProgress(
+        let progress = Self.progress(
             verbosity: verbosity,
             drawing: draws(onATerminal: Ambient.isTerminal),
-            say: say,
-            draw: draw
+            reportOwnsStandardOutput: json
         )
         // One recorder for the whole run. Every subprocess passes through it, so when a run
         // fails an hour in, what it did is already written down - and this is what reads it
@@ -303,6 +285,36 @@ struct RunCommand: AsyncParsableCommand {
         ) {
             throw ExitCode(code)
         }
+    }
+}
+
+extension RunCommand {
+
+    /// Where a run's narration goes.
+    ///
+    /// With `--json`, standard output carries the report and nothing else: progress went
+    /// there too, so a report piped into `jq` began with eleven lines of prose and was not
+    /// JSON at all. Stderr rather than silence, because somebody watching a forty-minute
+    /// run still wants to see it move and a terminal shows both.
+    static func progress(
+        verbosity: Verbosity,
+        drawing: Bool,
+        reportOwnsStandardOutput: Bool
+    ) -> RunProgress {
+        let elsewhere = reportOwnsStandardOutput
+        let write: @Sendable (Data) -> Void = { text in
+            if elsewhere {
+                FileHandle.standardError.write(text)
+            } else {
+                FileHandle.standardOutput.write(text)
+            }
+        }
+        return RunProgress(
+            verbosity: verbosity,
+            drawing: drawing,
+            say: { write(Data(($0 + "\n").utf8)) },
+            draw: { write(Data($0.utf8)) }
+        )
     }
 }
 
