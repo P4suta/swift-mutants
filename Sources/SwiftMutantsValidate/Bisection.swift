@@ -76,8 +76,12 @@ extension Validator {
         for narrowing in narrowings where !narrowing.isEmpty {
             guard searched.insert(Set(narrowing)).inserted else { continue }
             let attempt = try await search(
-                narrowing, files: files, discoveries: discoveries, progress: progress,
-                spent: found.rounds)
+                narrowing,
+                files: files,
+                discoveries: discoveries,
+                progress: progress,
+                spent: found.rounds
+            )
             found = (attempt.refused, found.rounds + attempt.rounds)
             if !attempt.refused.isEmpty { break }
         }
@@ -155,11 +159,19 @@ extension Validator {
 
         let middle = subset.count / 2
         let left = try await search(
-            Array(subset[..<middle]), files: files, discoveries: discoveries,
-            progress: progress, spent: spent + attempt.rounds)
+            Array(subset[..<middle]),
+            files: files,
+            discoveries: discoveries,
+            progress: progress,
+            spent: spent + attempt.rounds
+        )
         let right = try await search(
-            Array(subset[middle...]), files: files, discoveries: discoveries,
-            progress: progress, spent: spent + attempt.rounds + left.rounds)
+            Array(subset[middle...]),
+            files: files,
+            discoveries: discoveries,
+            progress: progress,
+            spent: spent + attempt.rounds + left.rounds
+        )
         return (left.refused + right.refused, attempt.rounds + left.rounds + right.rounds)
     }
 
