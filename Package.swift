@@ -297,7 +297,9 @@ let package = Package(
         ),
         .testTarget(
             name: "InstrumentIntegrationTests",
-            dependencies: ["SwiftMutantsInstrument", "SwiftMutantsTestKit"],
+            dependencies: [
+                "SwiftMutantsDiscover", "SwiftMutantsInstrument", "SwiftMutantsTestKit",
+            ],
             swiftSettings: strict
         ),
         .testTarget(

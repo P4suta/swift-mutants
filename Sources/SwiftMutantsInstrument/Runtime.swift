@@ -63,7 +63,20 @@ enum Runtime {
 
     /// The runtime, ready to append.
     ///
-    /// The import is **selective and trailing**, which is two decisions.
+    /// Everything in it is `@usableFromInline internal` rather than `private`, which is one
+    /// decision and not an obvious one. Swift will not let an `@inlinable` function
+    /// reference a private symbol, so a private guard makes every mutant inside such a
+    /// function unbuildable - and they arrive at validation as refusals with no cause a
+    /// reader can see, so the score quietly excludes whatever the package decided was hot.
+    /// Reported from a real package: seventeen `@inlinable` functions across three files,
+    /// all of them the inner loops of a layout solver, which is exactly the code somebody
+    /// cares most about being right.
+    ///
+    /// The cost is module-wide visibility instead of file-wide, and it is not a real one:
+    /// the name carries a digest of the file's path and contents, so two instrumented files
+    /// in one module cannot collide.
+    ///
+    /// The import is **selective and trailing**, which is two more decisions.
     ///
     /// Trailing, because an import at the top would push every line of the file down by one
     /// and a coverage profile taken from the instrumented build would stop lining up with
@@ -80,7 +93,7 @@ enum Runtime {
         // \(count) mutant\(count == 1 ? "" : "s") live in this file, one awake at a time.
         \(activation(token: token))
         \(probing(token: token, count: count, base: base))
-        @inline(__always) private func __sm_\(token)(_ index: UInt32) -> Bool {
+        @inline(__always) @usableFromInline internal func __sm_\(token)(_ index: UInt32) -> Bool {
             if __sm_probe_\(token) >= 0 { __sm_record_\(token)(index) }
             let slot = Int(index) >> 6
             guard slot < __sm_awake_\(token).count else { return false }
@@ -108,7 +121,7 @@ enum Runtime {
         // one built without it warns about a mark that was not needed. Generated code has
         // no business producing a warning either way, and a package that turns warnings
         // into errors would not build at all.
-        private let __sm_awake_\(token): [UInt64] = {
+        @usableFromInline internal let __sm_awake_\(token): [UInt64] = {
             #if hasFeature(StrictMemorySafety)
                 guard let raw = unsafe getenv("\(activationVariable)") else { return [] }
                 let text = unsafe String(cString: raw)
@@ -137,7 +150,7 @@ enum Runtime {
     /// takes a set.
     private static func probing(token: String, count: Int, base: UInt32) -> String {
         """
-        private let __sm_probe_\(token): Int32 = {
+        @usableFromInline internal let __sm_probe_\(token): Int32 = {
             #if hasFeature(StrictMemorySafety)
                 guard let raw = unsafe getenv("\(probeVariable)") else { return -1 }
                 return unsafe open(raw, O_WRONLY | O_APPEND | O_CREAT, 0o644)
@@ -146,9 +159,9 @@ enum Runtime {
                 return open(raw, O_WRONLY | O_APPEND | O_CREAT, 0o644)
             #endif
         }()
-        nonisolated(unsafe) private var __sm_seen_\(token) = [Bool](
+        @usableFromInline nonisolated(unsafe) internal var __sm_seen_\(token) = [Bool](
             repeating: false, count: \(count))
-        private func __sm_record_\(token)(_ index: UInt32) {
+        @usableFromInline internal func __sm_record_\(token)(_ index: UInt32) {
             let slot = Int(index) - \(base)
             guard slot >= 0, slot < __sm_seen_\(token).count, !__sm_seen_\(token)[slot] else {
                 return

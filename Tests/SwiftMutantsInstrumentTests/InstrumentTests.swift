@@ -74,15 +74,43 @@ struct InstrumentTests {
         #expect(instrumented.source.hasSuffix(instrumented.runtime))
     }
 
-    /// A file-local runtime is what lets this work on an Xcode project: nothing has to be
-    /// added to a manifest, and no target membership has to be known.
-    @Test("keeps its runtime private to the file")
-    func runtimeIsFileLocal() throws {
+    /// A runtime that adds nothing to a package is what lets this work on an Xcode
+    /// project: nothing goes in a manifest, no target membership has to be known, and the
+    /// file does not gain a dependency it did not have.
+    ///
+    /// `internal`, not `private`, and that is the one thing here that is not obvious.
+    /// Swift will not let an `@inlinable` function reference a private symbol, so a private
+    /// guard makes every mutant inside one unbuildable - and a package marks its hot paths
+    /// `@inlinable`, which is the code somebody cares most about being right. Module-wide
+    /// visibility costs nothing, because the name carries a digest of the file's path and
+    /// contents.
+    ///
+    /// Never `public`, which would change what the package exports.
+    @Test("adds nothing to the package that a manifest would have to know about")
+    func runtimeAddsNothing() throws {
         let instrumented = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
-        #expect(instrumented.runtime.contains("private let"))
-        #expect(instrumented.runtime.contains("private func"))
         #expect(!instrumented.runtime.contains("public"))
         #expect(!instrumented.runtime.contains("import Foundation"))
+        #expect(!instrumented.runtime.contains("private"))
+    }
+
+    /// Every declaration the guard reaches, not only the guard: an `@inlinable` body that
+    /// calls the guard reaches everything the guard reads.
+    @Test("makes every part of its runtime reachable from inlinable code")
+    func runtimeIsUsableFromInline() throws {
+        let instrumented = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
+        let declarations = instrumented.runtime
+            .split(separator: "\n")
+            .filter {
+                $0.contains("__sm_")
+                    && ($0.contains(" let ") || $0.contains(" func ") || $0.contains(" var "))
+            }
+        #expect(declarations.count >= 4)
+        for declaration in declarations {
+            #expect(
+                declaration.contains("@usableFromInline"),
+                "not reachable from an @inlinable body: \(declaration)")
+        }
     }
 
     /// Muter reads `ProcessInfo.processInfo.environment` inside every guard, which builds a
