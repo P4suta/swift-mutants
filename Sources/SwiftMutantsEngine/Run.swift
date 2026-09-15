@@ -112,7 +112,7 @@ public struct Run: Sendable {
             digests: listing.digests,
             expectations: expectations,
             unanchored: listing.unanchored.map(\.mutant),
-            plan: bundles.plans.first,
+            bundles: bundles,
             shard: configuration.execution.shard
         )
     }

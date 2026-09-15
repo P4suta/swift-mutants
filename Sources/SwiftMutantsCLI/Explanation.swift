@@ -64,33 +64,56 @@ enum Explanation {
         // has the test that caught it, which is a better place to start than a debugger.
         guard invocation.isKnown, mutant.outcome != "killed" else { return [] }
 
-        let spec = Launch(
-            plan: TestPlan(
-                executable: invocation.executable,
-                arguments: invocation.arguments,
-                environment: invocation.environment,
-                directory: invocation.directory,
-                eventStreamVersion: invocation.eventStreamVersion
-            ),
-            worker: 0,
-            timeout: nil
-        ).specification(
-            writingEventsTo: "/dev/null",
-            // A mutant nothing reached was offered no test, and filtering to none of them
-            // would run nothing at all - so it runs the suite, which is what the run did.
-            waking: [UInt32(clamping: mutant.index)],
-            onlyTests: tests.isEmpty ? nil : tests
-        )
+        // The bundles this mutant's tests live in, and only those. A package builds one
+        // per test target, so naming any other would hand somebody a command that runs a
+        // different target from the one that measured their mutant - it would find
+        // nothing, and read as this tool having lied about the mutant surviving.
+        let bundles = invocation.covering(tests)
+        let commands = bundles.map { bundle in
+            let spec = Launch(
+                plan: TestPlan(
+                    executable: bundle.executable,
+                    arguments: bundle.arguments,
+                    environment: invocation.environment,
+                    directory: invocation.directory,
+                    eventStreamVersion: invocation.eventStreamVersion,
+                    module: bundle.module
+                ),
+                worker: 0,
+                timeout: nil
+            ).specification(
+                writingEventsTo: "/dev/null",
+                // A mutant nothing reached was offered no test, and filtering to none of
+                // them would run nothing at all - so it runs the suite, which is what the
+                // run did.
+                waking: [UInt32(clamping: mutant.index)],
+                onlyTests: Self.share(of: tests, in: bundle.module)
+            )
+            return "    \(ProcessSpec.rendered(spec, showing: Set(invocation.environment.keys)))"
+        }
         return [
             "",
-            "to watch it happen:",
+            bundles.count == 1
+                ? "to watch it happen:" : "to watch it happen, in each bundle that ran it:",
             "  cd \(invocation.directory) && \\",
-            "    \(ProcessSpec.rendered(spec, showing: Set(invocation.environment.keys)))",
+        ] + commands + [
             "  "
                 + (invocation.kept
                     ? "that copy is still there, because this run was asked to keep it."
-                    : "that copy has been deleted. Run again with --keep-temp to keep it."),
+                    : "that copy has been deleted. Run again with --keep-temp to keep it.")
         ]
+    }
+
+    /// The tests of `tests` that live in this bundle, or nothing to mean all of them.
+    ///
+    /// A filter naming a test that is not in the bundle matches nothing, and a run of no
+    /// tests reads exactly like a mutant nothing noticed - which is the thing somebody is
+    /// pasting this command to investigate.
+    static func share(of tests: [String], in module: String) -> [String]? {
+        guard !tests.isEmpty else { return nil }
+        guard !module.isEmpty else { return tests }
+        let mine = tests.filter { $0.hasPrefix("\(module).") }
+        return mine.isEmpty ? tests : mine
     }
 
     /// Where it is, in the words an editor takes - or in bytes, when the line is unknown.

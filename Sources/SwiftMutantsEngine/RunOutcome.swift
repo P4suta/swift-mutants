@@ -56,10 +56,14 @@ public struct RunOutcome: Sendable {
 
     /// How this run started a mutant, so that somebody can start one themselves.
     ///
-    /// The plan the trials were built from, kept rather than a finished command line: the
+    /// The plans the trials were built from, kept rather than a finished command line: the
     /// line is built by the same function the runner used, so what somebody pastes is what
     /// ran rather than a plausible-looking reconstruction.
-    public let plan: TestPlan?
+    ///
+    /// All of them, because a package builds one test bundle per test target and a mutant
+    /// faces the ones its tests live in. Keeping one would hand somebody a command that
+    /// runs a different target from the one that measured their mutant.
+    public let bundles: TestBundles?
 
     /// What the project's `[[mutation.expect]]` rows amounted to.
     ///
@@ -97,7 +101,7 @@ public struct RunOutcome: Sendable {
         digests: [WorkspaceRelativePath: Digest] = [:],
         expectations: Expectations.Verdict = .unasked,
         unanchored: [UnanchoredMutant] = [],
-        plan: TestPlan? = nil,
+        bundles: TestBundles? = nil,
         shard: Shard? = nil
     ) {
         self.results = results
@@ -111,7 +115,7 @@ public struct RunOutcome: Sendable {
         self.digests = digests
         self.expectations = expectations
         self.unanchored = unanchored
-        self.plan = plan
+        self.bundles = bundles
         self.shard = shard
     }
 }

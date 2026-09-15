@@ -45,7 +45,7 @@ extension RunReport {
         self.mutants = outcome.results.map { Self.row(of: $0, at: positions, naming: seen) }
         self.rejected = outcome.rejected.map(Self.refusal)
         self.expectations = Expectations(of: outcome.expectations)
-        self.invocation = Invocation(of: outcome.plan, kept: kept)
+        self.invocation = Invocation(of: outcome.bundles, kept: kept)
     }
 
     /// One mutant's row, with where it is in the file a person reads.
@@ -183,13 +183,18 @@ extension RunReport.Invocation {
     /// A run that never got as far as building has no plan, and the empty strings say so
     /// rather than naming a bundle nobody built. `explain` prints nothing in that case,
     /// which is the truth: there is no command that would reproduce it.
-    init(of plan: TestPlan?, kept: Bool) {
+    init(of bundles: TestBundles?, kept: Bool) {
+        let plans = bundles?.plans ?? []
         self.init(
-            executable: plan?.executable ?? "",
-            arguments: plan?.arguments ?? [],
-            directory: plan?.directory ?? "",
-            eventStreamVersion: plan?.eventStreamVersion ?? "",
-            environment: plan?.derived ?? [:],
+            bundles: plans.map {
+                RunReport.LaunchedBundle(
+                    module: $0.module, executable: $0.executable, arguments: $0.arguments)
+            },
+            // Shared across bundles, because one build settled them: the same copy, the
+            // same event stream, the same variables this tool worked out.
+            directory: plans.first?.directory ?? "",
+            eventStreamVersion: plans.first?.eventStreamVersion ?? "",
+            environment: plans.first?.derived ?? [:],
             kept: kept
         )
     }

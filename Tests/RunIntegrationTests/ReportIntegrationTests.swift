@@ -181,14 +181,17 @@ struct ReproductionIntegrationTests {
         let tests = mutant.ran.compactMap {
             report.tests.indices.contains($0) ? report.tests[$0] : nil
         }
+        // The bundle the mutant's tests live in, which is what `explain` names.
+        let bundle = report.invocation.covering(tests).first
         let spec = Launch(
             plan: TestPlan(
-                executable: report.invocation.executable,
-                arguments: report.invocation.arguments,
+                executable: bundle?.executable ?? "",
+                arguments: bundle?.arguments ?? [],
                 environment: RunIntegrationTests.environment()
                     .merging(report.invocation.environment) { _, worked in worked },
                 directory: report.invocation.directory,
-                eventStreamVersion: report.invocation.eventStreamVersion
+                eventStreamVersion: report.invocation.eventStreamVersion,
+                module: bundle?.module ?? ""
             ),
             worker: 0,
             timeout: .seconds(180)

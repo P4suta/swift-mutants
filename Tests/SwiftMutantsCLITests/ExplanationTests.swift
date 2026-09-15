@@ -205,19 +205,32 @@ struct MutantLookupTests {
 struct ReproduceLineTests {
 
     static func invocation(
-        kept: Bool = true, executable: String = "/tmp/w/PTests"
+        kept: Bool = true,
+        executable: String = "/tmp/w/PTests",
+        bundles: [RunReport.LaunchedBundle]? = nil
     )
         -> RunReport.Invocation
     {
         RunReport.Invocation(
-            executable: executable,
-            arguments: ["--quiet"],
+            bundles: bundles
+                ?? [
+                    RunReport.LaunchedBundle(
+                        module: "P", executable: executable, arguments: ["--quiet"])
+                ],
             directory: "/tmp/w",
             eventStreamVersion: "6.3",
             environment: ["DYLD_FRAMEWORK_PATH": "/p/Developer/Library/Frameworks"],
             kept: kept
         )
     }
+
+    /// Two bundles, as a package with two test targets builds.
+    static let twoBundles = [
+        RunReport.LaunchedBundle(
+            module: "P", executable: "/tmp/w/PTests", arguments: ["--quiet"]),
+        RunReport.LaunchedBundle(
+            module: "Q", executable: "/tmp/w/QTests", arguments: ["--quiet"]),
+    ]
 
     static func lines(
         _ invocation: RunReport.Invocation? = nil,
@@ -267,7 +280,53 @@ struct ReproduceLineTests {
     /// inventing the whole thing.
     @Test("says nothing when there was no command")
     func saysNothingWithoutOne() {
+        #expect(Self.lines(Self.invocation(bundles: [])).isEmpty)
         #expect(Self.lines(Self.invocation(executable: "")).isEmpty)
+    }
+
+    /// A package builds one test bundle per test target, and a mutant faces the ones its
+    /// tests live in. Naming another would hand somebody a command that runs a different
+    /// target from the one that measured their mutant: it finds nothing, and reads as this
+    /// tool having lied about the mutant surviving.
+    @Test("names only the bundle the mutant's tests live in")
+    func namesTheRightBundle() {
+        let said = Self.lines(
+            Self.invocation(bundles: Self.twoBundles), tests: ["Q.S/b()"]
+        ).joined(separator: "\n")
+        #expect(said.contains("/tmp/w/QTests"), "\(said)")
+        #expect(!said.contains("/tmp/w/PTests"), "\(said)")
+    }
+
+    /// A mutant several bundles reached needs all of them, and each with its own share of
+    /// the tests: a filter naming a test another bundle holds matches nothing, and a run of
+    /// no tests reads exactly like a mutant nothing noticed.
+    @Test("names every bundle that ran it, each filtered to its own tests")
+    func namesEveryBundleThatRanIt() {
+        let said = Self.lines(
+            Self.invocation(bundles: Self.twoBundles), tests: ["P.S/a()", "Q.S/b()"]
+        ).joined(separator: "\n")
+        #expect(said.contains("/tmp/w/PTests"), "\(said)")
+        #expect(said.contains("/tmp/w/QTests"), "\(said)")
+        let lines = said.split(separator: "\n").map(String.init)
+        let forP = lines.first { $0.contains("PTests") }
+        let forQ = lines.first { $0.contains("QTests") }
+        // The filter is a regex the runner builds, so a test's name arrives escaped and
+        // anchored: `P.S/a()` becomes `^P\\.S/a\\(\\)$`. What matters is which module's
+        // tests each command was narrowed to, and the anchor carries that.
+        #expect(forP?.contains("^P") == true, "\(said)")
+        #expect(forP?.contains("^Q") != true, "\(said)")
+        #expect(forQ?.contains("^Q") == true, "\(said)")
+        #expect(forQ?.contains("^P") != true, "\(said)")
+    }
+
+    /// A mutant nothing reached was offered no test, so every bundle ran it and every one
+    /// of them is worth naming.
+    @Test("names every bundle for a mutant nothing reached")
+    func namesEveryBundleForTheUnreached() {
+        let said = Self.lines(Self.invocation(bundles: Self.twoBundles), tests: [])
+            .joined(separator: "\n")
+        #expect(said.contains("/tmp/w/PTests"), "\(said)")
+        #expect(said.contains("/tmp/w/QTests"), "\(said)")
     }
 
     /// A killed mutant is not a mystery somebody needs to reproduce - they have the test

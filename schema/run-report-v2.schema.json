@@ -184,16 +184,30 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "executable",
-        "arguments",
+        "bundles",
         "directory",
         "eventStreamVersion",
         "environment",
         "kept"
       ],
       "properties": {
-        "executable": { "type": "string" },
-        "arguments": { "type": "array", "items": { "type": "string" } },
+        "bundles": {
+          "description": "Every test bundle the run built. One used to be enough, because a package built one; it builds one per test target now, and a mutant faces the ones its tests live in - so a report carrying a single bundle would hand somebody a command that runs a different target from the one that measured their mutant.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["module", "executable", "arguments"],
+            "properties": {
+              "module": {
+                "description": "The test target it was built from, which is the name its tests wear in front of their own.",
+                "type": "string"
+              },
+              "executable": { "type": "string" },
+              "arguments": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
         "directory": { "type": "string" },
         "eventStreamVersion": { "type": "string" },
         "environment": {
