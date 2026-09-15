@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsTestKit
 import Synchronization
 import Testing
 
-@testable import SwiftMutantsExecute
+@testable import SwiftMutantsCore
 
 /// The pool both phases that start test processes take their worker tokens from.
 ///

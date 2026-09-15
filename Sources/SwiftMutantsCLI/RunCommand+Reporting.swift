@@ -65,14 +65,23 @@ extension RunCommand {
         Self.annotate(account, in: Ambient.environment)
     }
 
-    /// What the flags on this invocation amount to.
-    var asked: Configuration {
-        var configuration = Configuration()
-        configuration.execution.jobs = jobs
-        configuration.execution.shard = shard
-        configuration.execution.provesEquivalence = tce
-        configuration.cache.mode = cache
+    /// What the project wrote down, with what was typed on this invocation over the top.
+    ///
+    /// A flag is what somebody decided just now, so it wins over what they decided once.
+    /// But only a flag that was *given*: every one of these is optional, or a flag whose
+    /// absence is false, and overlaying unconditionally would put the flag's own default
+    /// over whatever the file said. That reads as working - the flags do win - while
+    /// quietly undoing every setting the file holds, which is the same failure as not
+    /// reading the file at all, one layer further in and much harder to see.
+    func asked(startingFrom file: Configuration) -> Configuration {
+        var configuration = file
+        if let jobs { configuration.execution.jobs = jobs }
+        if let shard { configuration.execution.shard = shard }
+        if let cache { configuration.cache.mode = cache }
         if let timeout { configuration.test.timeout = .seconds(timeout) }
+        // A flag with no `--no-` counterpart says nothing by being absent, so it can only
+        // turn equivalence proving on. A project that wants it always says so in the file.
+        if tce { configuration.execution.provesEquivalence = true }
         return configuration
     }
 

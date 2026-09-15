@@ -10,18 +10,26 @@
 /// is not a crash: it is a suite that loses a fixture underneath it, which fails, and a
 /// failure under a mutant is a kill. The collision reports itself as detection.
 ///
-/// This exists as a type because both phases that start test processes need it and both got
+/// This exists as a type because three phases start processes and two of them got
 /// it wrong the same way - a token taken from the position of the work rather than from
 /// which worker is free. Work starts as earlier work finishes and it does not finish in
 /// order, so `position % jobs` hands item `jobs` the token of item 0 the moment *any* of the
 /// first batch finishes, and item 0 is usually not the one that did. Written twice, it was
 /// wrong twice; written once, a caller can only get it wrong by not using it.
-struct WorkerPool: Sendable {
+///
+/// The third caller wants only the ceiling. Asking every module of a package to type-check
+/// at once is a compiler process per module with nothing bounding them, and a compiler is
+/// the most memory-hungry thing this tool starts: on a package of fifty modules that is not
+/// parallelism but a machine that swaps. `jobs` is the one number that says how many
+/// processes this tool may have running, whatever kind they are.
+public struct WorkerPool: Sendable {
 
     /// How many run at once.
-    let jobs: Int
+    public let jobs: Int
 
-    init(jobs: Int) { self.jobs = max(1, jobs) }
+    /// Prepares a pool of `jobs` workers, and never fewer than one - a pool that
+    /// would start nothing is a configuration mistake rather than a request to hang.
+    public init(jobs: Int) { self.jobs = max(1, jobs) }
 
     /// Runs `body` over every item, `jobs` at a time, and hands the answers back in the
     /// order the items were given.
@@ -33,7 +41,7 @@ struct WorkerPool: Sendable {
     /// `asEachFinishes` is called once per item as its answer arrives, in whatever order
     /// they arrive, with the position it came from. It is for showing somebody that
     /// something is happening, so it is given the answer rather than a count.
-    func run<Work: Sendable, Answer: Sendable>(
+    public func run<Work: Sendable, Answer: Sendable>(
         over work: [Work],
         each body: @escaping @Sendable (Work, Int) async -> Answer,
         asEachFinishes finished: (Int, Answer) -> Void = { _, _ in }

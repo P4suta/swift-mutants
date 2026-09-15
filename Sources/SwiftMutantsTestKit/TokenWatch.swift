@@ -9,8 +9,11 @@ import Synchronization
 /// still be running when a later one starts is held until that later one has started,
 /// so the overlap is arranged rather than hoped for. It is released by arrival rather
 /// than by a clock, so the test is the same on a loaded machine as on an idle one, and
-/// it terminates whether the scheduler is right or wrong.
-final class TokenWatch: Sendable {
+/// it terminates whether the thing under test is right or wrong.
+///
+/// Here rather than in one test target because the same property is asserted of the pool
+/// itself and of each phase that takes its tokens from it, and those live apart.
+public final class TokenWatch: Sendable {
 
     private struct State {
         var live: Set<Int> = []
@@ -24,9 +27,11 @@ final class TokenWatch: Sendable {
     private let quorum: Int
 
     /// Releases the waiter once this many workers have started.
-    init(releasingAfter quorum: Int) { self.quorum = quorum }
+    public init(releasingAfter quorum: Int) { self.quorum = quorum }
 
-    func arrive(_ token: Int) {
+    /// Records that a worker has taken this token, and releases the waiter once
+    /// enough of them have.
+    public func arrive(_ token: Int) {
         let release: CheckedContinuation<Void, Never>? = state.withLock { state in
             if state.live.contains(token) { state.collided.insert(token) }
             state.live.insert(token)
@@ -40,9 +45,12 @@ final class TokenWatch: Sendable {
         release?.resume()
     }
 
-    func leave(_ token: Int) { state.withLock { $0.live.remove(token) } }
+    /// Records that the worker holding this token has given it back.
+    public func leave(_ token: Int) { state.withLock { _ = $0.live.remove(token) } }
 
-    func waitForTheRest() async {
+    /// Waits until `quorum` workers have arrived, so that an overlap is arranged
+    /// rather than hoped for.
+    public func waitForTheRest() async {
         let now = state.withLock { $0.arrived >= quorum }
         guard !now else { return }
         await withCheckedContinuation { continuation in
@@ -56,8 +64,8 @@ final class TokenWatch: Sendable {
     }
 
     /// Tokens two workers held at the same moment.
-    var collided: Set<Int> { state.withLock { $0.collided } }
+    public var collided: Set<Int> { state.withLock { $0.collided } }
 
     /// Every token that was handed out.
-    var used: Set<Int> { state.withLock { $0.used } }
+    public var used: Set<Int> { state.withLock { $0.used } }
 }

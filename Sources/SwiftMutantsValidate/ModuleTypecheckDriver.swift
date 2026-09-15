@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+
 public import SwiftMutantsBuild
+import SwiftMutantsCore
 public import SwiftMutantsRunner
 
 /// Asks each module on its own, all at once.
@@ -19,6 +21,10 @@ public import SwiftMutantsRunner
 /// depth of somebody's package and becomes one pass over its breadth, which is also the
 /// shape that parallelises.
 ///
+/// A few at a time, not all at once. The pass is as wide as `jobs` allows, because a
+/// compiler is the most memory-hungry thing this tool starts and a package of fifty modules
+/// would otherwise start fifty of them.
+///
 /// Two things make it sound. The modules are compiled from the plan SwiftPM wrote rather
 /// than from arguments assembled here, so nothing is guessed; and a file that belongs to no
 /// module in that plan sends the whole question to a real build, because a plan that does
@@ -32,6 +38,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
     private let cache: String?
     private let environment: [String: String]
     private let timeout: Duration?
+    private let jobs: Int
     private let fallback: any TypecheckDriver
 
     /// Prepares to ask each module of `manifest`, falling back to `fallback` when it cannot.
@@ -42,6 +49,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         cachingModulesIn cache: String? = nil,
         environment: [String: String] = [:],
         timeout: Duration? = .seconds(1800),
+        jobs: Int = 4,
         fallback: any TypecheckDriver
     ) {
         self.runner = runner
@@ -50,6 +58,7 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         self.cache = cache
         self.environment = environment
         self.timeout = timeout
+        self.jobs = max(1, jobs)
         self.fallback = fallback
     }
 
@@ -60,14 +69,19 @@ public struct ModuleTypecheckDriver: TypecheckDriver {
         }
         guard !wanted.isEmpty else { return CompilerOutput(exitCode: 0, text: "") }
 
-        return await withTaskGroup(of: CompilerOutput.self) { group in
-            for module in wanted {
-                group.addTask { await ask(module) }
-            }
-            var said: [CompilerOutput] = []
-            for await one in group { said.append(one) }
-            return Self.merged(said)
-        }
+        // A few at a time rather than all of them. One compile per module is what turned a
+        // compile per module *layer* into one pass over a package's breadth, and that is
+        // the right shape - but a pass with nothing bounding it starts a compiler per
+        // module, and a compiler is the most memory-hungry thing this tool runs. Fifty at
+        // once on one machine is not parallelism; it is a machine that swaps, and the run
+        // that was supposed to be faster than the serial one ends up slower than it with
+        // nothing in the output to say why.
+        //
+        // `jobs` because it is already the number that says how many processes this tool
+        // may have running, and a second knob for the same question is a knob somebody
+        // sets once and never reconciles with the first.
+        return Self.merged(
+            await WorkerPool(jobs: jobs).run(over: wanted) { module, _ in await ask(module) })
     }
 
     /// One module's answer.

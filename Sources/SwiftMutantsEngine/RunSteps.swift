@@ -3,6 +3,7 @@
 
 public import Foundation
 import SwiftMutantsBuild
+import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsDiscover
 import SwiftMutantsInstrument
@@ -189,6 +190,12 @@ extension Run {
                     cachingModulesIn: Self.buildDirectory(in: tree)
                         .appending(path: "ValidationModuleCache").path,
                     environment: environment,
+                    // The same ceiling the mutants will run under. A compiler is heavier
+                    // than a test process, so if either number were to be the smaller one
+                    // it should be this - and a user who turned `--jobs` down because
+                    // their machine was struggling meant it about every process this tool
+                    // starts, not only the ones it starts last.
+                    jobs: configuration.execution.jobs ?? 4,
                     fallback: building
                 )
             } ?? building,

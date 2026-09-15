@@ -4,6 +4,7 @@
 import Foundation
 import SwiftMutantsCore
 import SwiftMutantsInstrument
+import SwiftMutantsTestKit
 import Testing
 
 @testable import SwiftMutantsExecute

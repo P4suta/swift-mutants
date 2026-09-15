@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 public import Foundation
+
 public import SwiftMutantsBuild
+import SwiftMutantsCore
 public import SwiftMutantsRunner
 
 /// Which tests reach which mutants.

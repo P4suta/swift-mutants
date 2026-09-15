@@ -31,9 +31,13 @@ struct ListCommand: AsyncParsableCommand {
     func run() async throws {
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
         let recorder = TraceRecorder()
+        // The same file `run` reads. This command is documented as saying what a run would
+        // do without doing it, so a version of it that read the defaults while `run` read
+        // the file would be a version that confidently described a different run - and
+        // this is the command people check with.
         let listing = try await Lister(
             root: root,
-            configuration: Configuration(),
+            configuration: try ConfigurationFile.read(in: root),
             runner: Runner(recorder: recorder),
             executable: "/usr/bin/swift"
         ).list()

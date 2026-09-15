@@ -288,7 +288,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftMutantsCoreTests",
-            dependencies: ["SwiftMutantsCore"],
+            dependencies: ["SwiftMutantsCore", "SwiftMutantsTestKit"],
             swiftSettings: strict
         ),
 
@@ -332,7 +332,10 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftMutantsExecuteTests",
-            dependencies: ["SwiftMutantsExecute", "SwiftMutantsBuild", "SwiftMutantsTrace"],
+            dependencies: [
+                "SwiftMutantsExecute", "SwiftMutantsBuild", "SwiftMutantsTestKit",
+                "SwiftMutantsTrace",
+            ],
             swiftSettings: strict
         ),
         .testTarget(

@@ -41,9 +41,13 @@ struct WhySkippedCommand: AsyncParsableCommand {
 
     func run() async throws {
         let root = URL(filePath: packagePath ?? FileManager.default.currentDirectoryPath)
+        // The same file every other command reads. A skip is a decision this tool made,
+        // and half of what decides it - which files are in scope, which operators are on -
+        // is in the configuration: answering "why was this skipped" from the defaults
+        // would be answering about a package nobody asked about.
         let listing = try await Lister(
             root: root,
-            configuration: Configuration(),
+            configuration: try ConfigurationFile.read(in: root),
             runner: Runner(recorder: TraceRecorder())
         ).list(environment: Ambient.environment)
 

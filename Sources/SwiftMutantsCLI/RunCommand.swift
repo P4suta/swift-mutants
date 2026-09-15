@@ -99,7 +99,7 @@ struct RunCommand: AsyncParsableCommand {
                 speed; it reads nothing and writes nothing.
                 """
         ))
-    var cache: CacheMode = .auto
+    var cache: CacheMode?
 
     @Flag(
         name: .long,
@@ -250,12 +250,13 @@ struct RunCommand: AsyncParsableCommand {
         // One recorder for the whole run. Every subprocess passes through it, so when a run
         // fails an hour in, what it did is already written down - and this is what reads it
         // back out, because the moment somebody needs it is the moment the run is over.
+        let settings = try ConfigurationFile.read(in: root)
         let recorder = TraceRecorder(sinks: [LiveTrace(verbosity: verbosity)])
         let outcome: RunOutcome
         do {
             outcome = try await Run(
                 root: root,
-                configuration: asked,
+                configuration: asked(startingFrom: settings),
                 runner: Runner(recorder: recorder),
                 workspace: workspace,
                 testArguments: testArguments,
