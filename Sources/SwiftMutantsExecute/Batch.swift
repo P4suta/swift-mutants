@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsBuild
 public import SwiftMutantsInstrument
 
 /// Several mutants run in one process, chosen so that no test can see more than one.
@@ -45,29 +46,65 @@ public struct Batch: Sendable {
         using coverage: Coverage,
         limit: Int = 8
     ) -> [Self] {
-        var batches: [Self] = []
-        var open: [(mutants: [InstrumentedMutant], tests: Set<String>)] = []
-
+        // Partitioned by the bundles a mutant's tests live in, before anything is grouped.
+        //
+        // A batch used to cost one process. It now costs one per bundle it spans, because
+        // a package builds one test bundle per test target - so a batch holding a mutant
+        // from each of two targets costs two processes and saves nothing. Grouping within
+        // a span first means a batch costs exactly what its first member would have cost
+        // alone, and every other member is free.
+        //
+        // Ordered by where each span was first seen, so the batches of a package are a
+        // function of its catalogue rather than of a dictionary's iteration order.
+        var spans: [[String]] = []
+        var bySpan: [[String]: [(mutant: InstrumentedMutant, tests: Set<String>)]] = [:]
         for mutant in mutants {
             guard let covering = coverage.tests(reaching: mutant.index), !covering.isEmpty else {
                 continue
             }
             let wanted = Set(covering)
-            let joined = open.firstIndex { group in
-                group.mutants.count < limit && group.tests.isDisjoint(with: wanted)
-            }
-            if let joined {
-                open[joined].mutants.append(mutant)
-                open[joined].tests.formUnion(wanted)
-            } else {
-                open.append(([mutant], wanted))
-            }
+            let span = Self.bundles(of: wanted).sorted()
+            if bySpan[span] == nil { spans.append(span) }
+            bySpan[span, default: []].append((mutant, wanted))
         }
 
-        for group in open {
-            batches.append(Self(group.mutants, using: coverage))
+        var batches: [Self] = []
+        for span in spans {
+            var open: [Group] = []
+            for entry in bySpan[span] ?? [] {
+                let joined = open.firstIndex { group in
+                    group.mutants.count < limit && group.tests.isDisjoint(with: entry.tests)
+                }
+                if let joined {
+                    open[joined].mutants.append(entry.mutant)
+                    open[joined].tests.formUnion(entry.tests)
+                } else {
+                    open.append(Group(mutants: [entry.mutant], tests: entry.tests))
+                }
+            }
+            batches += open.map { Self($0.mutants, using: coverage) }
         }
         return batches
+    }
+
+    /// A batch while it is still being filled.
+    ///
+    /// No bundles here: every member of a group shares a span by construction, because the
+    /// groups are built inside one.
+    private struct Group {
+        var mutants: [InstrumentedMutant]
+        var tests: Set<String>
+    }
+
+    /// The bundles a set of tests lives in.
+    ///
+    /// A test names its own: swift-testing identifies it as `Module.Suite/name()`, and a
+    /// test target's module is the bundle it is built into. A name with no module in front
+    /// of it belongs to no bundle this can place, and is left out rather than guessed at -
+    /// the effect is a group that looks narrower than it is, and the worst that costs is a
+    /// batch that spans one more bundle than it meant to.
+    private static func bundles(of tests: Set<String>) -> Set<String> {
+        Set(tests.compactMap { TestBundles.module(of: $0) })
     }
 
     /// One batch, with its tests ordered and attributed.
