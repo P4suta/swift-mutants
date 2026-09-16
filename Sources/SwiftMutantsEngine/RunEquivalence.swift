@@ -58,6 +58,13 @@ extension Run {
             cache: Self.buildDirectory(in: tree).appending(path: "EquivalenceModuleCache").path,
             environment: site.environment
         )
+        // One compile is spent filling the module cache, and its answer is thrown away.
+        // `swiftc -explicit-module-build -emit-sil -o -` against a cache it has to build
+        // exits 0 and prints nothing at all - measured, twice each way - so whichever
+        // compile came first came back empty. That was the original's, which made the
+        // original the digest of an empty string: nothing equalled it, and this pass
+        // proved nothing on any package, ever, while reporting no error of any kind.
+        await lowering.warm(work, file: wanted[0].file, in: tree)
         guard
             let original = await lowering.fingerprint(
                 of: work, file: wanted[0].file, applying: nil, in: tree)
@@ -93,6 +100,16 @@ struct Lowering: Sendable {
     let cache: String
     let environment: [String: String]
 
+    /// Compiles once and throws the answer away, so that no measured compile is the one
+    /// that fills the module cache.
+    ///
+    /// Apart from ``fingerprint(of:file:applying:in:)`` rather than folded into it as a
+    /// retry, because a retry would hide this: the first compile is not slow, it is silent,
+    /// and a reader of a trace should see a compile whose output nobody wanted.
+    func warm(_ work: Work, file position: Int, in tree: URL) async {
+        _ = await fingerprint(of: work, file: position, applying: nil, in: tree)
+    }
+
     /// The fingerprint of one file with one mutant applied, or with none.
     ///
     /// Nothing when the module cannot be found or the compiler would not produce anything.
@@ -125,7 +142,25 @@ struct Lowering: Sendable {
             )
         )
         guard outcome.exitCode == 0 else { return nil }
-        return Fingerprint.of(String(decoding: outcome.standardOutput, as: UTF8.self))
+        return Self.fingerprint(
+            of: outcome.standardOutput, complete: !outcome.standardOutputWasCut)
+    }
+
+    /// The fingerprint in what a lowering compile printed, when what it printed is usable.
+    ///
+    /// Nothing when it printed nothing, and nothing when what it printed did not all fit.
+    /// Both are silence dressed as an answer, and the pass this feeds turns a matching
+    /// fingerprint into "no test could ever have caught this" - so a wrong one here takes a
+    /// real hole in somebody's tests out of their score.
+    ///
+    /// The empty case is not hypothetical. `swiftc -explicit-module-build -emit-sil -o -`
+    /// against a module cache it has to build exits 0 and prints nothing at all, and prints
+    /// the SIL the second time; measured on this toolchain. The original's fingerprint was
+    /// taken by the first compile into a fresh cache, so it was the digest of an empty
+    /// string - and no mutant ever equalled it.
+    static func fingerprint(of sil: [UInt8], complete: Bool) -> Digest? {
+        guard complete, !sil.isEmpty else { return nil }
+        return Fingerprint.of(String(decoding: sil, as: UTF8.self))
     }
 
     /// The original file with one mutant's bytes in it, and nothing else changed.

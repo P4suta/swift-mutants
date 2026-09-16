@@ -188,6 +188,19 @@ public struct ProcessOutcome: Sendable {
     /// The first ``Runner/outputLimit`` bytes it printed to standard output.
     public let standardOutput: [UInt8]
 
+    /// How many bytes it printed to standard output altogether.
+    ///
+    /// Carried because ``standardOutput`` is a head rather than the whole, and a reader
+    /// that cannot tell the difference will read part of an answer as the answer. The one
+    /// that mattered was the equivalence fingerprint: it hashes a module's lowered form,
+    /// and two mutants whose difference lay past the limit would hash the same - reporting
+    /// a real survivor as a mutant nothing could ever catch, which is the one direction
+    /// this tool must never be wrong in.
+    public let standardOutputBytes: Int
+
+    /// Whether what it printed to standard output did not all fit.
+    public var standardOutputWasCut: Bool { standardOutputBytes > standardOutput.count }
+
     /// The first ``Runner/outputLimit`` bytes it printed to standard error.
     public let standardError: [UInt8]
 

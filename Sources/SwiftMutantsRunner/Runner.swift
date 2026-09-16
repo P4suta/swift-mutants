@@ -287,6 +287,7 @@ public struct Runner: Sendable {
             stoppedEarly: completion.stoppedEarly,
             durationMilliseconds: completion.duration,
             standardOutput: output.retained,
+            standardOutputBytes: output.total,
             standardError: accounted.error,
             startFailure: completion.startFailure,
             traceSequence: event.sequence

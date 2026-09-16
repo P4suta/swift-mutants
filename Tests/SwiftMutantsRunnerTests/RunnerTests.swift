@@ -175,5 +175,19 @@ struct RunnerTests {
         #expect(outcome.standardOutput.count == 64)
         let execution = try #require(recorder.retainedEvents().compactMap(Self.execution).first)
         #expect(execution.standardOutputBytes == 5000)
+        // And the caller is told too, not only the record. A caller that reads the output
+        // for an answer rather than for a person needs to know it is holding part of one.
+        #expect(outcome.standardOutputBytes == 5000)
+        #expect(outcome.standardOutputWasCut)
+    }
+
+    /// Output that fitted is not reported as cut, or every reader would refuse every answer.
+    @Test("says nothing was cut when nothing was")
+    func saysWhenNothingWasCut() async throws {
+        let runner = Runner(recorder: TraceRecorder(), outputLimit: 64)
+        let outcome = await runner.run(Self.shell("printf 'hello'"))
+
+        #expect(outcome.standardOutputBytes == 5)
+        #expect(!outcome.standardOutputWasCut)
     }
 }

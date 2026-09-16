@@ -13,6 +13,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Equivalence proving finds equivalent mutants at all. It never had: the first compile
+  into a module cache it has to build exits 0 and prints no SIL whatsoever, so the
+  original's fingerprint was the digest of an empty string and no mutant ever equalled it.
+  One compile now fills the cache and its answer is thrown away, and a compile that
+  printed nothing is refused as a fingerprint rather than hashed.
 - A suppression comment may name any family the catalogue has. The list a comment was
   checked against was written out by hand beside the rules and was missing
   `concatenation`, so a project that disabled their own family was told it was a typo and
@@ -72,3 +77,8 @@ All notable changes to this project are documented here. The format follows
 - `reuse lint` runs from the pinned tool set like every other gate, rather than being
   fetched at run time by a tool that is not pinned at all, and reports a file it objects to
   by name rather than only failing.
+- A compile whose output did not all fit is refused as a fingerprint. Output is captured
+  up to a limit and a module's lowered form is easily larger, so two mutants differing
+  past the limit had the same head - and hashing the head reports a real survivor as a
+  mutant nothing could ever catch, which takes a genuine hole in somebody's tests out of
+  their score. A process outcome now says how many bytes there really were.
