@@ -73,9 +73,24 @@ extension RunReport {
             ran: result.verdict.startedTests.compactMap { seen[$0] },
             testsStarted: result.verdict.testsStarted,
             attempts: result.attempts,
+            cpuMilliseconds: Reported(result.verdict.cpuMilliseconds),
+            stoppedBy: Reported(Self.limit(that: result.verdict.termination)),
             durationMilliseconds: result.verdict.durationMilliseconds,
             index: Int(result.index)
         )
+    }
+
+    /// Which of this tool's own limits stopped a trial, when one of them did.
+    ///
+    /// Nothing for a process that ended by itself, however it ended: that is an answer
+    /// about the program. These two are answers about limits set from here, and the report
+    /// says which because the outcome cannot - `timed-out` covers both.
+    private static func limit(that termination: Termination) -> String? {
+        switch termination {
+        case .overranWork: "processor-allowance"
+        case .timedOut: "deadline"
+        case .exited, .stopped, .couldNotStart: nil
+        }
     }
 
     /// One refusal's row, with the compiler's own words in it.

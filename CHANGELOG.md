@@ -13,6 +13,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A mutant that ran out of time says how much processor its trial used, and which of this
+  tool's limits stopped it. A confirmed timeout counts as a detection, and on a real
+  package it can be a fifth of them: measured by a project using this tool, 84 of 399
+  detections in a 52.85% score, every one retried and none changed by the retry. Whether
+  those were mutants that stopped a program terminating or trials that never got the
+  machine decides whether the number is a finding or a gap, and the report carried no way
+  to ask. The trial had both answers the whole time - `Verdict` has the processor time and
+  `Termination` says whether the kernel stopped it for working or a clock stopped it for
+  waiting - and the row it wrote carried neither.
 - A command this tool stopped says which of its limits fired, rather than reporting the
   signal as an exit status. `swift package describe` stopped at its deadline was reported
   as "exited 143. It said nothing." - a fact about somebody's package, with a number they

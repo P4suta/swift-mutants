@@ -109,6 +109,8 @@
           "ran",
           "testsStarted",
           "attempts",
+          "cpuMilliseconds",
+          "stoppedBy",
           "durationMilliseconds",
           "index"
         ],
@@ -141,6 +143,15 @@
           },
           "testsStarted": { "$ref": "#/$defs/count" },
           "attempts": { "$ref": "#/$defs/count" },
+          "cpuMilliseconds": {
+            "description": "Processor time the deciding trial used. Null when nothing measured it. This is what tells a confirmed timeout from a trial that never got the processor: a deadline is wall clock, which says as much about the machine as about the program, and processor time is about the program alone.",
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "stoppedBy": {
+            "description": "Which of this tool's own limits stopped the trial, when one did. Null when the process ended by itself. The outcome is `timed-out` for both, so without this a mutant the kernel stopped for working and one a clock stopped for waiting are the same row.",
+            "enum": ["processor-allowance", "deadline", null]
+          },
           "durationMilliseconds": { "$ref": "#/$defs/count" },
           "index": {
             "description": "Which guard in the instrumented tree it is - the number SWIFT_MUTANTS_ACTIVE takes.",

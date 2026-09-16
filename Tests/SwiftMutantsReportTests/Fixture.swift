@@ -62,6 +62,34 @@ extension RunReportTests {
             )
         }
 
+        /// One row whose verdict the caller spells in full.
+        ///
+        /// For the questions that are about the verdict rather than about the outcome: how
+        /// much processor a trial used, which limit stopped it. `result(_:tests:)` builds a
+        /// plausible one, and a test about a field it does not vary cannot say anything.
+        static func result(verdict: Verdict) -> MutantResult {
+            MutantResult(
+                identity: MutantIdentity(
+                    MutantIdentity.Inputs(
+                        path: path,
+                        enclosingDeclaration: "s:7Example1fyySiF",
+                        rule: rule,
+                        span: span,
+                        sourceDigest: Digest.of("a < b"),
+                        originalBytes: Digest.of("<"),
+                        replacementBytes: Digest.of("<=")
+                    )
+                ),
+                path: path,
+                rule: rule,
+                span: span,
+                original: "<",
+                replacement: "<=",
+                verdict: verdict,
+                attempts: 1
+            )
+        }
+
         static func result(_ outcome: Outcome, tests: [String]) -> MutantResult {
             MutantResult(
                 identity: MutantIdentity(

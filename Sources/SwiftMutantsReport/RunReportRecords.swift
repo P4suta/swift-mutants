@@ -61,6 +61,35 @@ extension RunReport {
         /// of time and was tried again with the rest of this run idle.
         public let attempts: Int
 
+        /// How much processor the trial that decided it used, when it could be measured.
+        ///
+        /// The number that tells a confirmed timeout from a trial that never got the
+        /// machine. A deadline is wall clock, and wall clock is a fact about the machine as
+        /// much as about the program; processor time is a fact about the program alone. A
+        /// mutant stopped after thirty seconds having used four hundred milliseconds did
+        /// not stop a program terminating - it waited.
+        ///
+        /// Measured on a project using this tool: 84 of 399 detections in a 52.85% score
+        /// were timeouts, every one retried and none changed by the retry, and their report
+        /// carried no way to ask which kind they were. The trial had this number the whole
+        /// time and the row it wrote did not.
+        ///
+        /// Null rather than zero when nothing measured it. A run whose trials could not
+        /// account for themselves must not report that they did no work.
+        public let cpuMilliseconds: Reported<Int>
+
+        /// Which of this tool's limits stopped the trial, when one of them did.
+        ///
+        /// `processor-allowance` when the kernel stopped it for doing more work than it was
+        /// allowed, which is the same on any machine and needs no second opinion.
+        /// `deadline` when a clock stopped it, which on a busy machine may be a fact about
+        /// the machine. Null when neither fired, which is most mutants.
+        ///
+        /// Apart from ``outcome`` because the outcome is `timed-out` either way: the
+        /// scheduler tells them apart to decide what to retry, and until this existed that
+        /// distinction died inside the trial and every timed-out row looked alike.
+        public let stoppedBy: Reported<String>
+
         /// How long the run that decided it took.
         public let durationMilliseconds: Int
 
@@ -87,6 +116,8 @@ extension RunReport {
             ran: [Int],
             testsStarted: Int,
             attempts: Int,
+            cpuMilliseconds: Reported<Int> = Reported(nil),
+            stoppedBy: Reported<String> = Reported(nil),
             durationMilliseconds: Int,
             index: Int
         ) {
@@ -103,6 +134,8 @@ extension RunReport {
             self.ran = ran
             self.testsStarted = testsStarted
             self.attempts = attempts
+            self.cpuMilliseconds = cpuMilliseconds
+            self.stoppedBy = stoppedBy
             self.durationMilliseconds = durationMilliseconds
             self.index = index
         }
