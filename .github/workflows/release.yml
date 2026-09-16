@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# What a tag turns into.
+#
+# Binaries rather than a source build, because the sibling project this one learned from
+# shipped a Homebrew formula that built from source and it broke for everybody the first
+# time a toolchain moved under it. An artifact bundle is what SwiftPM itself installs and
+# what a tap can pour without a compiler on the far end.
+#
+# Every gate the repository has runs first. A tag is the one moment nobody re-reads the
+# output, so it is the one moment the job has to be the reader.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to build, for a dry run that publishes nothing
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gates:
+    name: Every gate, before anything is built
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+          # The gates that decide whether a tag ships do not read a cache either: a gate
+          # that can be made to pass by writing to a cache is not a gate.
+          cache: false
+      - run: mise run check
+      - run: mise run test:integration
+      - run: mise run gate:release
+
+  bundle:
+    name: The artifact bundle
+    needs: gates
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+          # Nothing restored from a cache goes into something that ships. A cache is
+          # writable by any job that can run on this repository, and this is the one job
+          # whose output people install without reading.
+          cache: false
+      # The version the binary reports has to be the version on the tag. A build that
+      # calls itself `0.0.0-dev` in every report it writes is a build nobody can trace a
+      # report back to.
+      #
+      # Through the environment rather than interpolated into the shell. A tag name is
+      # attacker-controlled - anybody who can push one chooses the text - and expanding it
+      # into a command line is how that text becomes a command.
+      - name: Write the version this build calls itself
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: ./scripts/stamp-version.sh "$TAG"
+      - name: Build both architectures and bundle them
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: ./scripts/make-bundle.sh "$TAG"
+      - name: A bill of materials for what is inside it
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          syft scan dir:. --source-name swift-mutants \
+            --source-version "$TAG" \
+            -o cyclonedx-json=swift-mutants.cdx.json
+      # The bundle says its own version back, which is the one check that catches a
+      # stamped build that did not get stamped.
+      - name: Say what the bundle claims to be
+        run: |
+          binary="$(find .build/artifacts -type f -name swift-mutants -perm -u+x | head -1)"
+          test -n "$binary" || { echo "no binary in the bundle" >&2; exit 1; }
+          "$binary" --version
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: swift-mutants-artifactbundle
+          path: |
+            swift-mutants.artifactbundle.zip
+            swift-mutants.artifactbundle.zip.sha256
+            swift-mutants.cdx.json
+          if-no-files-found: error
