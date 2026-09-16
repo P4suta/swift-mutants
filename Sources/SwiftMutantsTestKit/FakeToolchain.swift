@@ -103,12 +103,22 @@ public struct FakeToolchain: Sendable {
         }) {
             return found
         }
+        // What `.build` actually holds, because the layout is the thing that changes and a
+        // list of places that were wrong does not say which place is right. CI reported
+        // two candidates and no others, which meant this could not read `.build` at all -
+        // and nothing in the message said whether it was missing, empty or unreadable.
+        let build = RepositoryGate.root.appending(path: ".build")
+        let held =
+            (try? FileManager.default.contentsOfDirectory(atPath: build.path))
+            .map { $0.isEmpty ? "<empty>" : $0.sorted().joined(separator: ", ") }
+            ?? "<not readable>"
         throw Failure(
             """
             swift-mutants-fake-toolchain was not found. `swift build --build-tests` builds \
             it; if it is missing, the package layout has changed.
             Looked in:
             \(candidates.map { "  " + $0.path }.joined(separator: "\n"))
+            \(build.path) holds: \(held)
             """
         )
     }
@@ -120,7 +130,18 @@ public struct FakeToolchain: Sendable {
     /// scratch path or a configuration this does not know about.
     private static func buildDirectories() -> [URL] {
         let build = RepositoryGate.root.appending(path: ".build")
-        var directories = [build.appending(path: "debug"), build.appending(path: "release")]
+        // `.build/debug` is a symlink SwiftPM keeps for compatibility; the products
+        // themselves sit under `out/Products` in the layout this toolchain writes, and
+        // under a triple-specific directory in the one before it. All three are named
+        // because which of them exists is a fact about the toolchain rather than about
+        // this package, and a helper that knew only one of them fails on the machine that
+        // has another - which is what it did the first time it ran anywhere else.
+        var directories = [
+            build.appending(path: "debug"),
+            build.appending(path: "release"),
+            build.appending(path: "out/Products/Debug"),
+            build.appending(path: "out/Products/Release"),
+        ]
         let contents =
             (try? FileManager.default.contentsOfDirectory(
                 at: build,
