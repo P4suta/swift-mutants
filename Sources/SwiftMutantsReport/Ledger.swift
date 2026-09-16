@@ -98,9 +98,18 @@ public final class Ledger: Sendable {
     public func record(_ answer: Answer) {
         guard var line = try? JSONEncoder().encode(answer) else { return }
         line.append(0x0A)
-        _ = [UInt8](line).withUnsafeBufferPointer { bytes in
+        // Both spellings again, and the same disagreement: 6.4 calls a marker on
+        // `withUnsafeBufferPointer` unnecessary and 6.3 requires it.
+        let encoded = [UInt8](line)
+        #if compiler(>=6.4)
+        _ = encoded.withUnsafeBufferPointer { bytes in
             unsafe bytes.baseAddress.map { unsafe write(descriptor, $0, bytes.count) }
         }
+        #else
+        _ = unsafe encoded.withUnsafeBufferPointer { bytes in
+            unsafe bytes.baseAddress.map { unsafe write(descriptor, $0, bytes.count) }
+        }
+        #endif
     }
 
     /// The answers kept at `file`, in the order they arrived.

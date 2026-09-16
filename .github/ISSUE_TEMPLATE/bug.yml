@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+---
+
+name: Bug report
+description: Report a reproducible defect in swift-mutants
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting. Mutation reports, traces and diagnostics carry
+        source code and local paths; remove private data before submitting.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed secrets and private source from anything pasted here.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: swift-mutants version or commit
+      placeholder: 0.1.0 or a commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        Include macOS version, architecture, and what `swift --version` says.
+        `swift-mutants doctor --json` answers all of this at once.
+      placeholder: macOS 26.6 arm64; Swift 6.4
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        The command you ran and a minimal public package or source excerpt.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: wallclock
+    attributes:
+      label: If something hung or timed out, what processor time did it use?
+      description: >-
+        `ps -o time` on the stuck process, or the `cpuMilliseconds` of the
+        mutant in the report. A process that waited and a process that would not
+        terminate look identical on the clock and differ entirely here, and it
+        is the first thing this project will ask.
+      placeholder: "real 513s, user 0.24s, sys 0.20s"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: >-
+        `SWM` codes, the run's `error.txt`, or `swift-mutants trace summary` -
+        after removing private data.
+      render: text

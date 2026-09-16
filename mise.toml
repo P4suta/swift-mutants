@@ -7,7 +7,9 @@
 
 [tools]
 swiftlint = "0.65.1"
-periphery = "3.8.0"
+# macOS only, and mise installs the whole set on every runner: an Ubuntu job asking
+# for this fails before it reaches the gate it was there to run.
+periphery = { version = "3.8.0", os = ["macos"] }
 typos = "1.48.0"
 rumdl = "0.2.43"
 taplo = "0.10.0"
@@ -27,8 +29,11 @@ jq = "1.8.2"
 watchexec = "2.7.2"
 
 [env]
-# The toolchain this package is developed and gated against.
-SWIFT_MUTANTS_REQUIRED_SWIFT = "6.4"
+# The oldest toolchain this package supports. A floor rather than the version it happens
+# to be developed on: the generated runtime spells its unsafe markers both ways under
+# `compiler(>=6.4)` so that 6.3 and 6.4 each build it without a warning, and a gate pinned
+# to the newer one contradicted that on every machine that has the older.
+SWIFT_MUTANTS_REQUIRED_SWIFT = "6.3"
 # Warnings are errors in every gated build. It lives here rather than in Package.swift,
 # where `unsafeFlags` would make this package unusable as a versioned dependency.
 SWIFT_MUTANTS_STRICT_BUILD_FLAGS = "-Xswiftc -warnings-as-errors"
