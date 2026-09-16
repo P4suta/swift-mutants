@@ -123,6 +123,42 @@ enum Rules {
     }
 
     /// The prunes each connective offers.
+    /// A range that reaches one element further than it was written to.
+    ///
+    /// The fencepost, written down. `a..<b` made `a..<(b + 1)` includes the element the
+    /// author decided to leave out, and on an index that is a trap rather than a wrong
+    /// answer - which is a kill, and a fast one.
+    ///
+    /// **Not** `..<` swapped for `...`, which was the obvious rule and does not work. The
+    /// two operators build *different types* - `Range` and `ClosedRange` - and a ternary
+    /// guard needs its branches to unify, so every one of those mutants was refused by the
+    /// compiler. Found by a compile gate, and the reason this family looks the way it does:
+    /// shifting the bound keeps the type by construction.
+    ///
+    /// The upper bound rather than the lower, because that is where fencepost bugs live:
+    /// the start of a range is nearly always a constant somebody typed once.
+    static let widenRange = Prune(
+        side: .right, name: "range-one-further", family: "range-operator")
+
+    /// What a program does when there is nothing.
+    ///
+    /// `a ?? b` made to reach for `b` every time asks whether anything ever tests the
+    /// *present* case. Made to insist on `a`, it asks whether anything tests the absent one
+    /// - and traps where nothing does, which is a kill rather than a wrong answer.
+    ///
+    /// Two different holes, and most suites have exactly one of them.
+    ///
+    /// The default side is a prune, because `b` is already the type the whole expression
+    /// has. The value side cannot be: `a` is the *optional*, so keeping it on its own is a
+    /// type error wherever the result is used, and this rule would have generated nothing
+    /// but rejections. It is written as a force unwrap instead, which has the right type by
+    /// construction.
+    static let coalesceToDefault = Prune(
+        side: .right, name: "coalesce-to-default", family: "optional-handling")
+
+    static let coalesceToForce = Prune(
+        side: .left, name: "coalesce-to-force", family: "optional-handling")
+
     static let connectivePrunes: [String: [Prune]] = [
         "&&": [
             Prune(side: .left, name: "and-keep-lhs", family: "boolean-connective"),
@@ -273,7 +309,10 @@ enum Rules {
         for prunes in connectivePrunes.values {
             for prune in prunes { table[prune.name] = prune.family }
         }
-        for prune in [dropCondition, neverDecides, concatSwap, replaceBody, stopBody] {
+        for prune in [
+            dropCondition, neverDecides, concatSwap, replaceBody, stopBody,
+            coalesceToDefault, coalesceToForce, widenRange,
+        ] {
             table[prune.name] = prune.family
         }
         return table
@@ -283,6 +322,7 @@ enum Rules {
     static let families: Set<String> = [
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
         "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
+        "range-operator", "optional-handling",
     ]
 
     /// The identifier for a swap, at the version this build emits.

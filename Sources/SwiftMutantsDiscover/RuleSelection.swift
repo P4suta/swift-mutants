@@ -37,7 +37,7 @@ public struct RuleSelection: Sendable, Hashable {
                 "condition-decision", "concatenation",
             ]
         ),
-        (.strong, ["arithmetic-assignment", "bitwise"]),
+        (.strong, ["arithmetic-assignment", "bitwise", "range-operator", "optional-handling"]),
         (.all, []),
     ]
 

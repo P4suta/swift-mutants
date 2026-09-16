@@ -162,7 +162,7 @@ so what `list` describes is what `run` would do.
 | Tier | Adds |
 | --- | --- |
 | `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order |
-| `strong` | compound arithmetic assignment, bitwise |
+| `strong` | compound arithmetic assignment, bitwise, optional handling, range bounds |
 | `all` | nothing yet — the rules its tier is for are not built |
 
 `operators = ["lt-to-le"]` names them outright and wins over the tier, because a name is
@@ -187,6 +187,22 @@ A suite that does not give the same answer twice about the same program makes ev
 below it meaningless — a mutant is reported as caught by a failure that had nothing to do
 with it — so the baseline is measured `baseline_runs` times and a disagreement is named for
 what it is, rather than blamed on the instrumentation.
+
+### The two families Swift has that other languages do not
+
+A range and a coalescing operator are where Swift puts the two mistakes every language
+makes: the off-by-one, and the decision about what to do when there is nothing.
+
+`a..<b` becomes `a..<(b + 1)` — the fencepost, written down. Not `..<` swapped for `...`,
+which was the obvious rule and does not work: the two build *different types*, and the
+guard around a mutant needs both its branches to be the same one. Shifting the bound keeps
+the type by construction.
+
+`a ?? b` becomes `b`, which asks whether anything ever tests the case where `a` is there,
+and `(a)!`, which asks whether anything tests the case where it is not — and traps where
+nothing does, which is a detection rather than a wrong answer. The two sides are written
+differently for the same reason as above: `b` is already the type of the whole expression
+and `a` is the optional.
 
 ### Replacing a body outright
 

@@ -116,6 +116,20 @@ final class CandidateWalker: SyntaxVisitor {
             return .visitChildren
         }
         guard let swap = Rules.binaryOperators[token.operator.text] else {
+            // Some operators have no other operator to be swapped for and are still worth
+            // mutating. `??` is the one: there is no second coalescing operator, but either
+            // of its operands standing alone is a mutant, and a sharp one.
+            //
+            // Reached through this door rather than the one below, which would have called
+            // it user-defined - and it is nothing of the kind.
+            if token.operator.text == "??" {
+                recordCoalescing(of: node)
+                return .visitChildren
+            }
+            if token.operator.text == "..<" || token.operator.text == "..." {
+                recordWiderRange(of: node, spelled: token.operator.text)
+                return .visitChildren
+            }
             // An operator this tool has no meaning for. Swift lets a package define its
             // own, and swapping one for another would be swapping something for something
             // else at random.
@@ -193,6 +207,44 @@ final class CandidateWalker: SyntaxVisitor {
     /// grouping at all, so a walk over the raw tree would have to guess which operands
     /// belong to which connective - and would guess wrong in exactly the cases where
     /// precedence is the thing under test.
+    /// A range that reaches one element further than it was written to.
+    ///
+    /// The bound is shifted rather than the operator swapped, because `..<` and `...` build
+    /// different types and a ternary guard needs its branches to unify. Shifting keeps the
+    /// type by construction.
+    ///
+    /// Not offered where the bound is visibly not a number: `"a"..<"z"` has no `+ 1`, and a
+    /// mutant no compiler accepts costs a build and reports a rejection.
+    private func recordWiderRange(of node: InfixOperatorExprSyntax, spelled text: String) {
+        guard !Self.isVisiblyNotANumber(node.rightOperand) else {
+            note(.nonNumericOperand, over: Syntax(node), hiding: 1)
+            return
+        }
+        record(
+            Rules.widenRange,
+            replacing: Syntax(node),
+            with: "\(node.leftOperand.flattenableDescription) \(text) "
+                + "((\(node.rightOperand.flattenableDescription)) + 1)")
+    }
+
+    /// The two mutants a coalescing operator has.
+    ///
+    /// Asymmetric, and the asymmetry is the whole of it. The default side is already the
+    /// type the expression has, so it is kept as it stands. The value side is the
+    /// *optional*, so keeping it alone is a type error wherever the result is used - it has
+    /// to be written as a force unwrap, which has the right type and traps exactly where
+    /// nothing tested the absent case.
+    ///
+    /// Parenthesised, because the operand can be any expression and `a as? T` followed by
+    /// `!` is not what anybody meant.
+    private func recordCoalescing(of node: InfixOperatorExprSyntax) {
+        record(Rules.coalesceToDefault, keeping: Syntax(node.rightOperand), of: Syntax(node))
+        record(
+            Rules.coalesceToForce,
+            replacing: Syntax(node),
+            with: "(\(node.leftOperand.flattenableDescription))!")
+    }
+
     private func recordPrunes(of node: InfixOperatorExprSyntax, spelled operatorText: String) {
         guard let prunes = Rules.connectivePrunes[operatorText] else { return }
         for prune in prunes {
