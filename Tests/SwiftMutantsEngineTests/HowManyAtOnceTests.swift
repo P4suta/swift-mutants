@@ -54,4 +54,45 @@ struct HowManyAtOnceTests {
         #expect(Run.jobs(asked: 0) == 1)
         #expect(Run.jobs(asked: -2) == 1)
     }
+
+    /// Cores are not the only thing a trial needs.
+    ///
+    /// A mutant is a test bundle loaded into a process, and a machine with more cores than
+    /// memory to put a bundle in for each of them runs out of memory rather than out of
+    /// cores. Reported from a run killed by its harness for memory pressure at 755 of 755 -
+    /// after every answer was in, which is the most expensive moment to be killed.
+    ///
+    /// Physical memory rather than free memory, deliberately. Free memory changes second to
+    /// second, so choosing the width from it would make a run's shape depend on whatever
+    /// happened to be running at second zero - which is the class of dependency this tool
+    /// spent yesterday removing from its verdicts, and it has no more business deciding the
+    /// width than it had deciding a deadline.
+    @Test("never asks for more trials at once than there is memory to hold one each")
+    func boundedByMemory() {
+        // A machine with plenty of cores and little memory: the memory decides.
+        #expect(Run.jobs(asked: nil, cores: 16, memoryBytes: 8 << 30) == 4)
+        // And one with plenty of memory: the cores decide, as before.
+        #expect(Run.jobs(asked: nil, cores: 18, memoryBytes: 48 << 30) == 18)
+    }
+
+    /// Half the machine, because the other half is the operating system, the editor, the
+    /// build cache and whatever else the person is doing. A tool that helped itself to all
+    /// of a machine would be a tool people run once.
+    @Test("leaves half the machine to everything else")
+    func leavesRoom() {
+        #expect(Run.jobs(asked: nil, cores: 64, memoryBytes: 16 << 30) == 8)
+    }
+
+    /// Never nought, however small the machine. One at a time is slow; none at a time is a
+    /// run that answers nothing.
+    @Test("runs one at a time on a machine too small for even that")
+    func tinyMachine() {
+        #expect(Run.jobs(asked: nil, cores: 1, memoryBytes: 1 << 20) == 1)
+    }
+
+    /// And a number somebody typed still wins over both. They can see their machine.
+    @Test("does what it was told, whatever the machine looks like")
+    func askedStillWins() {
+        #expect(Run.jobs(asked: 12, cores: 2, memoryBytes: 1 << 30) == 12)
+    }
 }

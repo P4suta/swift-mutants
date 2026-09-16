@@ -31,10 +31,44 @@ extension Run {
     ///
     /// Never fewer than one, whatever was asked: a run that starts nothing is worse than a
     /// run that is slow.
-    static func jobs(asked: Int?) -> Int {
-        guard let asked else { return max(1, ProcessInfo.processInfo.activeProcessorCount) }
-        return max(1, asked)
+    ///
+    /// ## Cores are not the only thing a trial needs
+    ///
+    /// A mutant is a test bundle loaded into a process, and a machine with more cores than
+    /// memory to put a bundle in for each of them runs out of memory rather than out of
+    /// cores. Reported from a run killed by its harness for memory pressure at 755 of 755 -
+    /// after every answer was in, which is the most expensive moment there is to be killed.
+    ///
+    /// **Physical** memory, not free memory. Free memory changes second to second, so
+    /// choosing the width from it would make a run's shape depend on whatever happened to
+    /// be running at second zero - the class of dependency this tool removed from its
+    /// verdicts, and it has no more business deciding the width than it had deciding a
+    /// deadline. The cost of that choice is honest and worth stating: this does **not**
+    /// help a machine that is busy with something else. That machine wants `--jobs`, and
+    /// nothing derivable can tell it apart from an idle one of the same size.
+    static func jobs(
+        asked: Int?,
+        cores: Int = ProcessInfo.processInfo.activeProcessorCount,
+        memoryBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
+    ) -> Int {
+        guard asked == nil else { return max(1, asked ?? 1) }
+        let room = Int(memoryBytes / 2 / UInt64(Self.trialMemoryBytes))
+        return max(1, min(max(cores, 1), room))
     }
+
+    /// What one trial is assumed to need.
+    ///
+    /// A gibibyte, which is also the floor the memory limit uses. An assumption rather than
+    /// a measurement, and the reason is worth writing down rather than leaving as a gap:
+    /// what a trial actually costs could be measured from the solitary baseline, but only
+    /// through a wrapper that reports peak resident size - and the two programs that do
+    /// (`/usr/bin/time -l` on Darwin, `-v` on Linux) print different words for it. That is
+    /// two parsers for a number whose only use is to divide a machine in half.
+    ///
+    /// Wrong in the generous direction for a small suite and the tight direction for a
+    /// package whose bundle is enormous. The second is the one that would hurt, and it
+    /// hurts by being slow rather than by being killed.
+    static let trialMemoryBytes = 1 << 30
 
     /// How long the baseline itself is given, before anything is known about the suite.
     ///

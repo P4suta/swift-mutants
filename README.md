@@ -126,7 +126,7 @@ swift build -c release
 | `--no-tui` | print lines rather than drawing, even on a terminal |
 | `--keep-temp` | keep the copy the run happened in, so `explain`'s command is one you can paste |
 | `--trace` | keep a recording of everything the run starts; `trace summary` says where the time went |
-| `-j`, `--jobs` | how many mutants at once. Defaults to this machine's cores |
+| `-j`, `--jobs` | how many mutants at once. Defaults to this machine's cores, or to what its memory holds a test bundle for, whichever is fewer. A machine busy with other work wants this set: nothing derivable can tell a busy machine from an idle one of the same size |
 | `--timeout` | one deadline for every mutant, instead of the allowance derived from your suite |
 
 ### What bounds a mutant
