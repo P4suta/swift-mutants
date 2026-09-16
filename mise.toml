@@ -106,7 +106,9 @@ run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip XcodeIntegrationTests
 description = "Drives Xcode itself: schemes, .xctestrun, result bundles"
 # Apart from test:integration because it needs Xcode rather than a Swift toolchain, and
 # because one build-for-testing is slower than the whole integration tier.
-run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --filter 'XcodeIntegrationTests|XcodeBuildDriverTests'"
+# Through the wrapper because this is the one task that filters, and a filter naming
+# something that no longer exists runs nothing and exits 0.
+run = "./scripts/filtered-tests.sh $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --filter 'XcodeIntegrationTests|XcodeBuildDriverTests'"
 
 [tasks."gate:release"]
 description = "The shipped configuration: optimised, built from nothing, run end to end"
