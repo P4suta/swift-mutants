@@ -69,6 +69,55 @@ struct UnbuiltSettingTests {
         #expect(said.contains("build") || said.contains("version"), "\(said)")
     }
 
+    /// The test command is the same shape of claim: it is stored and honoured by nothing,
+    /// because a run builds the bundles once and launches them directly.
+    @Test("refuses a test command this build cannot run")
+    func refusesCommand() {
+        #expect(throws: ConfigurationError.self) {
+            try Self.decode(
+                """
+                [test]
+                command = ["swift", "test"]
+                """)
+        }
+    }
+
+    /// And says where the thing that does work is, because somebody writing this wanted to
+    /// narrow their suite and there is a way to do that.
+    @Test("points at the arguments that do reach the tests")
+    func pointsAtArguments() throws {
+        let thrown = #expect(throws: ConfigurationError.self) {
+            try Self.decode("[test]\ncommand = [\"swift\", \"test\"]")
+        }
+        #expect(thrown?.reason.contains("--") == true, "\(thrown?.reason ?? "")")
+    }
+
+    /// Memory is refused on a measurement rather than a belief: under `ulimit -v 262144`
+    /// this platform reports `unlimited` and lets a process take four gigabytes, so the
+    /// limit it would be built on does not limit anything.
+    @Test("refuses a memory bound this platform will not enforce")
+    func refusesMemory() {
+        #expect(throws: ConfigurationError.self) {
+            try Self.decode(
+                """
+                [test]
+                memory = "2GiB"
+                """)
+        }
+    }
+
+    /// The value is not read first. Complaining that `2 gigs` is not a size would send
+    /// somebody to correct a number that was never going to be used, and they would then
+    /// meet the real refusal on the next run.
+    @Test("says the bound is not built rather than that the size is malformed")
+    func doesNotGradeTheValue() throws {
+        let thrown = #expect(throws: ConfigurationError.self) {
+            try Self.decode("[test]\nmemory = \"2 gigs\"")
+        }
+        #expect(thrown?.reason.contains("memory") == true, "\(thrown?.reason ?? "")")
+        #expect(thrown?.reason.contains("is not a size") != true, "\(thrown?.reason ?? "")")
+    }
+
     /// Asking for what this build does is not an error.
     @Test("accepts being told not to do it")
     func acceptsFalse() throws {

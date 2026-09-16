@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format follows
   pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
+- `strict`, `minimum_score`, `formats`, `directory`, `high` and `low` now do what they
+  say, and `baseline_runs` measures the baseline that many times: a suite that disagrees
+  with itself is named as flaky rather than reported as this tool's instrumentation being
+  broken. `test.command` and `test.memory` are refused, the second on a measurement — this
+  platform reports `unlimited` under `ulimit -v` and lets a process take four gigabytes.
 - `profile` and `operators` now select which operators a run uses. They were read,
   validated and written into the file `init` produces with a comment explaining the tiers,
   and then honoured by nothing at all: setting `profile = "all"` changed no mutant. A rule a

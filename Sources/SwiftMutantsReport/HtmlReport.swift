@@ -15,7 +15,14 @@ import Foundation
 public enum HtmlReport {
 
     /// The whole page.
-    public static func page(of report: RunReport, sources: [String: String]) -> String {
+    ///
+    /// `high` and `low` are the scores a project decided are good and poor. They mark the
+    /// headline, which is the one number anybody reads: a page that says 63% and nothing
+    /// else leaves every reader to decide privately whether that is good, and the point of
+    /// writing a threshold down is that a team decides it once.
+    public static func page(
+        of report: RunReport, sources: [String: String], high: Int = 80, low: Int = 60
+    ) -> String {
         let survivors = report.mutants.filter { $0.outcome == "survived" }
         return """
             <!DOCTYPE html>
@@ -29,7 +36,7 @@ public enum HtmlReport {
             </head>
             <body>
             <h1>swift-mutants</h1>
-            \(Self.scoreboard(report))
+            \(Self.scoreboard(report, high: high, low: low))
             \(survivors.isEmpty ? "<p class=\"clear\">Nothing survived.</p>" : Self.files(survivors, in: sources))
             <footer>\(Self.escaped(report.tool.name)) \(Self.escaped(report.tool.version))</footer>
             </body>
@@ -42,7 +49,26 @@ public enum HtmlReport {
     /// Both, because they answer different questions and one number is actively
     /// misleading: how much of the code the tests protect, and how good the tests that
     /// exist are.
-    static func scoreboard(_ report: RunReport) -> String {
+    /// Which of the three a score is, or nothing when there is no score.
+    ///
+    /// Nothing is not poor. A score of `N/A` means the denominator was empty - nothing was
+    /// measured - and colouring that red says the tests are bad when the truth is that
+    /// there was nothing for them to catch.
+    ///
+    /// At the threshold counts as meeting it: `high = 80` reads as "eighty is good", and a
+    /// team that hits exactly eighty being told it is only fair is the kind of detail that
+    /// makes somebody stop believing the page.
+    ///
+    /// The two are in different units, as they always were: a score is a fraction and a
+    /// threshold is a percentage, because that is how everybody writes one down.
+    static func standing(_ fraction: Double?, high: Int, low: Int) -> String {
+        guard let fraction else { return "" }
+        if fraction >= Double(high) / 100 { return " good" }
+        if fraction < Double(low) / 100 { return " poor" }
+        return " fair"
+    }
+
+    static func scoreboard(_ report: RunReport, high: Int, low: Int) -> String {
         let summary = report.summary
         let columns = [
             ("killed", summary.killed), ("survived", summary.survived),
@@ -54,9 +80,12 @@ public enum HtmlReport {
         }.joined(separator: "\n")
         return """
             <section class="score">
-            <p class="headline">\(Self.percentage(summary.score.value))
+            <p class="headline\(Self.standing(summary.score.value, high: high, low: low))">\
+            \(Self.percentage(summary.score.value))
             <span>of the code these tests protect</span></p>
-            <p class="headline">\(Self.percentage(summary.scoreOfCoveredCode.value))
+            <p class="headline\
+            \(Self.standing(summary.scoreOfCoveredCode.value, high: high, low: low))">\
+            \(Self.percentage(summary.scoreOfCoveredCode.value))
             <span>of the code they reach</span></p>
             <ul class="counts">
             \(counts)
@@ -158,6 +187,9 @@ public enum HtmlReport {
                  border-block: 1px solid color-mix(in srgb, currentColor 20%, transparent);
                  padding-block: 1rem; }
         .headline { font-size: 2rem; font-weight: 600; margin: 0; }
+        .headline.good { color: #1a7f37; }
+        .headline.fair { color: #9a6700; }
+        .headline.poor { color: #b3261e; }
         .headline span { display: block; font-size: .8rem; font-weight: 400; opacity: .7; }
         .counts { list-style: none; display: flex; flex-wrap: wrap; gap: 1rem;
                   margin: 0; padding: 0; opacity: .85; }

@@ -45,13 +45,35 @@ extension RunCommand {
     /// The report is kept before anything is printed, so a run whose output somebody
     /// scrolled past is still a run `explain` can answer about. Failing to keep it is a
     /// warning rather than a failure: the run answered the question it was asked.
-    func publish(_ outcome: RunOutcome, at root: URL) throws {
+    /// Which documents to write.
+    ///
+    /// The flag names them outright; an empty flag is nobody having said, so the file
+    /// answers. Overlaying the flag's own empty default would write nothing at all while
+    /// reading as though the flag had won - and a project that set `formats` would find its
+    /// reports had quietly stopped being written.
+    ///
+    /// A project that asks for none gets none, which is why this is about whether the flag
+    /// said anything rather than about whether the result is empty.
+    static func chosen(
+        formats asked: [ReportFormat], from settings: Configuration.Report
+    ) -> Set<ReportFormat> {
+        asked.isEmpty ? Set(settings.formats) : Set(asked)
+    }
+
+    func publish(_ outcome: RunOutcome, at root: URL, settings: Configuration) throws {
         // Whether the copy the run happened in survives this process, which is what decides
         // whether `explain`'s command is one somebody can paste or one they would have to
         // work out has already been deleted.
         let account = RunReport(of: outcome, kept: keepTemp)
         try? ReportStore.write(account, to: ReportStore.location(for: root))
-        let published = (try? Publishing.write(account, formats: Set(report), into: root)) ?? []
+        let published =
+            (try? Publishing.write(
+                account,
+                formats: Self.chosen(formats: report, from: settings.report),
+                into: root,
+                at: settings.report.directory,
+                high: settings.report.high,
+                low: settings.report.low)) ?? []
 
         if json {
             print(String(decoding: try RunReport.encoded(account), as: UTF8.self))

@@ -33,16 +33,22 @@ public enum Publishing {
     ///     directory: a tool that made an empty folder in somebody's repository for a thing
     ///     they did not ask for would be a tool they stop running.
     ///   - root: the package the run was about, which is where the sources are read from.
+    ///   - directory: where inside the package they go, which a project can choose. It
+    ///     defaults to the same place it has always been, so a package with nothing written
+    ///     down sees no change - and one that did write something down stops being ignored.
+    ///   - high: the score a project decided is good, which marks the headline of the page.
+    ///   - low: the score it decided is poor.
     /// - Returns: the files written, in a fixed order.
     /// - Throws: whatever the file system said, when a document could not be written. A
     ///   run that answered and then could not save its answer is worth saying out loud
     ///   rather than swallowing.
     @discardableResult
     public static func write(
-        _ report: RunReport, formats: Set<ReportFormat>, into root: URL
+        _ report: RunReport, formats: Set<ReportFormat>, into root: URL,
+        at directory: String = Self.directory, high: Int = 80, low: Int = 60
     ) throws -> [URL] {
         guard !formats.isEmpty else { return [] }
-        let home = root.appending(path: Self.directory)
+        let home = root.appending(path: directory)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
         let sources = Self.sources(of: report, in: root)
@@ -56,7 +62,9 @@ public enum Publishing {
             case .sarif:
                 try SarifReport.encoded(SarifReport(of: report)).write(to: file)
             case .html:
-                try Data(HtmlReport.page(of: report, sources: sources).utf8).write(to: file)
+                try Data(
+                    HtmlReport.page(of: report, sources: sources, high: high, low: low).utf8
+                ).write(to: file)
             }
             written.append(file)
         }

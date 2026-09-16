@@ -26,7 +26,6 @@ struct ConfigurationTests {
         #expect(configuration.mutation.include.isEmpty)
         #expect(configuration.mutation.exclude.isEmpty)
         #expect(configuration.mutation.extreme == false)
-        #expect(configuration.test.command == ["swift", "test"])
         #expect(configuration.test.baselineRuns == 3)
         #expect(configuration.execution.jobs == nil)
         #expect(configuration.cache.mode == .auto)
@@ -48,9 +47,7 @@ struct ConfigurationTests {
             operators = ["comparison", "optional-handling"]
 
             [test]
-            command = ["swift", "test", "--filter", "Fast"]
             timeout = "90s"
-            memory = "2GiB"
             baseline_runs = 5
 
             [execution]
@@ -77,9 +74,7 @@ struct ConfigurationTests {
         #expect(configuration.mutation.extreme == false)
         #expect(configuration.mutation.include.map(\.description) == ["Sources/**/*.swift"])
         #expect(configuration.mutation.operators == ["comparison", "optional-handling"])
-        #expect(configuration.test.command == ["swift", "test", "--filter", "Fast"])
         #expect(configuration.test.timeout == .seconds(90))
-        #expect(configuration.test.memoryBytes == 2 * 1024 * 1024 * 1024)
         #expect(configuration.test.baselineRuns == 5)
         #expect(configuration.execution.jobs == 4)
         #expect(configuration.cache.mode == .enabled)
@@ -177,26 +172,6 @@ struct ConfigurationTests {
     func readsDurations(text: String, expected: Duration) throws {
         let configuration = try Self.decode("[test]\ntimeout = \"\(text)\"")
         #expect(configuration.test.timeout == expected)
-    }
-
-    /// Binary units only. A bound that reads as two gigabytes and is quietly seven per cent
-    /// tighter is a bound nobody can reason about, so the decimal spellings are refused
-    /// rather than reinterpreted.
-    @Test(
-        "refuses a decimal byte unit rather than reinterpreting it",
-        arguments: ["2GB", "512MB", "1kB"])
-    func refusesDecimalByteUnits(text: String) {
-        #expect(throws: ConfigurationError.self) {
-            try Self.decode("[test]\nmemory = \"\(text)\"")
-        }
-    }
-
-    @Test(
-        "reads binary byte units",
-        arguments: [("512B", 512), ("2KiB", 2048), ("3MiB", 3 * 1024 * 1024)])
-    func readsBinaryByteUnits(text: String, expected: Int) throws {
-        let configuration = try Self.decode("[test]\nmemory = \"\(text)\"")
-        #expect(configuration.test.memoryBytes == expected)
     }
 
     /// An expectation is evidence somebody wrote down, so it has to name a mutant that

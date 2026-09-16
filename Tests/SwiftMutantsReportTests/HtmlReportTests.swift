@@ -24,6 +24,22 @@ struct HtmlReportTests {
             results: results.map { RunReportTests.Fixture.result($0.0, tests: $0.1) })
     }
 
+    /// A report whose score is a given fraction, built from a tally rather than from that
+    /// many fixtures: the page reads the summary, and a hundred mutants sharing one
+    /// identity would be a fixture arguing with itself.
+    ///
+    /// Nothing means nothing was measured, which is a different page from a bad score.
+    static func report(scoring fraction: Double?) -> RunReport {
+        guard let fraction else {
+            return RunReportTests.report(
+                summary: RunReportTests.Fixture.counts(killed: 0, survived: 0, uncovered: 0))
+        }
+        let killed = Int((fraction * 100).rounded())
+        return RunReportTests.report(
+            summary: RunReportTests.Fixture.counts(
+                killed: killed, survived: 100 - killed, uncovered: 0))
+    }
+
     static func page(_ results: [(Outcome, [String])] = [(.survived, [])]) -> String {
         HtmlReport.page(
             of: Self.report(results),
@@ -142,4 +158,70 @@ struct HtmlReportTests {
         #expect(places == places.sorted())
     }
 
+}
+
+/// What the thresholds a project set are for.
+///
+/// `high` and `low` were read out of the settings file, validated as integers, stored, and
+/// then consulted by nothing: the page had no thresholds in it at all. A project that wrote
+/// them got a page identical to one that had not, and no way to tell.
+///
+/// They mark the headline, which is the one number anybody reads. A page that says 63% and
+/// nothing else leaves each reader to decide privately whether that is good, and the whole
+/// point of writing a threshold down is that a team decides it once.
+@Suite("The thresholds a project set")
+struct HtmlThresholdTests {
+
+    static func page(scoring fraction: Double, high: Int = 80, low: Int = 60) -> String {
+        HtmlReport.page(
+            of: HtmlReportTests.report(scoring: fraction),
+            sources: [:],
+            high: high,
+            low: low)
+    }
+
+    @Test("marks a score at or above high as good")
+    func good() {
+        #expect(Self.page(scoring: 0.91).contains("headline good"))
+    }
+
+    /// At the threshold, not above it. `high = 80` reads as "eighty is good", and a team
+    /// that hits exactly eighty being told it is only fair is the kind of detail that makes
+    /// somebody stop believing the page.
+    @Test("counts the threshold itself as good")
+    func atHigh() {
+        #expect(Self.page(scoring: 0.80).contains("headline good"))
+    }
+
+    @Test("marks a score below low as poor")
+    func poor() {
+        #expect(Self.page(scoring: 0.41).contains("headline poor"))
+    }
+
+    @Test("marks what is between them as neither")
+    func fair() {
+        let page = Self.page(scoring: 0.70)
+        #expect(page.contains("headline fair"), "neither good nor poor")
+        #expect(!page.contains("headline good"))
+        #expect(!page.contains("headline poor"))
+    }
+
+    /// The thresholds are the project's, so they have to actually move it. A page that
+    /// marked the same score the same way whatever was written down would be the defect
+    /// this replaced, one layer in.
+    @Test("moves with the thresholds the project set")
+    func movesWithTheSettings() {
+        #expect(Self.page(scoring: 0.70, high: 65, low: 40).contains("headline good"))
+        #expect(Self.page(scoring: 0.70, high: 95, low: 75).contains("headline poor"))
+    }
+
+    /// A score of nothing is not a poor score. Nothing was measured, and colouring `N/A`
+    /// red says the tests are bad when the truth is that there was nothing to catch.
+    @Test("says nothing about a score there is none of")
+    func unmeasured() {
+        let page = HtmlReport.page(
+            of: HtmlReportTests.report(scoring: nil), sources: [:], high: 80, low: 60)
+        #expect(!page.contains("headline poor"), "N/A must not read as a bad score")
+        #expect(!page.contains("headline good"))
+    }
 }

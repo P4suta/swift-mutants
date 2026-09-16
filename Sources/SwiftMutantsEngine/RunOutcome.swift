@@ -156,6 +156,14 @@ public enum RunStage: Sendable, Hashable {
     case proving
     case baseline
 
+    /// The suite did not give the same answer twice about the same program.
+    ///
+    /// Said rather than thrown when the baseline passed anyway: a suite that flickered and
+    /// then settled green is still a suite whose verdicts are about the weather, and a
+    /// reader should know that before they read a score. It becomes the run's error only
+    /// when one of the measurements was red, because then there is nothing left to measure.
+    case flickering(String)
+
     /// Tests that stepped aside in the copy, and so cannot catch anything here.
     ///
     /// Said once, after the baseline, because the baseline is the one run that offers the

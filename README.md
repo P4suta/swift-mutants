@@ -175,6 +175,19 @@ A rule a tier leaves out is a **skip**, not a silence: `why-skipped` reports it 
 `swift-mutants init` writes the tier table into your settings file from the same table a run
 reads, so the explanation you are handed cannot drift from the run you get.
 
+### Settings that do something
+
+Every setting in the file is read by a run, and one this build cannot honour is **refused
+with the line it is on** rather than stored and ignored. `strict` and `minimum_score` gate
+the exit code; `formats`, `directory`, `high` and `low` decide what is written and how the
+headline is marked; `baseline_runs` decides how many times the baseline is measured before
+it is trusted.
+
+A suite that does not give the same answer twice about the same program makes every verdict
+below it meaningless — a mutant is reported as caught by a failure that had nothing to do
+with it — so the baseline is measured `baseline_runs` times and a disagreement is named for
+what it is, rather than blamed on the instrumentation.
+
 ### Survivors you have accounted for
 
 Some survivors are not holes. A mutant in code unreachable by construction survives every

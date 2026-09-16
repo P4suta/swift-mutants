@@ -133,12 +133,8 @@ public struct Configuration: Sendable, Hashable {
 
     /// How to run the tests.
     public struct Test: Sendable, Hashable {
-        /// An argument vector, never a shell string.
-        public var command: [String] = ["swift", "test"]
         /// How long a mutant may take. Unset derives one from the baseline.
         public var timeout: Duration?
-        /// How much memory a mutant's tree may hold. Unset derives one from the baseline.
-        public var memoryBytes: Int?
         /// How many times to measure the baseline. Every observation is kept.
         public var baselineRuns = 3
 
@@ -209,7 +205,7 @@ public struct Configuration: Sendable, Hashable {
 
 /// When outcomes a run has proven may be reused.
 public enum CacheMode: String, Sendable, Hashable, CaseIterable {
-    /// Reuse only for a test command this tool can reason about.
+    /// Reuse when the answer still rests on the same things it did.
     case auto
     /// Reuse, on the caller's promise that the command is reproducible.
     ///

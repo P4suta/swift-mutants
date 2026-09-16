@@ -26,6 +26,7 @@ extension Narration {
     static func news(for stage: RunStage) -> String? {
         switch stage {
         case .skipped(let tests): Self.skipped(tests)
+        case .flickering(let said): said
         default: nil
         }
     }
@@ -37,6 +38,7 @@ extension Narration {
         case .discovering: "reading the sources"
         case .priming: "building your package as you wrote it, once"
         case .skipped(let tests): Self.skipped(tests)
+        case .flickering(let said): said
         default: preparation(for: stage)
         }
     }

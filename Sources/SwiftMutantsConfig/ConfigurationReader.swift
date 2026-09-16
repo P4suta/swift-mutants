@@ -170,38 +170,6 @@ enum Reader {
         ("ms", 1), ("s", 1000), ("m", 60_000), ("h", 3_600_000),
     ]
 
-    /// Reads `"512B"`, `"2KiB"`, `"3MiB"`, `"2GiB"`.
-    ///
-    /// Binary units only. A bound that reads as two gigabytes and is quietly seven per cent
-    /// tighter is a bound nobody can reason about, so `GB` is refused rather than
-    /// reinterpreted as `GiB`.
-    static func byteSize(
-        _ value: TOMLValue,
-        _ key: String,
-        in table: TOMLTable,
-        path: String
-    ) throws(ConfigurationError) -> Int {
-        let text = try string(value, key, in: table, path: path)
-        for (suffix, scale) in Self.byteUnits where text.hasSuffix(suffix) {
-            let digits = text.dropLast(suffix.count)
-            if let amount = Int(digits), amount >= 0 {
-                return amount * scale
-            }
-        }
-        throw ConfigurationError(
-            line: table.line(of: key) ?? 0,
-            reason:
-                "'\(text)' is not a size. Write one with a binary unit: B, KiB, MiB, GiB, TiB. "
-                + "The decimal spellings are refused rather than reinterpreted, so that a "
-                + "bound is never quietly smaller than it reads"
-        )
-    }
-
-    /// Longest suffix first, so `KiB` is never read as `B`.
-    private static let byteUnits: [(String, Int)] = [
-        ("TiB", 1 << 40), ("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10), ("B", 1),
-    ]
-
     /// Reads `[[mutation.expect]]`.
     static func expectations(
         _ table: TOMLTable

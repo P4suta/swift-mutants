@@ -308,7 +308,7 @@ struct RunCommand: AsyncParsableCommand {
 
         // Whatever was drawn stays on the screen, and the summary starts below it.
         progress.finish()
-        try publish(outcome, at: root)
+        try publish(outcome, at: root, settings: settings)
         // The report supersedes the running account, so it goes. What is left behind is a
         // ledger for a run that did not get here, which is the only kind worth keeping.
         try? FileManager.default.removeItem(at: Ledger.location(for: root))
@@ -316,7 +316,9 @@ struct RunCommand: AsyncParsableCommand {
             survivors: Gate.survivors(of: outcome.summary),
             expectations: outcome.expectations,
             unanchored: outcome.unanchored,
-            strict: strict
+            strict: strict,
+            settings: settings.policy,
+            scoring: outcome.summary.score.value
         ) {
             throw ExitCode(code)
         }

@@ -21,13 +21,66 @@ extension Run {
         within deadline: Duration,
         progress: @Sendable (RunStage) -> Void
     ) async throws(RunError) -> Verdict {
-        let baseline = await scheduler.baseline()
-        guard baseline.outcome == .survived else {
-            throw await attributing(
-                baseline, environment: environment, within: deadline, progress: progress)
+        // Measured as many times as the project asked for, because every verdict below this
+        // rests on the suite giving the same answer about the same program twice. A suite
+        // with one flaky test breaks that premise for the whole run: a mutant is "killed"
+        // by a failure that had nothing to do with it, and the score is about the weather.
+        var measurements: [Verdict] = []
+        for _ in 0..<max(1, configuration.test.baselineRuns) {
+            measurements.append(await scheduler.baseline())
+            // Stops at the first disagreement rather than completing the set. Disagreeing
+            // once is the whole finding, and running a suite that is already known not to
+            // be trustworthy two more times buys nothing.
+            if Self.flicker(in: measurements) != nil { break }
         }
-        return baseline
+        if let flicker = Self.flicker(in: measurements) { progress(.flickering(flicker)) }
+        guard let baseline = measurements.first(where: { $0.outcome != .survived })
+        else { return measurements[0] }
+        // A flaky suite is not this tool's doing, and the sentence below says it is. Said
+        // here rather than left to `blame`, which is about a tree that fails consistently.
+        if let flicker = Self.flicker(in: measurements) { throw RunError(flicker) }
+        throw await attributing(
+            baseline, environment: environment, within: deadline, progress: progress)
     }
+
+    /// What to say when measurements of the same program did not agree, or nothing.
+    ///
+    /// Disagreement means at least two different outcomes. A baseline that failed every
+    /// time is not flicker - it is a red baseline, which has its own answer and its own
+    /// three sentences, and calling it flaky would send somebody hunting for a race that is
+    /// not there.
+    ///
+    /// The tests are named because "your suite is flaky" is not something anybody can act
+    /// on and "this test failed on one run of three" is, and the count is there because
+    /// once in twenty and nineteen in twenty are the same word and very different problems.
+    static func flicker(in measurements: [Verdict]) -> String? {
+        // One test: two different outcomes. A guard on the count of measurements would be
+        // subsumed by this one - a single measurement has a single outcome - and a guard
+        // that can never fire is a guard that reads as protection nobody has.
+        let outcomes = Set(measurements.map(\.outcome))
+        guard outcomes.count > 1 else { return nil }
+        let failed = measurements.filter { $0.outcome != .survived }
+        let names = Set(failed.flatMap(\.killedBy)).sorted()
+        return """
+            your tests do not give the same answer twice about the same program. With \
+            nothing awake, \(failed.count) of \(measurements.count) measurements failed and \
+            the rest passed.
+
+            This is not instrumentation's doing, and it is not a hole in your tests: every \
+            verdict below this rests on the suite agreeing with itself, so a mutant would be \
+            reported as caught by a failure that had nothing to do with it.
+            \(names.isEmpty
+                ? "No test named itself as the failure."
+                : "These failed on at least one measurement, and not on others:\n"
+                    + names.prefix(Self.flickeringNamed).map { "  \($0)" }
+                    .joined(separator: "\n")
+                    + (names.count > Self.flickeringNamed
+                        ? "\n  ... and \(names.count - Self.flickeringNamed) more" : ""))
+            """
+    }
+
+    /// How many flickering tests to name before saying how many more there were.
+    static let flickeringNamed = 10
 
     /// Whose failure a red baseline is.
     ///

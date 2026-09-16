@@ -86,19 +86,18 @@ enum StarterConfiguration {
 
         [test]
 
-        # How to run your tests. Spelled strictly: an unrecognised command means every
-        # mutant faces every test, and a run says so.
-        # command = ["swift", "test"]
+        # Arguments for your tests go after `--` on the command line, where they reach
+        # them verbatim: `swift-mutants run -- --skip SlowTests`. They narrow what the
+        # score is about as well as what runs.
 
         # How long one mutant may take: "500ms", "120s", "2m", "1h". Leave it out and a run
         # derives both a processor allowance and a deadline from your own suite, which is
         # what makes a verdict about your program rather than about how busy the machine was.
         # timeout = "120s"
 
-        # How much memory one mutant may use: "512B", "2KiB", "3MiB", "4GiB".
-        # memory = "4GiB"
-
-        # How many times to measure the baseline before trusting it.
+        # How many times to measure the baseline before trusting it. A suite that does not
+        # agree with itself makes every verdict below it meaningless, and this is what finds
+        # that out - said as what it is, rather than blamed on the instrumentation.
         # baseline_runs = 3
 
         [execution]

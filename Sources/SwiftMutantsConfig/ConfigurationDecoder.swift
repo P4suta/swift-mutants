@@ -103,20 +103,57 @@ extension Configuration {
             path: "test"
         )
         if table["command"] != nil {
-            let command = try Reader.strings(table, "command", path: "test")
-            guard !command.isEmpty else {
-                throw ConfigurationError(
-                    line: table.line(of: "command") ?? 0,
-                    reason: "test.command names no program"
-                )
-            }
-            test.command = command
+            // Refused rather than accepted and ignored, and refused before the value is
+            // read, for the same reason as `memory`: the key is not supported, so
+            // complaining about the shape of its value first would send somebody to correct
+            // a list that was never going to be used.
+            //
+            // Refused rather than accepted and ignored. A run builds the test bundles once
+            // and launches them directly for every mutant - that is what makes one build
+            // serve a whole catalogue - so there is no point at which a different program
+            // could be run, and pretending to take one would give a project exactly the
+            // run they would have had without it.
+            //
+            // Arguments are a different thing and do work: everything after `--` reaches
+            // the tests verbatim, and narrows what the score is about in the same way.
+            throw ConfigurationError(
+                line: table.line(of: "command") ?? 0,
+                reason: """
+                    `test.command` names a program to run the tests with, which this build \
+                    cannot do: it builds your test bundles once and launches them directly, \
+                    which is what makes one build serve every mutant. Pass arguments to your \
+                    tests after `--` instead, which reaches them verbatim.
+                    """
+            )
         }
         if let timeout = table["timeout"] {
             test.timeout = try Reader.duration(timeout, "timeout", in: table, path: "test")
         }
-        if let memory = table["memory"] {
-            test.memoryBytes = try Reader.byteSize(memory, "memory", in: table, path: "test")
+        if table["memory"] != nil {
+            // Refused rather than accepted and ignored, and refused before the size is
+            // read: the key is not supported, so complaining about the shape of its value
+            // first would send somebody to correct a number that was never going to be
+            // used.
+            //
+            // Nothing here bounds a mutant by memory, and a limit that is stored and never
+            // applied is worse than none: it reads as a guard against the mutant that turns
+            // a loop into one that does not end, which is exactly the case it is set for.
+            //
+            // Not an oversight that can be fixed by wiring it up. Measured on this
+            // platform: under `ulimit -v 262144`, `ulimit -v` reports `unlimited` and a
+            // process allocates four gigabytes unhindered, so the obvious enforcement does
+            // not enforce. The bound that does work is the processor allowance, which the
+            // kernel does apply and which a busy machine cannot move.
+            throw ConfigurationError(
+                line: table.line(of: "memory") ?? 0,
+                reason: """
+                    `test.memory` bounds a mutant by memory, which this build does not do: \
+                    macOS does not apply the address-space limit it would need. It is \
+                    refused rather than ignored, because a limit nothing enforces reads as a \
+                    guard you do not have. A mutant is bounded by the processor time it \
+                    uses, which the kernel does enforce; `timeout` sets that.
+                    """
+            )
         }
         if let runs = try Reader.optionalInteger(table, "baseline_runs", path: "test") {
             guard runs >= 1 else {
