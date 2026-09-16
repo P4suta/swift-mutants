@@ -336,6 +336,7 @@ final class CandidateWalker: SyntaxVisitor {
                 original: token.trimmedDescription,
                 replacement: swap.replacement,
                 guardSpan: wrapped,
+                form: .expression,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
         )
@@ -355,6 +356,40 @@ final class CandidateWalker: SyntaxVisitor {
                 original: expression.trimmedDescription,
                 replacement: operand.flattenableDescription,
                 guardSpan: region,
+                form: .expression,
+                enclosingDeclaration: declarationPath.joined(separator: ".")
+            )
+        )
+    }
+
+    /// Records a mutant whose guard is a statement in front of a body.
+    ///
+    /// The span is empty and sits just after the opening brace, which is the whole of the
+    /// design: an empty span replaces no bytes, so the body below it does not move and
+    /// every line number in the file is what it was. The guard covers the body, so a mutant
+    /// that stops it is attributed to the declaration it stopped.
+    func record(
+        _ prune: Rules.Prune, inside interior: SourceSpan, of region: Syntax, doing: String
+    ) {
+        // The guard covers what is *between* the braces, never the braces themselves. A
+        // guard that covered the whole block would be spliced in front of the `{`, and the
+        // declaration would read `func f() if g { return } { ... }` - two things on a line
+        // where Swift allows one. Found by a compile gate; discovery could not see it,
+        // because a span covering a block is a perfectly ordinary span.
+        let covered = interior
+        guard let here = SourceSpan(start: interior.start, end: interior.start) else { return }
+        if !countOnly, isSuppressed(prune.family, at: region) {
+            skips.append(Skip(reason: .disabledByComment, span: covered, candidatesHidden: 1))
+            return
+        }
+        candidates.append(
+            Candidate(
+                rule: Rules.identifier(for: prune),
+                span: here,
+                original: "",
+                replacement: doing,
+                guardSpan: covered,
+                form: .statement,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
         )
@@ -377,6 +412,7 @@ final class CandidateWalker: SyntaxVisitor {
                 original: region.trimmedDescription,
                 replacement: text,
                 guardSpan: span,
+                form: .expression,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
         )

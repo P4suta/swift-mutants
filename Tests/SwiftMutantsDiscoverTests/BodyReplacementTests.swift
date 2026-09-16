@@ -39,6 +39,10 @@ struct BodyReplacementTests {
         discovery.candidates.filter { $0.rule.name == "replace-body" }
     }
 
+    static func stopped(_ discovery: FileDiscovery) -> [Candidate] {
+        discovery.candidates.filter { $0.rule.name == "stop-body" }
+    }
+
     /// A span names the bytes it says it does.
     ///
     /// The property every later phase rests on, and the one this rule got wrong first: a
@@ -138,10 +142,9 @@ struct BodyReplacementTests {
         #expect(discovery.skips.contains { $0.reason == .unspellableReturnType })
     }
 
-    /// A body of several statements needs a guard placed inside the braces, which this
-    /// build does not do. Said, because a reader comparing two files and finding the
-    /// shorter one untouched deserves to know it was a limit rather than a judgement.
-    @Test("passes over a body of several statements, and says so")
+    /// A body of several statements is not an expression, so its guard is a statement put
+    /// in front of it - the only shape that moves none of what was there.
+    @Test("stops a body of several statements")
     func severalStatements() {
         let discovery = Self.discover(
             """
@@ -151,14 +154,57 @@ struct BodyReplacementTests {
             }
             """)
         #expect(Self.bodies(discovery).isEmpty)
-        #expect(discovery.skips.contains { $0.reason == .multiStatementBody })
+        let stopped = Self.stopped(discovery)
+        #expect(stopped.count == 1, "\(stopped.map(\.replacement))")
+        #expect(stopped.first?.replacement == "return 0")
+        #expect(stopped.first?.form == .statement)
     }
 
-    /// A function that returns nothing has nothing to replace its body with: an empty body
-    /// is not a constant, it is the absence of one, and this build places no statements.
-    @Test("passes over a function that returns nothing")
+    /// The span is empty and sits at the brace. Replacing no bytes is the whole of the
+    /// design: the body does not move, so every line number in the file is what it was.
+    @Test("replaces no bytes, so nothing below it moves")
+    func replacesNoBytes() {
+        let source = """
+            func total() -> Int {
+                let sum = items.reduce(0, +)
+                return sum * 2
+            }
+            """
+        let only = Self.stopped(Self.discover(source)).first
+        #expect(only?.span.start == only?.span.end)
+        #expect(only?.original == "")
+        // Just after the opening brace, which is where a guard lands on the brace's line.
+        let brace = source.utf8.firstIndex(of: UInt8(ascii: "{"))
+        let afterBrace = source.utf8.distance(from: source.utf8.startIndex, to: brace!) + 1
+        #expect(only?.span.start == afterBrace)
+    }
+
+    /// A function that returns nothing is the better half of this rule and had no way to
+    /// exist until the second form: there is no value to put in a ternary's branches, and
+    /// "does anything notice when this stops doing its work" is the sharpest question that
+    /// can be asked about a procedure.
+    @Test("stops a function that returns nothing")
     func returnsNothing() {
-        #expect(Self.bodies(Self.discover("func go() { start() }")).isEmpty)
+        let stopped = Self.stopped(Self.discover("func go() { start() }"))
+        #expect(stopped.count == 1, "\(stopped.map(\.replacement))")
+        #expect(stopped.first?.replacement == "return")
+    }
+
+    /// An empty body has nothing to stop: doing nothing instead of nothing is a mutant that
+    /// cannot fail, and a line in every report that means nothing.
+    @Test("offers nothing for a body that is already empty")
+    func emptyBody() {
+        #expect(Self.stopped(Self.discover("func go() {}")).isEmpty)
+    }
+
+    /// One expression is preferred wherever it applies. A ternary is one type-checking
+    /// problem; a statement in front of a body is a change to the body's shape, and the
+    /// smaller disturbance is the better one when both are available.
+    @Test("prefers the expression guard when the body is one expression")
+    func prefersTheExpression() {
+        let discovery = Self.discover("func empty() -> Bool { items.isEmpty }")
+        #expect(Self.bodies(discovery).count == 1)
+        #expect(Self.stopped(discovery).isEmpty)
     }
 
     /// And a caller with no settings at all is not a caller who asked. A default is not a

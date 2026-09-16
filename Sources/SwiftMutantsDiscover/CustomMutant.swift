@@ -102,6 +102,7 @@ extension Discover {
                     original: row.find,
                     replacement: row.replace,
                     guardSpan: span,
+                    form: .expression,
                     enclosingDeclaration: ""
                 )
             )

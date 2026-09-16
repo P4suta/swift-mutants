@@ -20,8 +20,10 @@ All notable changes to this project are documented here. The format follows
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
 - `extreme` replaces a declaration's body with a constant, which asks whether it is tested
-  at all rather than whether one operator is right. Bodies that are one expression; the
-  rest are reported by `why-skipped`.
+  at all rather than whether one operator is right. Both shapes a body can take: a ternary
+  where it is one expression, and a statement in front of it where it is not — which is
+  also what lets a function that returns nothing be measured, there being no value to put
+  in a ternary's branches. Measured on this repository: 482 bodies offered.
 - `strict`, `minimum_score`, `formats`, `directory`, `high` and `low` now do what they
   say, and `baseline_runs` measures the baseline that many times: a suite that disagrees
   with itself is named as flaky rather than reported as this tool's instrumentation being

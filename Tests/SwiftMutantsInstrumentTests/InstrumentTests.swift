@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsDiscover
 import Testing
@@ -24,8 +25,14 @@ struct InstrumentTests {
         return path
     }
 
-    static func instrument(_ source: String) throws -> InstrumentedFile {
-        let discovery = Discover.candidates(in: source, at: Self.path())
+    static func instrument(
+        _ source: String, extreme: Bool = false
+    ) throws -> InstrumentedFile {
+        var mutation = Configuration.Mutation()
+        mutation.profile = .all
+        mutation.extreme = extreme
+        let discovery = Discover.candidates(
+            in: source, at: Self.path(), selecting: mutation)
         return try Instrument.file(source, discovery: discovery)
     }
 
@@ -51,15 +58,50 @@ struct InstrumentTests {
         ]
     )
     func preservesLineCount(source: String) throws {
-        let instrumented = try Self.instrument(source)
+        try Self.assertLineCountIsKept(source)
+    }
+
+    /// The same invariant for a guard that is a statement rather than an expression, which
+    /// is the shape that can break it: a ternary is inside a line by construction, and a
+    /// statement in front of a body would sit on its own line if anything let it.
+    @Test(
+        "keeps the file the same number of lines around a statement guard",
+        arguments: [
+            """
+            func go() {
+                start()
+                stop()
+            }
+            """,
+            """
+            func total() -> Int {
+                let a = 1
+                return a + 1
+            }
+            """,
+            """
+            struct S {
+                var n = 0
+                mutating func bump() {
+                    n += 1
+                    n += 1
+                }
+            }
+            """,
+        ]
+    )
+    func preservesLineCountAroundStatements(source: String) throws {
+        try Self.assertLineCountIsKept(source, extreme: true)
+    }
+
+    static func assertLineCountIsKept(_ source: String, extreme: Bool = false) throws {
+        let instrumented = try Self.instrument(source, extreme: extreme)
         let before = source.split(separator: "\n", omittingEmptySubsequences: false).count
-        let runtimeLines = instrumented.runtimeLineCount
-        let after = instrumented.source.split(separator: "\n", omittingEmptySubsequences: false)
-            .count
+        let after = instrumented.source
+            .split(separator: "\n", omittingEmptySubsequences: false).count
         #expect(
-            after - runtimeLines == before,
-            "the body grew by \(after - runtimeLines - before) lines"
-        )
+            after - instrumented.runtimeLineCount == before,
+            "\(before) lines became \(after - instrumented.runtimeLineCount)")
     }
 
     /// The runtime goes at the end, so every line above it keeps its number.

@@ -188,6 +188,19 @@ enum Rules {
     static let replaceBody = Prune(
         side: .left, name: "replace-body", family: "body-replacement")
 
+    /// A body that stops doing its work.
+    ///
+    /// The statement-guarded half of body replacement, for the two shapes a ternary cannot
+    /// reach: a body of several statements, which is not an expression, and a body that
+    /// returns nothing, which has no value to put in a ternary's branches.
+    ///
+    /// The second is the better mutant of the two and had no way to exist until now. "Does
+    /// anything notice when this function stops doing its work" is the sharpest question
+    /// that can be asked about a procedure, and a procedure is most of what most packages
+    /// are made of.
+    static let stopBody = Prune(
+        side: .left, name: "stop-body", family: "body-replacement")
+
     /// A concatenation with its operands the other way round.
     ///
     /// `+` on something syntax alone can tell is not a number was passed over entirely:
@@ -260,7 +273,7 @@ enum Rules {
         for prunes in connectivePrunes.values {
             for prune in prunes { table[prune.name] = prune.family }
         }
-        for prune in [dropCondition, neverDecides, concatSwap, replaceBody] {
+        for prune in [dropCondition, neverDecides, concatSwap, replaceBody, stopBody] {
             table[prune.name] = prune.family
         }
         return table

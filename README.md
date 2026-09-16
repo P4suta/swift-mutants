@@ -197,11 +197,17 @@ nothing whatever about — a median of one method in ten, across every project t
 has surveyed. It produces almost no equivalent mutants, because a body that can be replaced
 by a constant with nothing noticing is a finding whichever constant was chosen.
 
-Bodies that are one expression, which is most of Swift and all of its shorthand computed
-properties. A body of several statements, or a return type with no value anybody can write
-down — `some P`, `any P`, a generic parameter, a type of your own — is reported by
-`why-skipped` as `multi-statement-body` or `unspellable-return-type`, not passed over in
-silence.
+Two shapes, because Swift has two kinds of place to put a guard. A body that is one
+expression takes a ternary, which disturbs nothing around it. A body of several statements
+is not an expression, so its guard is a statement in front of it — placed on the brace's own
+line, so every line number below is what it was. That second shape is also what lets a
+function **that returns nothing** be measured at all: there is no value to put in a
+ternary's branches, and "does anything notice when this stops doing its work" is the
+sharpest question that can be asked about a procedure.
+
+A return type with no value anybody can write down — `some P`, `any P`, a generic
+parameter, a type of your own — is reported by `why-skipped` as `unspellable-return-type`,
+not passed over in silence.
 
 Off until you ask, because it multiplies the catalogue by the number of declarations rather
 than by the number of operators, and that is a decision about how long a run takes.

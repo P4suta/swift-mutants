@@ -281,6 +281,19 @@ public enum Instrument {
         }
         original += String(decoding: bytes[cursor..<node.span.end], as: UTF8.self)
 
+        // A statement guard goes in front of what is there rather than around it, which is
+        // the only shape that works for a body: several statements are not an expression,
+        // and a body that returns nothing has no value to put in a ternary's branches.
+        if node.values.flatMap({ $0 }).first?.form == .statement {
+            return Self.statementGuarded(
+                node,
+                around: original,
+                token: token,
+                indices: indices,
+                placements: placements,
+                sites: sites)
+        }
+
         // The mutated sides carry the pristine expression with one edit applied, because
         // only one mutant is ever awake and a nested guard in here would never fire.
         var rendered = "(\(original))"
@@ -308,6 +321,45 @@ public enum Instrument {
         }
 
         // Every mutant at this node belongs to the whole of what was just rendered.
+        for (_, index) in alternatives {
+            sites[index] = SourceSpan(start: 0, end: rendered.utf8.count)
+        }
+        return Rendered(text: rendered, placements: placements, sites: sites)
+    }
+
+    /// A body with its guards put in front of it.
+    ///
+    /// `{ if g { return x } <body> }`, on the brace's own line. Nothing of the body moves,
+    /// so every line number in the file is what it was - which is what the coverage a run
+    /// reads back afterwards rests on, and the one property this shape exists to keep.
+    ///
+    /// The guards go in reverse so the first mutant ends up leftmost, which is only a
+    /// matter of reading: one mutant is ever awake, so two guards in front of a body are
+    /// two conditions of which at most one is true.
+    private static func statementGuarded(
+        _ node: IntervalForest<[Candidate]>.Node,
+        around original: String,
+        token: String,
+        indices: [SourceSpan: [UInt32]],
+        placements: [UInt32: SourceSpan],
+        sites: [UInt32: SourceSpan]
+    ) -> Rendered {
+        var rendered = original
+        var placements = placements
+        var sites = sites
+        let alternatives = Array(zip(node.values.flatMap { $0 }, indices[node.span] ?? []))
+        for (candidate, index) in alternatives.reversed() {
+            let head = " if \(Runtime.guardCall(token: token, index: index)) { "
+            let body = candidate.replacement
+            let guarded = "\(head)\(body) }"
+            rendered = guarded + rendered
+
+            let shift = guarded.utf8.count
+            placements = placements.compactMapValues { $0.shifted(by: shift) }
+            sites = sites.compactMapValues { $0.shifted(by: shift) }
+            placements[index] = SourceSpan(
+                start: head.utf8.count, end: head.utf8.count + body.utf8.count)
+        }
         for (_, index) in alternatives {
             sites[index] = SourceSpan(start: 0, end: rendered.utf8.count)
         }

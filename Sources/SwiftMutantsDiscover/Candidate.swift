@@ -26,12 +26,41 @@ public struct Candidate: Sendable, Hashable {
     /// The expression a guard would wrap. Always contains ``span``.
     public let guardSpan: SourceSpan
 
+    /// How a guard is put around this candidate.
+    ///
+    /// Discovery is the one phase that knows the shape of the code, so it decides the shape
+    /// of the guard and says so here rather than leaving the instrumenter to work it out
+    /// from the rule name - which would be a second copy of the same decision, in the one
+    /// place that cannot see the tree.
+    public let form: GuardForm
+
     /// A name for the declaration the edit sits inside, or `""` when there is none.
     ///
     /// Syntactic - `Header.parse` - rather than a mangled symbol. It goes into the mutant's
     /// identity so that an edit is not renamed by an unrelated change higher up the file,
     /// and into the report so that a reader knows where to look.
     public let enclosingDeclaration: String
+}
+
+/// The shape of the guard a candidate needs.
+///
+/// Two, because Swift has two kinds of place to put one. Almost everything is an
+/// expression and takes a ternary, which disturbs no statement around it. A body of several
+/// statements is not an expression and cannot, so its guard is a statement put in front of
+/// the body - the only shape that does not move a single byte of what was there.
+public enum GuardForm: String, Sendable, Hashable, Codable, CaseIterable {
+
+    /// A ternary around an expression: `(g ? (mutated) : (original))`.
+    ///
+    /// The default, and the reason this tool works inside result builders, implicit returns
+    /// and `guard` conditions where wrapping a statement would not compile.
+    case expression
+
+    /// A statement in front of a body: `{ if g { return x } <original body> }`.
+    ///
+    /// Put on the same line as the brace, so every line number below it is unchanged - which
+    /// is what the coverage a run reads back afterwards rests on.
+    case statement
 }
 
 /// Somewhere this tool decided not to put a mutant, and why.

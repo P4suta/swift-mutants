@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsCore
 import SwiftSyntax
 
 /// Finding declarations whose body could be replaced by a constant.
@@ -13,10 +14,7 @@ extension CandidateWalker {
     /// Offers a function's body, or says why it could not.
     func offerBody(of node: FunctionDeclSyntax) {
         guard replacesBodies, let body = node.body else { return }
-        offer(
-            statements: body.statements,
-            over: Syntax(body),
-            returning: node.signature.returnClause?.type)
+        offer(body: body, returning: node.signature.returnClause?.type)
     }
 
     /// Offers a computed property's body.
@@ -37,10 +35,38 @@ extension CandidateWalker {
         // file's - so a span would name bytes somewhere else entirely. Found by a compile
         // gate, which is the only thing that could have found it: discovery was self
         // consistent and the instrumented file was shredded.
+        guard let interior = Self.interior(from: block.leftBrace, to: block.rightBrace) else {
+            return
+        }
         offer(
             statements: statements,
+            interior: interior,
             over: Syntax(block),
             returning: node.typeAnnotation?.type)
+    }
+
+    /// The bytes between a block's braces, which is what a statement guard covers.
+    ///
+    /// From just after `{` to just before `}`. The guard is spliced at the start of it, so
+    /// it lands on the brace's own line and every line number below is unchanged - which is
+    /// what the coverage a run reads back afterwards rests on. Never the braces themselves:
+    /// a guard in front of `{` would sit beside the signature.
+    private static func interior(
+        from left: TokenSyntax, to right: TokenSyntax
+    ) -> SourceSpan? {
+        SourceSpan(start: left.endPosition.utf8Offset, end: right.position.utf8Offset)
+    }
+
+    /// One function body, which can take a guard of either shape.
+    private func offer(body: CodeBlockSyntax, returning type: TypeSyntax?) {
+        guard let interior = Self.interior(from: body.leftBrace, to: body.rightBrace) else {
+            return
+        }
+        offer(
+            statements: body.statements,
+            interior: interior,
+            over: Syntax(body),
+            returning: type)
     }
 
     /// One body, if it is one expression and its type has a value that can be written.
@@ -49,24 +75,37 @@ extension CandidateWalker {
     /// futures. A type nothing can spell is a property of the signature; several statements
     /// is a property of this build, which places no statements.
     private func offer(
-        statements: CodeBlockItemListSyntax, over region: Syntax, returning type: TypeSyntax?
+        statements: CodeBlockItemListSyntax,
+        interior: SourceSpan,
+        over region: Syntax,
+        returning type: TypeSyntax?
     ) {
-        // No return type is not an unspellable one: a function that returns nothing has no
-        // constant to return, and an empty body is the absence of a value rather than one.
-        guard let type else { return }
+        // An empty body has nothing to replace: doing nothing instead of nothing is a
+        // mutant that cannot fail, and a line in every report that means nothing.
+        guard !statements.isEmpty else { return }
+
+        // A body that returns nothing still has a mutant, and a good one: does anything
+        // notice when this stops doing its work? There is no value to return, so it can
+        // only be said as a statement - which is why this waited for the second form.
+        guard let type else {
+            record(Rules.stopBody, inside: interior, of: region, doing: "return")
+            return
+        }
         guard let constant = BodyValues.constant(for: type) else {
             note(.unspellableReturnType, at: region)
             return
         }
-        guard statements.count == 1, let only = statements.first,
+        // One expression is an expression, so it takes the guard that disturbs nothing
+        // around it. Preferred wherever it applies: a ternary is one type-checking problem
+        // and a statement in front of a body is a change to the body's shape.
+        if statements.count == 1, let only = statements.first,
             case .expr(let expression) = only.item
-        else {
-            note(.multiStatementBody, at: region)
+        {
+            // A body that already is the constant would be replaced by itself.
+            guard expression.trimmedDescription != constant else { return }
+            record(Rules.replaceBody, replacing: Syntax(expression), with: constant)
             return
         }
-        // A body that already is the constant would be replaced by itself: a mutant that
-        // cannot fail, and a line in every report that means nothing.
-        guard expression.trimmedDescription != constant else { return }
-        record(Rules.replaceBody, replacing: Syntax(expression), with: constant)
+        record(Rules.stopBody, inside: interior, of: region, doing: "return \(constant)")
     }
 }
