@@ -7,7 +7,9 @@
 
 [tools]
 swiftlint = "0.65.1"
-periphery = "3.8.0"
+# macOS only, and mise installs the whole set on every runner: an Ubuntu job asking
+# for this fails before it reaches the gate it was there to run.
+periphery = { version = "3.8.0", os = ["macos"] }
 typos = "1.48.0"
 rumdl = "0.2.43"
 taplo = "0.10.0"
