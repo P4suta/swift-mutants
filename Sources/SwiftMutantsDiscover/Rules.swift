@@ -123,6 +123,18 @@ enum Rules {
     }
 
     /// The prunes each connective offers.
+    /// One end of a collection named as the other.
+    ///
+    /// Its own family because a project turning it off is making a different decision from
+    /// one turning off arithmetic: these are about *which end*, and a package that does no
+    /// sequence work gets nothing from them.
+    static func endSwap(to name: String) -> Swap {
+        Swap(
+            replacement: name,
+            name: CollectionEnds.ruleName(for: name),
+            family: "collection-boundary")
+    }
+
     /// A range that reaches one element further than it was written to.
     ///
     /// The fencepost, written down. `a..<b` made `a..<(b + 1)` includes the element the
@@ -304,6 +316,10 @@ enum Rules {
     /// operator from being narrowed away by a `profile` that has never heard of it.
     static let familyOfRule: [String: String] = {
         var table: [String: String] = [:]
+        // Named by what they become, so every partner of every pair is a rule of its own.
+        for name in CollectionEnds.everyName {
+            table[CollectionEnds.ruleName(for: name)] = "collection-boundary"
+        }
         for swap in binaryOperators.values { table[swap.name] = swap.family }
         for swap in booleanLiterals.values { table[swap.name] = swap.family }
         for prunes in connectivePrunes.values {
@@ -322,7 +338,7 @@ enum Rules {
     static let families: Set<String> = [
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
         "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
-        "range-operator", "optional-handling",
+        "range-operator", "optional-handling", "collection-boundary",
     ]
 
     /// The identifier for a swap, at the version this build emits.

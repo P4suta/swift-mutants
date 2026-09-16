@@ -162,7 +162,7 @@ so what `list` describes is what `run` would do.
 | Tier | Adds |
 | --- | --- |
 | `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order |
-| `strong` | compound arithmetic assignment, bitwise, optional handling, range bounds |
+| `strong` | compound arithmetic assignment, bitwise, optional handling, range bounds, collection ends |
 | `all` | nothing yet — the rules its tier is for are not built |
 
 `operators = ["lt-to-le"]` names them outright and wins over the tier, because a name is
@@ -203,6 +203,20 @@ and `(a)!`, which asks whether anything tests the case where it is not — and t
 nothing does, which is a detection rather than a wrong answer. The two sides are written
 differently for the same reason as above: `b` is already the type of the whole expression
 and `a` is the optional.
+
+### The ends of a collection
+
+Every other rule changes an operator. This one changes a **name**: `first` for `last`,
+`min` for `max`, `prefix` for `suffix`, `dropFirst` for `dropLast`, `hasPrefix` for
+`hasSuffix`, `firstIndex` for `lastIndex`, `removeFirst` for `removeLast`. Swift spells the
+two ends of a sequence in matched pairs that return the same type as each other, which is
+what lets one guard hold both — and they are the same length, the same shape, and next to
+each other in every autocomplete list there has ever been.
+
+A fixed list, and nothing is guessed: a rule matching on a prefix would call
+`firstResponder` an end of a collection. Where a receiver has only one of the two — a `Set`
+has `first` and no `last` — the compiler refuses the mutant and it is reported as a
+rejection, in the compiler's own words.
 
 ### Replacing a body outright
 

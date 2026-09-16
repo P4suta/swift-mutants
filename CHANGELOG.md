@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows
   pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
+- The ends of a collection, swapped for each other: `first`/`last`, `min`/`max`,
+  `prefix`/`suffix` and four more pairs. In `strong`.
 - Two families Swift has that other languages do not: a range that reaches one element
   further than it was written to, and both mutants a coalescing operator has. In `strong`.
 - `extreme` replaces a declaration's body with a constant, which asks whether it is tested

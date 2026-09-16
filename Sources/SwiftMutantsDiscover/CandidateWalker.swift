@@ -111,6 +111,40 @@ final class CandidateWalker: SyntaxVisitor {
 
     // MARK: - Candidates
 
+    /// One end of a collection named as the other.
+    ///
+    /// The member is what is replaced, not the expression around it, so the receiver keeps
+    /// its own bytes and its own mutants: `xs.dropFirst(n + 1).first` has three.
+    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+        guard let other = CollectionEnds.opposite(of: node.declName.baseName.text) else {
+            return .visitChildren
+        }
+        record(
+            Rules.endSwap(to: other),
+            replacing: Syntax(node.declName.baseName),
+            within: Self.guarded(node))
+        return .visitChildren
+    }
+
+    /// What a guard around a member access has to wrap.
+    ///
+    /// The member access for a property, and the whole **call** for a method. A ternary
+    /// around `xs.dropFirst` alone is a ternary of two *unapplied method references* that
+    /// something then calls - which does not type-check, loses every default argument, and
+    /// cannot be done at all for a `mutating` method.
+    ///
+    /// Found by a compile gate. Discovery had no way to know: a member access is a member
+    /// access whether or not something calls it, and the catalogue it produced looked
+    /// exactly right.
+    private static func guarded(_ node: MemberAccessExprSyntax) -> Syntax {
+        guard let call = node.parent?.as(FunctionCallExprSyntax.self),
+            call.calledExpression.id == node.id
+        else {
+            return Syntax(node)
+        }
+        return Syntax(call)
+    }
+
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
         guard let token = node.operator.as(BinaryOperatorExprSyntax.self) else {
             return .visitChildren
