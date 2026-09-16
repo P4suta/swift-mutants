@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format follows
   pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
+- A statement that does not run: the largest family there is, and the one with the best
+  record in the literature. In `balanced`.
+- Validation's fallback compiler now lowers to SIL rather than only type-checking, which is
+  what the module path beside it already did. `-typecheck` does not report a missing return,
+  so a mutant that guarded away a function's only return passed validation and failed the
+  real build.
 - The ends of a collection, swapped for each other: `first`/`last`, `min`/`max`,
   `prefix`/`suffix` and four more pairs. In `strong`.
 - Two families Swift has that other languages do not: a range that reaches one element

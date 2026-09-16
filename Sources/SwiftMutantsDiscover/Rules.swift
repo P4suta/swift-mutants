@@ -123,6 +123,26 @@ enum Rules {
     }
 
     /// The prunes each connective offers.
+    /// A statement that does not run.
+    ///
+    /// The largest family there is by volume, and the one with the best record. Google's
+    /// measurement over six years of a two-billion-line monorepo put statement deletion at
+    /// 68% of all mutants generated and around 80% productivity - the highest of any
+    /// operator they kept, which is why it is in `balanced` rather than above it.
+    ///
+    /// It asks the plainest question in mutation testing: if this line never ran, would
+    /// anything notice? Most of the time something does, and the times it does not are the
+    /// lines nobody is testing.
+    ///
+    /// Two rules rather than one, because a call and an assignment are different things to
+    /// a reader looking at a report: one is work that was never done, the other a value
+    /// that was never written.
+    static let skipCall = Prune(
+        side: .left, name: "skip-call", family: "statement-deletion")
+
+    static let skipAssignment = Prune(
+        side: .left, name: "skip-assignment", family: "statement-deletion")
+
     /// One end of a collection named as the other.
     ///
     /// Its own family because a project turning it off is making a different decision from
@@ -327,7 +347,7 @@ enum Rules {
         }
         for prune in [
             dropCondition, neverDecides, concatSwap, replaceBody, stopBody,
-            coalesceToDefault, coalesceToForce, widenRange,
+            coalesceToDefault, coalesceToForce, widenRange, skipCall, skipAssignment,
         ] {
             table[prune.name] = prune.family
         }
@@ -338,7 +358,7 @@ enum Rules {
     static let families: Set<String> = [
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
         "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
-        "range-operator", "optional-handling", "collection-boundary",
+        "range-operator", "optional-handling", "collection-boundary", "statement-deletion",
     ]
 
     /// The identifier for a swap, at the version this build emits.

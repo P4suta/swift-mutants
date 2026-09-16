@@ -43,7 +43,8 @@ public enum Discover {
         let walker = CandidateWalker(
             locations: SourceLocationConverter(fileName: "<source>", tree: folded),
             suppressions: suppressions,
-            replacesBodies: selection.replacesWholeBodies
+            replacesBodies: selection.replacesWholeBodies,
+            skipsStatements: selection.skipsStatements
         )
         walker.walk(folded)
 

@@ -61,6 +61,17 @@ public enum GuardForm: String, Sendable, Hashable, Codable, CaseIterable {
     /// Put on the same line as the brace, so every line number below it is unchanged - which
     /// is what the coverage a run reads back afterwards rests on.
     case statement
+
+    /// A statement that does not run: `if !g { <original statement> }`.
+    ///
+    /// The original keeps every one of its own bytes and its own newlines, with text added
+    /// to its first line and its last and nothing in between - so a statement of ten lines
+    /// is still ten lines.
+    ///
+    /// Only for statements that bind nothing. A `let` skipped this way would take its name
+    /// out of scope for everything below it, which is not a mutant: it is a different
+    /// program, and one that does not compile.
+    case skipping
 }
 
 /// Somewhere this tool decided not to put a mutant, and why.

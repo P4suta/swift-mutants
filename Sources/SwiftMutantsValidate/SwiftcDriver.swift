@@ -44,13 +44,28 @@ public struct SwiftcDriver: TypecheckDriver {
         self.timeout = timeout
     }
 
-    /// Typechecks these files.
+    /// Asks the compiler whether these files are a well-formed program.
+    ///
+    /// Lowered to SIL and thrown away, not merely type-checked, and the difference is a
+    /// whole class of mutant. `-typecheck` does not report a missing return: a function
+    /// whose only return this tool guarded away passes it and fails the real build - which
+    /// is not one mutant rejected but the instrumented build refusing, an hour in, with
+    /// nothing measured.
+    ///
+    /// Measured on this toolchain: `func f() -> Int { if !g() { compute() } }` passes
+    /// `-typecheck` with a warning and fails `-emit-object` with "missing return".
+    ///
+    /// This is the fallback path, used when the build plan cannot be read. It asked a
+    /// weaker question than the module path beside it, so a package whose plan this tool
+    /// could not parse got a quietly worse validation and no way to know.
     public func typecheck(_ paths: [String]) async -> CompilerOutput {
         let outcome = await runner.run(
             ProcessSpec(
                 kind: .typecheck,
                 executable: executable,
-                arguments: ["-typecheck", "-diagnostic-style=llvm"] + extraArguments + paths,
+                arguments: [
+                    "-emit-sil", "-wmo", "-o", "/dev/null", "-diagnostic-style=llvm",
+                ] + extraArguments + paths,
                 directory: directory,
                 environment: environment,
                 timeout: timeout

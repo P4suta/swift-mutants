@@ -34,7 +34,7 @@ public struct RuleSelection: Sendable, Hashable {
             .balanced,
             [
                 "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
-                "condition-decision", "concatenation",
+                "condition-decision", "concatenation", "statement-deletion",
             ]
         ),
         (
@@ -111,6 +111,15 @@ public struct RuleSelection: Sendable, Hashable {
     /// deciding whether a body can be replaced is worth skipping when nobody asked.
     public var replacesWholeBodies: Bool { replacesBodies }
 
+    /// Whether this run's tier takes in statement deletion, which discovery needs before
+    /// it walks a block rather than after it has built candidates nobody asked for.
+    public var skipsStatements: Bool {
+        verdict(rule: Rules.skipCall.name, family: Self.statements) == nil
+    }
+
     /// The family that is asked for rather than tiered.
     static let bodies = "body-replacement"
+
+    /// The family whose sites are whole statements.
+    static let statements = "statement-deletion"
 }

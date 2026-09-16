@@ -73,6 +73,9 @@ struct LoopConditionTests {
         ]
     )
     func otherLiteralsAreUntouched(_ source: String) {
-        #expect(Self.names(source) == ["true-to-false"])
+        // The literal rules, not the whole catalogue: `let ready = true` sits in a block
+        // whose other statement is skippable, and what this test is about is which rule the
+        // *literal* got.
+        #expect(Self.names(source).filter { !$0.hasPrefix("skip-") } == ["true-to-false"])
     }
 }

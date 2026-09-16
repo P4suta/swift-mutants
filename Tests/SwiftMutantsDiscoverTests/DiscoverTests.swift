@@ -154,8 +154,12 @@ struct DiscoverTests {
             }
             """
         let discovery = Self.discover(source)
-        #expect(discovery.candidates.count == 1)
-        #expect(discovery.candidates.first?.rule.name == "gt-to-ge")
+        // The operators, not the whole catalogue: `print(a < b)` is a statement as well as
+        // an arid call, and what this test is about is that the comparison beside it
+        // survived.
+        let operators = discovery.candidates.filter { !$0.rule.name.hasPrefix("skip-") }
+        #expect(operators.count == 1, "\(operators.map(\.rule.name))")
+        #expect(operators.first?.rule.name == "gt-to-ge")
     }
 
     /// A macro's arguments become code nobody wrote, and a guard spliced into one expands

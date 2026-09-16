@@ -61,11 +61,14 @@ struct ArithmeticTests {
             ("/=", "div-assign-to-mul-assign", "*="),
         ])
     func compoundAssignments(spelled: String, rule: String, replacement: String) {
+        // Filtered to the operator, because a statement is also a site: `c += b` is both
+        // an assignment to swap and a statement to skip, and a test that asserted the whole
+        // catalogue would be a test about every rule this tool will ever have.
         let found = Discover.candidates(
             in: "func f(_ a: Int, _ b: Int) { var c = a; c \(spelled) b; _ = c }",
             at: Self.path()
-        ).candidates
-        #expect(found.map(\.rule.name) == [rule])
+        ).candidates.filter { $0.rule.name == rule }
+        #expect(found.count == 1)
         #expect(found.map(\.replacement) == [replacement])
     }
 

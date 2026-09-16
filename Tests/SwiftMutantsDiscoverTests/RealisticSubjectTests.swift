@@ -35,9 +35,12 @@ struct RealisticSubjectTests {
 
     @Test("finds the logic and leaves the rest")
     func findsTheLogic() {
-        let found = Self.discovery().candidates.map {
-            "\($0.rule.name) \($0.original)->\($0.replacement)"
-        }
+        // The operators, not the whole catalogue. Every statement in this subject is also a
+        // site for statement deletion, and a test that listed both would be a test about
+        // every rule this tool will ever have rather than about the logic in this file.
+        let found = Self.discovery().candidates
+            .filter { !$0.rule.name.hasPrefix("skip-") }
+            .map { "\($0.rule.name) \($0.original)->\($0.replacement)" }
         #expect(
             found.sorted() == [
                 "and-keep-lhs length <= limit && (strict || lenient)->length <= limit",
@@ -64,9 +67,11 @@ struct RealisticSubjectTests {
     @Test("wraps what precedence says, not what the line looks like")
     func wrapsWhatPrecedenceSays() {
         let bytes = Array(Self.source.utf8)
-        let wrapped = Self.discovery().candidates.map {
-            String(decoding: bytes[$0.guardSpan.start..<$0.guardSpan.end], as: UTF8.self)
-        }
+        // The operators, for the same reason as above: a statement guard wraps a statement,
+        // which is a fact about a different rule.
+        let wrapped = Self.discovery().candidates
+            .filter { !$0.rule.name.hasPrefix("skip-") }
+            .map { String(decoding: bytes[$0.guardSpan.start..<$0.guardSpan.end], as: UTF8.self) }
         // Three sites, not seven: the prunes at a connective share the site its swap has,
         // because they are alternatives at one expression rather than sites of their own.
         #expect(

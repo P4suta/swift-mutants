@@ -161,7 +161,7 @@ so what `list` describes is what `run` would do.
 
 | Tier | Adds |
 | --- | --- |
-| `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order |
+| `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order, statement deletion |
 | `strong` | compound arithmetic assignment, bitwise, optional handling, range bounds, collection ends |
 | `all` | nothing yet — the rules its tier is for are not built |
 
@@ -203,6 +203,20 @@ and `(a)!`, which asks whether anything tests the case where it is not — and t
 nothing does, which is a detection rather than a wrong answer. The two sides are written
 differently for the same reason as above: `b` is already the type of the whole expression
 and `a` is the optional.
+
+### A statement that does not run
+
+The plainest question in mutation testing — if this line never ran, would anything notice?
+— and by volume the largest family there is. Google's measurement over six years of a
+two-billion-line monorepo put statement deletion at 68% of every mutant they generated and
+around 80% productivity, the highest of any operator they kept, which is why it is in
+`balanced` rather than above it. It is 1154 mutants in this repository.
+
+Only statements that bind nothing: a call whose value is discarded, and an assignment to
+something that already exists. A `let` skipped this way would take its name out of scope
+for everything below it, which is not a mutant but a different program — and a block of one
+statement is never touched, because in a function body that statement is the implicit
+return and in a `guard` it is the only thing stopping a fall-through.
 
 ### The ends of a collection
 

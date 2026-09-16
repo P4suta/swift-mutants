@@ -281,30 +281,32 @@ public enum Instrument {
         }
         original += String(decoding: bytes[cursor..<node.span.end], as: UTF8.self)
 
-        // A statement guard goes in front of what is there rather than around it, which is
-        // the only shape that works for a body: several statements are not an expression,
-        // and a body that returns nothing has no value to put in a ternary's branches.
-        if node.values.flatMap({ $0 }).first?.form == .statement {
-            return Self.statementGuarded(
-                node,
-                around: original,
-                token: token,
-                indices: indices,
-                placements: placements,
-                sites: sites)
-        }
+        // One site can hold guards of both shapes, and the order they go in is not a
+        // preference. `n += 1` is a statement *and* an expression, so the operator swap and
+        // the statement skip land on exactly the same bytes - and rendering them both as
+        // whichever came first produced text no compiler would take. Expression guards go
+        // innermost, because a ternary needs an expression and what a statement guard
+        // leaves behind is a statement.
+        //
+        // Zipped rather than looked up: numbering walked this same list in this same order,
+        // so position is the join. A length mismatch drops a mutant here, and the placement
+        // check then refuses the file rather than shipping a phantom.
+        let everyAlternative = Array(zip(node.values.flatMap { $0 }, indices[node.span] ?? []))
+        let alternatives = everyAlternative.filter { $0.0.form == .expression }
+        let outer = everyAlternative.filter { $0.0.form != .expression }
 
         // The mutated sides carry the pristine expression with one edit applied, because
         // only one mutant is ever awake and a nested guard in here would never fire.
-        var rendered = "(\(original))"
-        // The children just placed sit one byte in, past the opening parenthesis.
-        placements = placements.compactMapValues { $0.shifted(by: 1) }
-        sites = sites.compactMapValues { $0.shifted(by: 1) }
+        //
+        // Parenthesised only when something is going to wrap it in a ternary: a statement
+        // in brackets is not a statement.
+        var rendered = alternatives.isEmpty ? original : "(\(original))"
+        if !alternatives.isEmpty {
+            // The children just placed sit one byte in, past the opening parenthesis.
+            placements = placements.compactMapValues { $0.shifted(by: 1) }
+            sites = sites.compactMapValues { $0.shifted(by: 1) }
+        }
 
-        // Zipped rather than looked up: numbering walked this same list in this same
-        // order, so position is the join. A length mismatch drops a mutant here, and the
-        // placement check then refuses the file rather than shipping a phantom.
-        let alternatives = Array(zip(node.values.flatMap { $0 }, indices[node.span] ?? []))
         for (candidate, index) in alternatives.reversed() {
             let mutated = Self.apply(
                 candidate, to: bytes, within: node.span, hiding: comments)
@@ -324,7 +326,15 @@ public enum Instrument {
         for (_, index) in alternatives {
             sites[index] = SourceSpan(start: 0, end: rendered.utf8.count)
         }
-        return Rendered(text: rendered, placements: placements, sites: sites)
+        guard !outer.isEmpty else {
+            return Rendered(text: rendered, placements: placements, sites: sites)
+        }
+        return Self.statementGuarded(
+            outer,
+            around: rendered,
+            token: token,
+            placements: placements,
+            sites: sites)
     }
 
     /// A body with its guards put in front of it.
@@ -337,22 +347,28 @@ public enum Instrument {
     /// matter of reading: one mutant is ever awake, so two guards in front of a body are
     /// two conditions of which at most one is true.
     private static func statementGuarded(
-        _ node: IntervalForest<[Candidate]>.Node,
+        _ alternatives: [(Candidate, UInt32)],
         around original: String,
         token: String,
-        indices: [SourceSpan: [UInt32]],
         placements: [UInt32: SourceSpan],
         sites: [UInt32: SourceSpan]
     ) -> Rendered {
         var rendered = original
         var placements = placements
         var sites = sites
-        let alternatives = Array(zip(node.values.flatMap { $0 }, indices[node.span] ?? []))
         for (candidate, index) in alternatives.reversed() {
-            let head = " if \(Runtime.guardCall(token: token, index: index)) { "
-            let body = candidate.replacement
-            let guarded = "\(head)\(body) }"
-            rendered = guarded + rendered
+            // A body's guard goes *in front of* what is there and does its work when the
+            // mutant is awake. A statement's guard goes *around* it and does its work when
+            // the mutant is asleep - the mutation being that the statement does not run, so
+            // the condition has to be the other way up.
+            let awake = Runtime.guardCall(token: token, index: index)
+            let head =
+                candidate.form == .skipping ? " if !\(awake) { " : " if \(awake) { "
+            let body = candidate.form == .skipping ? "" : candidate.replacement
+            let guarded = candidate.form == .skipping ? "\(head)" : "\(head)\(body) }"
+            // Around, not in front: the original keeps every byte and every newline it had,
+            // and only its first and last lines gain any text.
+            rendered = candidate.form == .skipping ? guarded + rendered + " }" : guarded + rendered
 
             let shift = guarded.utf8.count
             placements = placements.compactMapValues { $0.shifted(by: shift) }

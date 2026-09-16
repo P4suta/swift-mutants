@@ -23,6 +23,12 @@ final class CandidateWalker: SyntaxVisitor {
     /// region *would* have yielded rather than of what a second suppression pass decides.
     private let countOnly: Bool
 
+    /// Whether this run asked for statements to be skipped.
+    ///
+    /// A tier rather than a flag, and its own question here so the walk can decide before
+    /// it looks at a block rather than after it has built candidates nobody wanted.
+    let skipsStatements: Bool
+
     /// Whether this run asked for whole bodies to be replaced.
     ///
     /// Decided before the walk rather than after a candidate exists, because working out
@@ -37,7 +43,8 @@ final class CandidateWalker: SyntaxVisitor {
         suppressions: Suppressions,
         countOnly: Bool = false,
         declarationPath: [String] = [],
-        replacesBodies: Bool = false
+        replacesBodies: Bool = false,
+        skipsStatements: Bool = false
     ) {
         // One converter per file, built by the caller. Constructing one lays out the whole
         // line table, so building one per node - which is what Muter does - makes discovery
@@ -47,6 +54,7 @@ final class CandidateWalker: SyntaxVisitor {
         self.countOnly = countOnly
         self.declarationPath = declarationPath
         self.replacesBodies = replacesBodies
+        self.skipsStatements = skipsStatements
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -110,6 +118,11 @@ final class CandidateWalker: SyntaxVisitor {
     override func visitPost(_ node: InitializerDeclSyntax) { leave() }
 
     // MARK: - Candidates
+
+    override func visit(_ node: CodeBlockItemListSyntax) -> SyntaxVisitorContinueKind {
+        offerSkippable(in: node, of: Syntax(node))
+        return .visitChildren
+    }
 
     /// One end of a collection named as the other.
     ///
@@ -449,6 +462,30 @@ final class CandidateWalker: SyntaxVisitor {
                 replacement: operand.flattenableDescription,
                 guardSpan: region,
                 form: .expression,
+                enclosingDeclaration: declarationPath.joined(separator: ".")
+            )
+        )
+    }
+
+    /// Records a statement that does not run.
+    ///
+    /// The span is the statement itself and the replacement is empty: the guard is written
+    /// around what is there, so the original keeps every byte and every newline it had and
+    /// only its first and last lines gain any text.
+    func record(_ prune: Rules.Prune, skipping statement: Syntax) {
+        guard let span = Self.span(of: statement) else { return }
+        if !countOnly, isSuppressed(prune.family, at: statement) {
+            skips.append(Skip(reason: .disabledByComment, span: span, candidatesHidden: 1))
+            return
+        }
+        candidates.append(
+            Candidate(
+                rule: Rules.identifier(for: prune),
+                span: span,
+                original: statement.trimmedDescription,
+                replacement: "",
+                guardSpan: span,
+                form: .skipping,
                 enclosingDeclaration: declarationPath.joined(separator: ".")
             )
         )

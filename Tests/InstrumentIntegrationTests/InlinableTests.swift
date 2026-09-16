@@ -67,7 +67,12 @@ struct InlinableTests {
 
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/swiftc")
-        process.arguments = ["-typecheck", "-swift-version", "6"] + extra + paths
+        // Lowered to SIL and thrown away, not merely type-checked, because that is what
+        // validation asks and a gate that asked less would pass mutants a run rejects.
+        // `-typecheck` does not report a missing return, so a guard that took away a
+        // function's only return read as fine here and broke the build in the field.
+        process.arguments =
+            ["-emit-sil", "-wmo", "-o", "/dev/null", "-swift-version", "6"] + extra + paths
         let pipe = Pipe()
         process.standardError = pipe
         process.standardOutput = pipe

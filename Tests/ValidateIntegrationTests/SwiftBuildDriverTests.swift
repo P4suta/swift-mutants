@@ -126,7 +126,13 @@ struct SwiftBuildDriverTests {
         ])
 
         #expect(output.exitCode != 0)
-        #expect(output.text.contains("no such module 'Core'"), "\(output.text)")
+        // Whichever way the compiler words it. This asks whether a bare compiler over the
+        // files of two modules refuses them, not which sentence it chooses - and the
+        // sentence did change, when this driver moved from type-checking to lowering so
+        // that it would stop missing a mutant that takes away a function's only return.
+        #expect(
+            output.text.contains("Core") || output.text.contains("no such module"),
+            "\(output.text)")
     }
 
     /// And when something really is wrong, it says so in a form the parser reads.
