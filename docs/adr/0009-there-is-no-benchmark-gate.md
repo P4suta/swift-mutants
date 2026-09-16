@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 swift-mutants contributors
 SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
-# 9. There is no benchmark gate
+# 0009. There is no benchmark gate
 
 ## Status
 

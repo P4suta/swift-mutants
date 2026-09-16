@@ -69,7 +69,7 @@ test what it reaches and started no process for any mutant. The two runs took 41
 | **A scripted toolchain** | a `swift` and an `xcodebuild` that hang, print garbage or leave a red baseline on demand, so the unit tier can test what happens when a real one misbehaves |
 | **Configuration** | a TOML reader that refuses an unknown key with the line it was written on, read by every command alike; `init` writes a starter file with every setting explained |
 | **Snapshot** | a disposable copy that refuses links and special files, owned by the run that made it and swept when its owner is gone |
-| **Discovery** | comparisons, connectives and their operand prunes, boolean literals, arithmetic, compound assignment and bitwise — with precedence resolved, arid suppression, and comment pragmas |
+| **Discovery** | seventeen families — comparisons, connectives and their operand prunes, boolean and integer literals, arithmetic, compound assignment, bitwise, ranges, optionals, collection ends, concatenation, a pattern's own condition, a swallowed failure, a statement that does not run and a body that does nothing — with precedence resolved, arid suppression, and comment pragmas |
 | **Instrumentation** | every mutant in one tree behind a runtime guard, the line count unchanged, and an activation proof |
 | **Validation** | every module asked at once, from SwiftPM's own plan, lowered rather than merely type-checked; halving is the fallback, not the mechanism |
 | **Coverage** | each test asked once what it reaches, so a mutant faces the handful that can catch it — and a test whose probe did not finish is offered to everything rather than treated as reaching nothing |

@@ -3,10 +3,12 @@ SPDX-FileCopyrightText: 2026 swift-mutants contributors
 SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
-# 0008. A guard wraps an expression, and a declaration cannot be guarded at all
+# 0008. A guard wraps an expression, and a declaration needs a statement in front of it
 
-**Status:** accepted. The statement form the plan reserved is not built, and this records
-why building it would not have helped the case it was reserved for.
+**Status:** accepted, and amended by its own addendum below. The second half of what this
+first recorded — that a declaration cannot be guarded at all — did not hold: the statement
+form was built, for the reason the record anticipated. The title carries the amendment so
+that a reader of the index is not told the opposite of what the file says.
 
 ## Context
 
