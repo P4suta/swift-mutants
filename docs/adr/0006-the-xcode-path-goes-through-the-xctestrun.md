@@ -84,12 +84,43 @@ suite instead of the time to its first failing assertion. Coverage narrowing sti
 
 ### What is not built
 
-`run` cannot yet use any of this, and saying so is the point of writing it down. What is
-left is the wiring rather than the parts: describing a project's files, a pristine build, a
-validating build, a test build and a mutant host all exist and are tested against a real
-Xcode. What does not exist is the seam `Run` would choose between them at — today it names
-`SwiftPackageManager` directly at four points — nor the settings that would say which
-project, scheme and destination a run is about.
+`run` cannot yet use any of this, and saying so is the point of writing it down.
+
+What exists, tested against a real Xcode: reading a project's schemes, a build with
+`build-for-testing`, a validating build, waking a mutant through a copy of the `.xctestrun`,
+and reading the result bundle. What does not:
+
+- **Nothing describes a project's files**, and this turns out to be a decision rather than
+  a gap to fill. The SwiftPM path asks `swift package describe` and gets a
+  `WorkspaceDescription`; `SwiftMutantsXcode` produces nothing of the kind, so there is no
+  answer to "which files would be mutated". It is the first missing part, because discovery
+  is the first phase that needs one — and the obvious implementation is wrong.
+
+  This record said earlier that the Xcode path globs `SRCROOT` rather than parsing the
+  project file, because the runtime is file self-contained and nothing needs to know which
+  target a file belongs to. That is true of *instrumenting*. It is not true of *describing*:
+  `WorkspaceDescription` excludes test targets, and it does so inherently rather than as a
+  recorded skip, because mutating a test would measure whether the tests test themselves.
+  A glob of `SRCROOT` cannot tell a test file from a source file without guessing from
+  directory names, and `xcodebuild -showBuildSettings -json` gives a target's name, its
+  product type and its source root but never its list of files.
+
+  The candidate that does not guess is the one the SwiftPM path already uses: after
+  `build-for-testing`, each module's `SwiftFileList` in the build directory names its
+  sources exactly, which is where `Lowering` already reads them from on the other path.
+  The cost is an ordering change — `list` would need a build on this path where it needs
+  none on the other — and that is a promise about a command, so it wants its own record and
+  a measurement on a machine where `xcodebuild` runs. Neither is available here.
+- **There is no seam for `Run` to choose at.** It names `SwiftPackageManager` directly at
+  four points.
+- **Nothing says which project, scheme and destination a run is about.** Deliberately last:
+  a setting stored and never read gives a project exactly the run they would have had
+  without it, which is a defect this repository has already had once and refuses to have
+  again. The setting arrives when something reads it.
+
+An earlier revision of this paragraph listed describing a project's files among the parts
+that exist. It does not exist; the claim was written without being checked, which is the
+failure this record's own neighbours spent a week on.
 
 **Validation has an Xcode equivalent, and this part is done.** The paragraph that stood
 here called it the prerequisite for everything else: the SwiftPM path asks each module
