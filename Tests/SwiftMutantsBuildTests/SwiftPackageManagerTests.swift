@@ -161,8 +161,15 @@ struct SwiftPackageManagerTests {
 
     /// A `swift` that hangs cannot be installed, so this is the only way the deadline around
     /// it gets tested at all.
-    @Test("stops asking when the toolchain stops answering")
-    func stopsWhenTheToolchainHangs() async throws {
+    ///
+    /// And what it says matters as much as that it stops. Reported from a machine whose
+    /// Gatekeeper and Spotlight daemons were saturated: a freshly built manifest executable
+    /// sat waiting to be *allowed to start*, having used a hundredth of a second of
+    /// processor time and never reached `main`. This deadline fired, and the message said
+    /// `swift package describe` exited 143. It said nothing. - which reads as a fact about
+    /// the package. An hour went into reading a manifest that was never wrong.
+    @Test("says a toolchain that stopped answering did not answer")
+    func saysWhenTheToolchainStopsAnswering() async throws {
         let fake = try FakeToolchain([
             FakeToolchainRule(
                 whenArgumentsContain: ["swift", "package", "describe"],
@@ -171,13 +178,20 @@ struct SwiftPackageManagerTests {
         ])
         defer { fake.cleanUp() }
 
-        await #expect(throws: BuildSystemError.self) {
+        let thrown = await #expect(throws: BuildSystemError.self) {
             _ = try await SwiftPackageManager(
                 root: Self.root,
                 runner: Runner(recorder: TraceRecorder()),
                 executable: "\(fake.pathEntry)/swift"
             ).describe(environment: fake.environment, timeout: .milliseconds(200))
         }
+        let said = try #require(thrown?.description)
+        #expect(said.contains("did not answer"), "\(said)")
+        #expect(said.contains("200ms"), "it should say how long it waited: \(said)")
+        // Never the exit status. A deadline's signal is this tool's own doing, and a number
+        // a reader would look up is a number pointing them at their own package.
+        #expect(!said.contains("143"), "\(said)")
+        #expect(!said.contains("It said nothing"), "\(said)")
     }
 
     /// The first invariant of the family, at the one place it was being broken.

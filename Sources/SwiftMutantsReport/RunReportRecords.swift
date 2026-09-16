@@ -58,7 +58,7 @@ extension RunReport {
         public let testsStarted: Int
 
         /// How many times it had to be run. More than once means the first attempt ran out
-        /// of time and was tried again on a quiet machine.
+        /// of time and was tried again with the rest of this run idle.
         public let attempts: Int
 
         /// How long the run that decided it took.

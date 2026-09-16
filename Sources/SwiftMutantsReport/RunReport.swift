@@ -144,8 +144,13 @@ public struct RunReport: Codable, Sendable, Hashable {
         /// a line worth deleting.
         public let survived: Int
 
-        /// Mutants that ran out of time twice, the second time on a quiet machine. Counted
-        /// as detections and always shown apart from kills.
+        /// Mutants that ran out of time twice, the second time with this run idle around
+        /// them. Counted as detections and always shown apart from kills.
+        ///
+        /// The retry removes the contention this run made, which is all it can remove. A
+        /// machine loaded by something else is one both attempts wait on, so a reader who
+        /// measured on a busy machine should read this column as the weakest in the
+        /// report.
         public let timedOut: Int
 
         /// Mutants nothing could be said about, which are in neither column of the score.

@@ -65,6 +65,18 @@ public struct SwiftPackageManager: Sendable {
             throw BuildSystemError("cannot run \(executable): \(failure)")
         }
         guard outcome.exitCode == 0 else {
+            // What stopped it first, because a deadline of this tool's own reported as an
+            // exit status reads as a fact about somebody's package - and the exit status of
+            // a process this tool signalled is a number pointing at the wrong thing.
+            if let stopped = outcome.stoppedFromHere(after: timeout) {
+                throw BuildSystemError(
+                    """
+                    `swift package describe` \(stopped) in \(root.path). Nothing is \
+                    necessarily wrong with the package: a manifest compiles and then runs, \
+                    and a machine with no processor to spare can leave that waiting.
+                    """
+                )
+            }
             let complaint = String(decoding: outcome.standardError, as: UTF8.self)
             throw BuildSystemError(
                 """

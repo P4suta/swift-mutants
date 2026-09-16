@@ -224,3 +224,42 @@ public struct ProcessOutcome: Sendable {
     /// The same for standard error, which is where most tools put the reason.
     public var standardErrorText: String { String(decoding: standardError, as: UTF8.self) }
 }
+extension ProcessOutcome {
+
+    /// What stopped the command, when what stopped it was this tool rather than the command.
+    ///
+    /// `nil` when it decided to exit by itself. However unhappily it did, that is an answer
+    /// about the work it was asked to do, and the caller should report what it said.
+    ///
+    /// A deadline and an allowance of processor time are not that. They are limits imposed
+    /// from here, and reporting one as an exit status hands a reader a number to look up
+    /// about their own project when the thing that stopped it was this tool. Reported from
+    /// a machine whose Gatekeeper and Spotlight daemons were saturated: a freshly built
+    /// manifest executable had used a hundredth of a second of processor time in ten
+    /// minutes and had not reached `main`, waiting to be allowed to start. The deadline
+    /// fired, and what a person read was that `swift package describe` exited 143 and said
+    /// nothing - so an hour went into a manifest that was never wrong.
+    public func stoppedFromHere(after deadline: Duration?) -> String? {
+        // Before the deadline, because a process the kernel stopped for using its allowance
+        // did the work rather than waited, and that is the better evidence of the two.
+        if overranCpu { return "used more processor time than it was allowed" }
+        if timedOut {
+            guard let deadline else { return "did not answer" }
+            return "did not answer within \(Self.said(deadline))"
+        }
+        return nil
+    }
+
+    /// A deadline as somebody would say it.
+    static func said(_ deadline: Duration) -> String {
+        let milliseconds =
+            Int(deadline.components.seconds) * 1000
+            + Int(deadline.components.attoseconds / 1_000_000_000_000_000)
+        guard milliseconds >= 60_000 else {
+            guard milliseconds >= 1000 else { return "\(milliseconds)ms" }
+            let tenths = (milliseconds % 1000) / 100
+            return tenths == 0 ? "\(milliseconds / 1000)s" : "\(milliseconds / 1000).\(tenths)s"
+        }
+        return "\(milliseconds / 60_000)m\((milliseconds % 60_000) / 1000)s"
+    }
+}

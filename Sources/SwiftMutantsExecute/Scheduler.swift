@@ -183,7 +183,11 @@ public struct Scheduler: Sendable {
         return await retryingTimeouts(first, of: mutants, progress: progress)
     }
 
-    /// Runs the mutants that ran out of time again, one at a time, on a quiet machine.
+    /// Runs the mutants that ran out of time again, one at a time, with this run idle.
+    ///
+    /// "With this run idle" and not "on a quiet machine": what a serial retry removes is
+    /// the contention this run made, which is the only contention it has any say over. A
+    /// machine busy with somebody else's work is a machine both attempts wait on.
     ///
     /// The reason this exists is not hypothetical. A killed mutant stops at the first test
     /// that notices it; a surviving mutant runs the whole suite. So the mutants that meet

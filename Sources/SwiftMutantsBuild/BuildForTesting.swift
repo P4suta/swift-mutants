@@ -324,12 +324,20 @@ extension SwiftPackageManager {
     }
 
     static func expectSuccess(
-        _ outcome: ProcessOutcome, doing what: String, in directory: String
+        _ outcome: ProcessOutcome,
+        doing what: String,
+        in directory: String,
+        within deadline: Duration? = nil
     ) throws(BuildSystemError) {
         if let failure = outcome.startFailure {
             throw BuildSystemError("cannot run \(what): \(failure)")
         }
         guard outcome.exitCode == 0 else {
+            // A limit of this tool's own, said as one. Reported as an exit status it reads
+            // as a fact about somebody's package, and the number is one they would look up.
+            if let stopped = outcome.stoppedFromHere(after: deadline) {
+                throw BuildSystemError("`\(what)` \(stopped) in \(directory).")
+            }
             let complaint = String(decoding: outcome.standardError, as: UTF8.self)
             throw BuildSystemError(
                 """

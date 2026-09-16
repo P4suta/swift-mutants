@@ -66,6 +66,10 @@ public struct ChangedFiles: Sendable {
             throw RunError("cannot run \(git): \(failure)")
         }
         guard outcome.exitCode == 0 else {
+            if let stopped = outcome.stoppedFromHere(after: .seconds(60)) {
+                throw RunError(
+                    "`git \(arguments.joined(separator: " "))` \(stopped) in \(root.path).")
+            }
             let complaint = String(decoding: outcome.standardError, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             throw RunError(

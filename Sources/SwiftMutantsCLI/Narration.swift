@@ -152,16 +152,27 @@ enum Narration {
                 + unnoticed.map { "  \(describe($0, at: outcome.positions[$0.path]))" }
         }
         // Named rather than counted, because a confirmed deadline is a finding about the
-        // program and not a gap in the measurement. The scheduler has already ruled out
-        // the busy machine: a mutant that ran out of time once is retried alone and comes
-        // back `inconclusive` if it then finishes, so everything here failed to finish
-        // twice, the second time with the machine to itself. "This change makes your
-        // program stop terminating" is a stronger statement than most survivors make, and
-        // it is unactionable while it is a digit in a tally.
+        // program and not a gap in the measurement: a mutant that ran out of time once is
+        // retried on its own and comes back `inconclusive` if it then finishes, so
+        // everything here failed to finish twice. "This change makes your program stop
+        // terminating" is a stronger statement than most survivors make, and it is
+        // unactionable while it is a digit in a tally.
+        //
+        // What the retry rules out is *this run* being what the trial was waiting for.
+        // It does not rule out the machine, and this line used to say "on a quiet
+        // machine", which claims something nothing here measured. Reported from a machine
+        // where Spotlight and Gatekeeper held half a core between them for hours and a
+        // freshly built executable sat waiting to be allowed to start, having used a
+        // hundredth of a second of processor time: the retry would have been as stuck as
+        // the first attempt, and the sentence would have told somebody their program
+        // stopped terminating.
         let stuck = outcome.results.filter { $0.verdict.outcome == .timedOut }
         if !stuck.isEmpty {
             lines +=
-                ["", "these never finished, twice, the second time on a quiet machine:"]
+                [
+                    "",
+                    "these never finished, twice, the second time with this run to themselves:",
+                ]
                 + stuck.map { "  \(describe($0, at: outcome.positions[$0.path]))" }
         }
         lines += [

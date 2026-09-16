@@ -73,6 +73,19 @@ public struct XcodeDriver: Sendable {
             label: .build
         )
         guard outcome.exitCode == 0 else {
+            // "would not build this project" is a claim about the project, and a deadline
+            // of this tool's own is not evidence for it.
+            // No deadline is passed to `xcodebuild` at all, so this can only be the
+            // processor allowance. It is still worth asking: what is left of this branch
+            // otherwise is a claim about the project.
+            if let stopped = outcome.stoppedFromHere(after: nil) {
+                throw Refused(
+                    description: """
+                        `xcodebuild build-for-testing` \(stopped). That is this tool's own \
+                        limit rather than anything the project did.
+                        """
+                )
+            }
             throw Refused(
                 description: """
                     `xcodebuild build-for-testing` would not build this project, so nothing \

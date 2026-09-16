@@ -176,7 +176,7 @@ extension StrykerReport {
     /// - A survivor no test reached is `NoCoverage`, not `Survived`. The schema keeps that
     ///   distinction and so does this tool, because they are different problems.
     /// - A confirmed timeout is `Timeout`. The schema has no word for a first one, which is
-    ///   why this tool never reports one: it retries on a quiet machine first.
+    ///   why this tool never reports one: it retries with the rest of the run idle first.
     /// - A mutant this tool broke on is `RuntimeError`, which is the schema's word for "the
     ///   harness, not the program".
     /// - A mutant proved equivalent is `Ignored`, which is what the schema calls one that

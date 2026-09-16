@@ -13,6 +13,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A command this tool stopped says which of its limits fired, rather than reporting the
+  signal as an exit status. `swift package describe` stopped at its deadline was reported
+  as "exited 143. It said nothing." - a fact about somebody's package, with a number they
+  would look up. Reported from a machine whose Gatekeeper daemon held two thirds of a core
+  for hours: a freshly built manifest executable had used a hundredth of a second of
+  processor time in ten minutes and had not reached `main`. An hour went into reading a
+  manifest that was never wrong. Five drivers asked only about the exit status; they ask
+  what stopped it now.
 - Equivalence proving finds equivalent mutants at all. It never had: the first compile
   into a module cache it has to build exits 0 and prints no SIL whatsoever, so the
   original's fingerprint was the digest of an empty string and no mutant ever equalled it.
