@@ -171,6 +171,27 @@ struct UnknownSuppressionTests {
         #expect(found.map(\.line) == [2])
     }
 
+    /// Every family, not one of them. The list a comment is checked against was written out
+    /// by hand beside the rules, and `concatenation` was missing from it: a project that
+    /// wrote `// swift-mutants disable concatenation` was told their own family was a typo.
+    /// Drawn from the rules themselves here, so a family added later is covered the day it
+    /// is added rather than the day somebody remembers this list.
+    @Test("says nothing about any family a rule of its own belongs to")
+    func everyRealFamilyIsNameable() {
+        for family in Set(Rules.familyOfRule.values).sorted() {
+            #expect(
+                Self.found(
+                    """
+                    func f(_ a: Int, _ b: Int) -> Int {
+                        // swift-mutants disable next-line \(family): a family this build has
+                        return a + b
+                    }
+                    """
+                ).isEmpty,
+                "\(family) is a family of this build, and a comment naming it was refused")
+        }
+    }
+
     @Test("says nothing about a family it does have")
     func knownFamily() {
         #expect(

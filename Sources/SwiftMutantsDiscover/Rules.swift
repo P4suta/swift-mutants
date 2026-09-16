@@ -307,12 +307,14 @@ enum Rules {
     }()
 
     /// Every family a rule belongs to.
-    static let families: Set<String> = [
-        "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
-        "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
-        "range-operator", "optional-handling", "collection-boundary", "statement-deletion",
-        "constant-replacement", "unary-deletion", "pattern-matching", "error-handling",
-    ]
+    ///
+    /// Read off the rules rather than listed again beside them. Written out by hand, it was
+    /// missing `concatenation` - so a project that wrote `// swift-mutants disable
+    /// concatenation` was told their own family was a typo, and the comment they believed
+    /// had dealt with a mutant silenced nothing. A list of names kept in step with another
+    /// list of names by somebody remembering to is a list that is wrong between the two
+    /// commits nobody made.
+    static let families: Set<String> = Set(Self.familyOfRule.values)
 
     /// The identifier for a swap, at the version this build emits.
     ///
