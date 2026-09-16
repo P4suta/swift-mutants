@@ -160,7 +160,8 @@ public struct Lister: Sendable {
             discovery: Discover.candidates(
                 in: source,
                 at: subject.path,
-                custom: Self.own(of: subject.path, in: configuration)),
+                custom: Self.own(of: subject.path, in: configuration),
+                selecting: configuration.mutation),
             positions: LineIndex(source)
         )
     }

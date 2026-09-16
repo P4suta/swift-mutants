@@ -19,6 +19,13 @@ All notable changes to this project are documented here. The format follows
   pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
+- `profile` and `operators` now select which operators a run uses. They were read,
+  validated and written into the file `init` produces with a comment explaining the tiers,
+  and then honoured by nothing at all: setting `profile = "all"` changed no mutant. A rule a
+  tier leaves out is reported by `why-skipped` rather than silently absent.
+- `extreme` is refused rather than accepted and ignored. Whole-body replacement is not in
+  this build, and a setting that is stored and never read gives a project exactly the run
+  they would have had without it.
 - A run says which of your tests stepped aside in the copy it happens in: swift-testing
   reports a disabled suite on the event stream, and a skipped test used to be
   indistinguishable from one that ran and passed — which made anything only those tests

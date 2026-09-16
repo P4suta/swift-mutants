@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import SwiftMutantsConfig
+import SwiftMutantsDiscover
 import Testing
 
 @testable import SwiftMutantsCLI
@@ -19,6 +20,51 @@ import Testing
 /// would be measuring under settings nobody chose.
 @Suite("The file a project starts from")
 struct StarterConfigurationTests {
+
+    /// The tiers are written out of the table a run reads, so they cannot say one thing in
+    /// the file somebody is handed and another in the run they get.
+    ///
+    /// Generated rather than typed, which is what makes this worth asserting: a comment
+    /// listing what a setting does is a second copy of the setting, and the copy that
+    /// drifts is the one the user reads.
+    @Test("explains the tiers out of the table the run uses")
+    func explainsTheTiers() {
+        let written = StarterConfiguration.text
+        for step in RuleSelection.tiers {
+            #expect(written.contains("#   \(step.tier.rawValue)"), "\(step.tier)")
+            for family in step.adds {
+                #expect(written.contains(family), "\(family)")
+            }
+        }
+    }
+
+    /// Indented like every other comment in the file. A multiline literal strips its own
+    /// indentation and leaves an interpolation's alone, so a generated line lands further
+    /// in than the ones around it unless it is written with none - which is a thing nobody
+    /// notices in a diff and everybody notices in the file they were handed.
+    @Test("writes the tiers at the same margin as the rest")
+    func keepsTheMargin() {
+        let lines = StarterConfiguration.text.split(
+            separator: "\n", omittingEmptySubsequences: false)
+        let tiers = lines.filter { $0.contains(" adds ") || $0.hasPrefix("#   ") }
+        #expect(!tiers.isEmpty)
+        for line in tiers {
+            #expect(line.hasPrefix("#"), "\(line)")
+        }
+    }
+
+    /// And each tier's name is followed by something, rather than run together with it.
+    @Test("separates a tier from what it adds")
+    func separatesTheColumns() {
+        for step in RuleSelection.tiers {
+            let name = step.tier.rawValue
+            #expect(
+                !StarterConfiguration.text.contains("#   \(name)a")
+                    && !StarterConfiguration.text.contains("#   \(name)b")
+                    && !StarterConfiguration.text.contains("#   \(name)c"),
+                "\(name) runs into what it adds")
+        }
+    }
 
     /// The one property that cannot be got wrong by hand: whatever is written has to be
     /// readable by the thing that reads it. A starter file this tool refuses would be a

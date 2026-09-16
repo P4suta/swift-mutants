@@ -163,6 +163,20 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     case multilineString = "multiline-string"
 
     case excluded
+
+    /// The tier of operators this run asked for does not include this rule's family.
+    ///
+    /// Named rather than silently absent. `profile` narrows the catalogue by design, and
+    /// somebody who sets `balanced` and then wonders where their bitwise mutants went
+    /// should find the answer in `why-skipped` rather than in the source of this tool.
+    case outsideProfile = "outside-profile"
+
+    /// The run named the operators it wanted and this is not one of them.
+    ///
+    /// Apart from ``outsideProfile`` because the two are different decisions with different
+    /// fixes: one is a tier to widen, the other is a list to add a name to, and a reader
+    /// told only "you did not ask for this" cannot tell which of their settings did it.
+    case notSelected = "not-selected"
 }
 
 /// What one file yielded.

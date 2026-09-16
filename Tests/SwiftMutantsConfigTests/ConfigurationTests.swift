@@ -42,7 +42,7 @@ struct ConfigurationTests {
 
             [mutation]
             profile = "strong"
-            extreme = true
+            extreme = false
             include = ["Sources/**/*.swift"]
             exclude = ["**/*.generated.swift"]
             operators = ["comparison", "optional-handling"]
@@ -71,7 +71,10 @@ struct ConfigurationTests {
             """
         )
         #expect(configuration.mutation.profile == .strong)
-        #expect(configuration.mutation.extreme)
+        // `false`, because `true` is refused: whole-body replacement is not in this build.
+        // This fixture used to say `true` and assert it was read, which recorded the defect
+        // as though it were the specification. See `UnbuiltSettingTests`.
+        #expect(configuration.mutation.extreme == false)
         #expect(configuration.mutation.include.map(\.description) == ["Sources/**/*.swift"])
         #expect(configuration.mutation.operators == ["comparison", "optional-handling"])
         #expect(configuration.test.command == ["swift", "test", "--filter", "Fast"])

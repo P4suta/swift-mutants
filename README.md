@@ -155,6 +155,26 @@ explained, and `init --check` says whether the one you have can be read — exit
 which is the shape for a gate. Every command reads it, `list` and `why-skipped` included,
 so what `list` describes is what `run` would do.
 
+### Which operators run
+
+`profile` picks a tier, and each tier contains the one below it:
+
+| Tier | Adds |
+| --- | --- |
+| `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order |
+| `strong` | compound arithmetic assignment, bitwise |
+| `all` | nothing yet — the rules its tier is for are not built |
+
+`operators = ["lt-to-le"]` names them outright and wins over the tier, because a name is
+more specific than a tier.
+
+A rule a tier leaves out is a **skip**, not a silence: `why-skipped` reports it as
+`outside-profile`, with the count of mutants it cost, and a rule you did not name as
+`not-selected`. A catalogue that got smaller than you expected always has something to ask.
+
+`swift-mutants init` writes the tier table into your settings file from the same table a run
+reads, so the explanation you are handed cannot drift from the run you get.
+
 ### Survivors you have accounted for
 
 Some survivors are not holes. A mutant in code unreachable by construction survives every

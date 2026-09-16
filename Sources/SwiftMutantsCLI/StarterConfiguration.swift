@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+import SwiftMutantsConfig
+import SwiftMutantsDiscover
+
 /// The file a project starts from.
 ///
 /// The configuration is read by every command, and nothing told anybody it existed. A
@@ -17,8 +20,35 @@
 /// enabled is worse than no starter file.
 enum StarterConfiguration {
 
+    /// The tiers, written out of the table a run reads rather than beside it.
+    ///
+    /// A comment that lists what a setting does is a second copy of the setting, and two
+    /// copies of anything drift. This one would drift the moment a rule joined a family -
+    /// and it would drift *quietly*, into the file this tool hands somebody as the
+    /// explanation of what their own choices mean.
+    static var tierLines: String {
+        RuleSelection.tiers
+            .map { step in
+                let adds =
+                    step.adds.isEmpty
+                    ? "nothing yet; the rules its tier is for are not built"
+                    : step.adds.sorted().joined(separator: ", ")
+                // No leading indentation: a multiline literal strips its own, and an
+                // interpolation is spliced in after that has happened - so anything this
+                // adds would land in the file as a comment indented past every other one.
+                let name = step.tier.rawValue
+                let pad = String(repeating: " ", count: max(0, Self.tierColumn - name.count))
+                return "#   \(name)\(pad)\(adds)"
+            }
+            .joined(separator: "\n")
+    }
+
+    /// How wide the tier names are written, so what each adds lines up under the next.
+    static let tierColumn = 10
+
     /// What `init` writes.
-    static let text = """
+    static var text: String {
+        """
         # How this package is measured. Every setting here is commented out, so this file
         # changes nothing until you uncomment something.
         #
@@ -27,13 +57,10 @@ enum StarterConfiguration {
 
         [mutation]
 
-        # Which operators to use. `balanced` is the default and is a subset of `strong`,
-        # which is a subset of `all`.
+        # Which operators to use. Each tier contains the one below it.
+        \(Self.tierLines)
+        # A rule a tier leaves out is reported by `why-skipped`, not silently absent.
         # profile = "balanced"
-
-        # Replace whole function bodies as well. Finds code that is covered by tests which
-        # assert nothing about it, and produces almost no equivalent mutants.
-        # extreme = true
 
         # Which files to measure. Absent means every file the package builds.
         # include = ["Sources/**"]
@@ -108,4 +135,5 @@ enum StarterConfiguration {
         # high = 80
         # low = 60
         """
+    }
 }

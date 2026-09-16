@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+public import SwiftMutantsConfig
 import SwiftOperators
 import SwiftParser
 import SwiftSyntax
@@ -24,10 +25,15 @@ public enum Discover {
     /// sit beside the generated ones rather than instead of them, because they ask a
     /// different question: the catalogue asks whether an operator is correct, and a
     /// project's own usually asks whether a piece of it is load-bearing.
+    /// `selecting` is which of the rules this build knows about the run asked for, from
+    /// `profile` and `operators`. Defaults to all of them, so a caller with no settings in
+    /// hand - `list` on a package with no configuration file, a test about one rule - gets
+    /// the whole catalogue rather than a tier it did not choose.
     public static func candidates(
         in source: String,
         at path: WorkspaceRelativePath,
-        custom: [CustomMutant] = []
+        custom: [CustomMutant] = [],
+        selecting mutation: Configuration.Mutation? = nil
     ) -> FileDiscovery {
         let tree = Parser.parse(source: source)
         let folded = OperatorTable.standardOperators.foldAll(tree) { _ in }
@@ -46,18 +52,61 @@ public enum Discover {
         // have to be known here: `list` prints this catalogue and a run instruments it, so
         // a site neither of them can place must be passed over in the one place they share.
         let scan = SourceScan(folded)
-        let offered = Self.flattenable(walker.candidates + own.candidates, by: scan)
+
+        // Narrowed before flattening, because a rule the run did not ask for should not be
+        // reported as a site that could not be put on one line. Two true statements about
+        // the same candidate, and the one a reader can act on is the one they chose.
+        //
+        // A project's own mutants are never narrowed: `profile` is about the catalogue this
+        // tool generates, and somebody who wrote a mutation down by hand has already said
+        // they want it.
+        let selection = mutation.map(RuleSelection.init) ?? .everything
+        let wanted = Self.selected(walker.candidates, by: selection)
+        let offered = Self.flattenable(wanted.candidates + own.candidates, by: scan)
 
         return FileDiscovery(
             path: path,
             sourceDigest: Digest.of(source),
             candidates: offered.candidates.sorted { $0.span < $1.span },
-            skips: (walker.skips + own.skips + offered.skips).sorted { $0.span < $1.span },
+            skips: (walker.skips + own.skips + wanted.skips + offered.skips)
+                .sorted { $0.span < $1.span },
             unknownSuppressions: suppressions.unknownFamilies
                 .map { UnknownSuppression(line: $0.line, name: $0.name) }
                 .sorted { ($0.line, $0.name) < ($1.line, $1.name) },
             unanchored: own.unanchored,
             lineComments: scan.lineComments
+        )
+    }
+
+    /// The candidates the run asked for, and a named skip for each it did not.
+    ///
+    /// One skip per site rather than one per candidate, for the same reason flattening does
+    /// it that way: the site is the thing in the file, and the count is what the setting
+    /// cost there. A rule this build does not know the family of is offered rather than
+    /// narrowed away - a `profile` that has never heard of a new operator must not be the
+    /// thing that silently removes it.
+    private static func selected(
+        _ candidates: [Candidate], by selection: RuleSelection
+    ) -> (candidates: [Candidate], skips: [Skip]) {
+        var offered: [Candidate] = []
+        var passed: [SourceSpan: (reason: SkipReason, count: Int)] = [:]
+        for candidate in candidates {
+            guard let family = Rules.familyOfRule[candidate.rule.name],
+                let reason = selection.verdict(rule: candidate.rule.name, family: family)
+            else {
+                offered.append(candidate)
+                continue
+            }
+            let seen = passed[candidate.guardSpan]
+            passed[candidate.guardSpan] = (seen?.reason ?? reason, (seen?.count ?? 0) + 1)
+        }
+        return (
+            offered,
+            passed.keys.sorted().compactMap { span in
+                passed[span].map {
+                    Skip(reason: $0.reason, span: span, candidatesHidden: $0.count)
+                }
+            }
         )
     }
 

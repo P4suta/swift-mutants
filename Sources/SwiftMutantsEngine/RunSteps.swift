@@ -91,7 +91,10 @@ extension Run {
                     // disagreed would be a catalogue naming mutants the validation never
                     // saw - and a project's own mutants would be listed and never run.
                     discovery: Discover.candidates(
-                        in: source, at: path, custom: Lister.own(of: path, in: configuration))
+                        in: source,
+                        at: path,
+                        custom: Lister.own(of: path, in: configuration),
+                        selecting: configuration.mutation)
                 )
             )
         }

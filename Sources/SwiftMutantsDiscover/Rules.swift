@@ -231,6 +231,24 @@ enum Rules {
         "false": Swap(replacement: "true", name: "false-to-true", family: "boolean-literal"),
     ]
 
+    /// Which family each rule belongs to, by the name a catalogue prints.
+    ///
+    /// Built from the same tables the walk uses rather than listed again beside them. A
+    /// rule added to a table is a rule this knows the family of, which is what keeps a new
+    /// operator from being narrowed away by a `profile` that has never heard of it.
+    static let familyOfRule: [String: String] = {
+        var table: [String: String] = [:]
+        for swap in binaryOperators.values { table[swap.name] = swap.family }
+        for swap in booleanLiterals.values { table[swap.name] = swap.family }
+        for prunes in connectivePrunes.values {
+            for prune in prunes { table[prune.name] = prune.family }
+        }
+        for prune in [dropCondition, neverDecides, concatSwap] {
+            table[prune.name] = prune.family
+        }
+        return table
+    }()
+
     /// Every family a rule belongs to.
     static let families: Set<String> = [
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
