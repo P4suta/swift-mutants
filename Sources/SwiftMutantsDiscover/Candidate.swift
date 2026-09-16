@@ -201,6 +201,18 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
     /// catalogue" is a question somebody will ask about their own code.
     case unspellableReturnType = "unspellable-return-type"
 
+    /// A body a guard cannot be put in front of without breaking the program.
+    ///
+    /// An initialiser is the case: a guard that returned early would leave the instance
+    /// half-built, which the compiler refuses outright. So are the accessors that are
+    /// coroutines - `_read` and `_modify` - where returning before yielding is not a
+    /// mutant, it is a trap.
+    ///
+    /// Named rather than passed over in silence, because it is a decision this tool made
+    /// and "why is this declaration not in the catalogue" is a question somebody asks about
+    /// their own code.
+    case unstoppableBody = "unstoppable-body"
+
     /// A body of several statements, which needs a guard placed inside its braces.
     ///
     /// A body that is one expression can be replaced where it stands, because an expression

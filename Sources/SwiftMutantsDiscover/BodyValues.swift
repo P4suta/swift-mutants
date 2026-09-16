@@ -24,6 +24,15 @@ enum BodyValues {
     /// Optional first, and before the named types: `Int?` is an optional whose value is
     /// `nil`, and reading the `Int` inside it would replace a body that may return nothing
     /// with one that returns zero - a different and much weaker mutant.
+    /// Whether a return type says, out loud, that nothing is returned.
+    ///
+    /// `-> Void` and `-> ()` are the spelled forms of what most bodies leave out. Reading
+    /// them as types with no value would pass over a body for having said so explicitly.
+    static func returnsNothing(_ type: TypeSyntax) -> Bool {
+        if let tuple = type.as(TupleTypeSyntax.self) { return tuple.elements.isEmpty }
+        return type.as(IdentifierTypeSyntax.self)?.name.text == "Void"
+    }
+
     static func constant(for type: TypeSyntax) -> String? {
         if type.is(OptionalTypeSyntax.self)
             || type.is(ImplicitlyUnwrappedOptionalTypeSyntax.self)

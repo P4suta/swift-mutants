@@ -17,18 +17,64 @@ extension CandidateWalker {
         offer(body: body, returning: node.signature.returnClause?.type)
     }
 
-    /// Offers a computed property's body.
-    ///
-    /// Only the shorthand form - `var total: Int { items.reduce(0, +) }` - because a
-    /// property with named accessors has a `get` whose body this reaches as its own block,
-    /// and offering both would be the same mutant twice.
+    /// Offers a property's body, in either of the two shapes one can be written.
     ///
     /// Computed properties are where this rule finds the most. They are the declarations
-    /// most likely to be run by every test in a suite and asserted on by none of them.
+    /// most likely to be run by every test in a suite and asserted on by none of them - and
+    /// the ones written with explicit accessors were offered nothing at all, not even a
+    /// skip, which is the one answer this tool must never give.
     func offerBody(of node: PatternBindingSyntax) {
-        guard replacesBodies, let block = node.accessorBlock,
-            case .getter(let statements) = block.accessors
-        else { return }
+        guard replacesBodies, let block = node.accessorBlock else { return }
+        offerAccessors(of: block, holding: node.typeAnnotation?.type)
+    }
+
+    /// Offers a subscript's accessors, which are a property's in every way that matters
+    /// here: a block of accessors, and a written type for what the getter returns.
+    func offerBody(of node: SubscriptDeclSyntax) {
+        guard replacesBodies, let block = node.accessorBlock else { return }
+        offerAccessors(of: block, holding: node.returnClause.type)
+    }
+
+    /// An initialiser is a decision rather than an oversight.
+    ///
+    /// A guard that returned early would leave the instance half-built, which the compiler
+    /// refuses outright - so there is no mutant here, and saying so is better than a
+    /// declaration that quietly is not in the catalogue.
+    func offerBody(of node: InitializerDeclSyntax) {
+        guard replacesBodies, let body = node.body, !body.statements.isEmpty else { return }
+        note(.unstoppableBody, at: Syntax(body))
+    }
+
+    /// One block of accessors, in whichever of the two shapes it was written.
+    private func offerAccessors(of block: AccessorBlockSyntax, holding type: TypeSyntax?) {
+        guard case .accessors(let written) = block.accessors else {
+            guard case .getter(let statements) = block.accessors else { return }
+            offerGetter(statements, in: block, holding: type)
+            return
+        }
+        for accessor in written {
+            guard let body = accessor.body, !body.statements.isEmpty else { continue }
+            switch accessor.accessorSpecifier.tokenKind {
+            case .keyword(.get):
+                offer(body: body, returning: type)
+            // Every one of these returns nothing, and a body whose whole purpose is a side
+            // effect makes "does anything notice when it stops happening" the only question
+            // worth asking about it.
+            case .keyword(.set), .keyword(.willSet), .keyword(.didSet):
+                offer(body: body, returning: nil)
+            // `_read` and `_modify` are coroutines: returning before yielding is not a
+            // mutant, it is a trap. Named rather than passed over in silence.
+            default:
+                note(.unstoppableBody, at: Syntax(body))
+            }
+        }
+    }
+
+    private func offerGetter(
+        _ statements: CodeBlockItemListSyntax,
+        in block: AccessorBlockSyntax,
+        holding type: TypeSyntax?
+    ) {
         // The statements as they sit in the file, never a new block built around them. A
         // node put into a freshly made parent is a node in a different tree, and every
         // position inside it is measured from that tree's start rather than from the
@@ -42,7 +88,7 @@ extension CandidateWalker {
             statements: statements,
             interior: interior,
             over: Syntax(block),
-            returning: node.typeAnnotation?.type)
+            returning: type)
     }
 
     /// The bytes between a block's braces, which is what a statement guard covers.
@@ -87,7 +133,7 @@ extension CandidateWalker {
         // A body that returns nothing still has a mutant, and a good one: does anything
         // notice when this stops doing its work? There is no value to return, so it can
         // only be said as a statement - which is why this waited for the second form.
-        guard let type else {
+        guard let type, !BodyValues.returnsNothing(type) else {
             record(Rules.stopBody, inside: interior, of: region, doing: "return")
             return
         }

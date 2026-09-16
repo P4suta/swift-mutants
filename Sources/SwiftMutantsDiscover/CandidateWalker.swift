@@ -98,8 +98,14 @@ final class CandidateWalker: SyntaxVisitor {
         return .visitChildren
     }
 
+    override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
+        offerBody(of: node)
+        return .visitChildren
+    }
+
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
-        enter("init")
+        offerBody(of: node)
+        return enter("init")
     }
     override func visitPost(_ node: InitializerDeclSyntax) { leave() }
 

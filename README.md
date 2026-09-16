@@ -205,9 +205,16 @@ function **that returns nothing** be measured at all: there is no value to put i
 ternary's branches, and "does anything notice when this stops doing its work" is the
 sharpest question that can be asked about a procedure.
 
-A return type with no value anybody can write down — `some P`, `any P`, a generic
-parameter, a type of your own — is reported by `why-skipped` as `unspellable-return-type`,
-not passed over in silence.
+Functions, computed properties in both the spellings Swift has for them, subscripts, and
+the accessors of each — a setter or a `didSet` that does nothing is exactly the shape this
+looks for, since a body whose whole purpose is a side effect has no other question worth
+asking about it.
+
+Two things are passed over, and both say so. A return type with no value anybody can write
+down — `some P`, `any P`, a generic parameter, a type of your own — is
+`unspellable-return-type`. An initialiser, or a `_read`/`_modify` accessor, is
+`unstoppable-body`: returning early from the first leaves the instance half-built and from
+the second traps before the yield, so there is no mutant there to have.
 
 Off until you ask, because it multiplies the catalogue by the number of declarations rather
 than by the number of operators, and that is a decision about how long a run takes.

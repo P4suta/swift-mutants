@@ -207,6 +207,86 @@ struct BodyReplacementTests {
         #expect(Self.stopped(discovery).isEmpty)
     }
 
+    /// A property written with explicit accessors is a body like any other, and was
+    /// offered nothing at all - not even a skip. Silence is the one answer this tool must
+    /// never give: "why is this declaration not in the catalogue" is a question somebody
+    /// asks about their own code, and the tool has to be able to answer it.
+    @Test("stops an explicit setter, where nothing was offered before")
+    func explicitSetter() {
+        let discovery = Self.discover(
+            """
+            struct S {
+                private var stored = 0
+                var explicit: Int {
+                    get { stored }
+                    set { stored = newValue }
+                }
+            }
+            """)
+        // A setter that does nothing is exactly the shape this rule exists to find.
+        #expect(Self.stopped(discovery).contains { $0.replacement == "return" })
+        // And the getter takes the property's own type.
+        #expect(Self.bodies(discovery).contains { $0.replacement == "0" })
+    }
+
+    /// An observer is a body whose whole purpose is a side effect, which makes "does
+    /// anything notice when it stops happening" the only question worth asking about it.
+    @Test("stops an observer")
+    func observer() {
+        let discovery = Self.discover(
+            """
+            struct S {
+                var n: Int = 0 {
+                    didSet { record(n) }
+                }
+            }
+            """)
+        #expect(Self.stopped(discovery).contains { $0.replacement == "return" })
+    }
+
+    @Test("replaces a subscript's body")
+    func subscripts() {
+        let discovery = Self.discover("struct S { subscript(i: Int) -> Int { i + 1 } }")
+        #expect(Self.bodies(discovery).contains { $0.replacement == "0" })
+    }
+
+    /// `Void` and `()` are spelled return types that return nothing, and reading them as
+    /// unspellable would pass over a body for having said out loud what most bodies leave
+    /// out.
+    @Test("stops a body that says it returns nothing")
+    func spelledVoid() {
+        for spelling in ["Void", "()"] {
+            let discovery = Self.discover(
+                """
+                func go() -> \(spelling) {
+                    start()
+                    stop()
+                }
+                """)
+            #expect(
+                Self.stopped(discovery).contains { $0.replacement == "return" },
+                "-> \(spelling)")
+        }
+    }
+
+    /// An initialiser is a decision, not an oversight: a guard that returned early would
+    /// leave the instance half-built, which the compiler refuses outright. Named, because
+    /// a decision this tool made is a decision it can be asked about.
+    @Test("says why an initialiser is passed over")
+    func initialisers() {
+        let discovery = Self.discover(
+            """
+            struct S {
+                var n: Int
+                init(n: Int) {
+                    self.n = n
+                }
+            }
+            """)
+        #expect(Self.stopped(discovery).isEmpty)
+        #expect(discovery.skips.contains { $0.reason == .unstoppableBody })
+    }
+
     /// And a caller with no settings at all is not a caller who asked. A default is not a
     /// request: silence says nothing about whether somebody wants their catalogue
     /// multiplied by the number of declarations in their package.
