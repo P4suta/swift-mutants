@@ -119,6 +119,34 @@ final class CandidateWalker: SyntaxVisitor {
 
     // MARK: - Candidates
 
+    /// A pattern's extra condition, made always or never to hold.
+    ///
+    /// One visit for every place Swift allows the clause - a `switch` case, a `for`, a
+    /// `catch` - because they are the same clause asking the same question, and a rule that
+    /// knew only about `switch` would pass over the other two in silence.
+    override func visit(_ node: WhereClauseSyntax) -> SyntaxVisitorContinueKind {
+        let condition = Syntax(node.condition)
+        // Nothing when the clause is already the constant: `where true` replaced by `true`
+        // is a mutant that cannot fail.
+        let written = node.condition.trimmedDescription
+        if written != "true" {
+            record(Rules.patternAlwaysMatches, replacing: condition, within: condition)
+        }
+        if written != "false" {
+            record(Rules.patternNeverMatches, replacing: condition, within: condition)
+        }
+        return .visitChildren
+    }
+
+    /// An optional `try` that fails every time.
+    override func visit(_ node: TryExprSyntax) -> SyntaxVisitorContinueKind {
+        guard node.questionOrExclamationMark?.tokenKind == .postfixQuestionMark else {
+            return .visitChildren
+        }
+        record(Rules.tryOptionalFails, replacing: Syntax(node), with: "nil")
+        return .visitChildren
+    }
+
     /// An integer literal one either side of what was written.
     override func visit(_ node: IntegerLiteralExprSyntax) -> SyntaxVisitorContinueKind {
         guard let value = Int(node.literal.text.filter { $0 != "_" }) else {

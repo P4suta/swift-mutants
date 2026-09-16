@@ -161,7 +161,7 @@ so what `list` describes is what `run` would do.
 
 | Tier | Adds |
 | --- | --- |
-| `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order, statement deletion |
+| `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order, statement deletion, pattern guards, swallowed failures |
 | `strong` | compound arithmetic assignment, bitwise, optional handling, range bounds, collection ends |
 | `all` | integer literals moved by one either way, unary minus removed |
 
@@ -220,6 +220,19 @@ A block's only statement is skipped where the block may simply end without it �
 loop, a `do`, a `catch` — and not where it carries the declaration's value: a function
 body, an accessor, a closure, or the `else` of a `guard`. So a `catch` that does nothing is
 offered, which asks whether anything tests that errors are handled at all.
+
+### Pattern guards, and failures that stop being failures
+
+A `where` clause is a condition nobody looks at twice: it sits beside a pattern that
+already reads as the interesting part, and a suite that covers the pattern usually says
+nothing about the clause. It is made always to hold, which asks whether the clause is
+load-bearing, and never to hold, which asks whether anything reaches the case at all —
+wherever Swift allows one, which is a `switch` case, a `for` and a `catch`.
+
+`try? f()` becomes `nil`. It is the one line in a program whose whole purpose is that a
+failure stops being a failure, which makes "does anything test the path this was written
+for" the only question worth asking about it. A plain `try` is left alone: it propagates
+rather than swallowing, so there is nothing there to turn into nothing.
 
 ### The ends of a collection
 

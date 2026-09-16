@@ -63,7 +63,7 @@ public enum Discover {
         // A project's own mutants are never narrowed: `profile` is about the catalogue this
         // tool generates, and somebody who wrote a mutation down by hand has already said
         // they want it.
-        let wanted = Self.selected(walker.candidates, by: selection)
+        let wanted = Self.selected(Self.distinct(walker.candidates), by: selection)
         let offered = Self.flattenable(wanted.candidates + own.candidates, by: scan)
 
         return FileDiscovery(
@@ -78,6 +78,42 @@ public enum Discover {
             unanchored: own.unanchored,
             lineComments: scan.lineComments
         )
+    }
+
+    /// One candidate per edit.
+    ///
+    /// Two rules can arrive at the same bytes. `for x in xs where true` is a boolean
+    /// literal *and* a pattern's condition, so the literal rule and the pattern rule both
+    /// offer `false` over the same span - two entries in the catalogue, two processes, two
+    /// lines in the report, and one question.
+    ///
+    /// The winner is the rule whose name sorts first, which is arbitrary and deterministic.
+    /// Arbitrary is the honest word: with identical spans there is no sense in which one
+    /// rule is more local than the other, and a rule that claimed to prefer the "more
+    /// specific" one would be inventing a hierarchy to justify a coin toss. Deterministic
+    /// is the part that matters, because a mutant's identity is its rule, and a catalogue
+    /// that named this one differently on Tuesday would invalidate every cached answer
+    /// about it.
+    ///
+    /// Left where it is in the order, so the sort below still puts the file in file order.
+    private static func distinct(_ candidates: [Candidate]) -> [Candidate] {
+        var best: [Edit: Candidate] = [:]
+        for candidate in candidates {
+            let edit = Edit(span: candidate.span, replacement: candidate.replacement)
+            if let taken = best[edit], taken.rule.name <= candidate.rule.name { continue }
+            best[edit] = candidate
+        }
+        let kept = Set(best.values.map { Edit(span: $0.span, rule: $0.rule.name) })
+        return candidates.filter {
+            kept.contains(Edit(span: $0.span, rule: $0.rule.name))
+        }
+    }
+
+    /// One edit, as the pair that decides whether two candidates are the same question.
+    private struct Edit: Hashable {
+        var span: SourceSpan
+        var replacement: String = ""
+        var rule: String = ""
     }
 
     /// The candidates the run asked for, and a named skip for each it did not.

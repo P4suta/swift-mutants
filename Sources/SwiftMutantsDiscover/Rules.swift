@@ -123,6 +123,34 @@ enum Rules {
     }
 
     /// The prunes each connective offers.
+    /// A pattern's extra condition, made always or never to hold.
+    ///
+    /// A `where` clause is a condition nobody looks at twice: it sits beside a pattern that
+    /// already reads as the interesting part, and a suite that covers the pattern usually
+    /// says nothing about the clause. Always matching asks whether the clause is
+    /// load-bearing; never matching asks whether anything reaches the case at all.
+    ///
+    /// Safe on a `switch`, which is the case worth worrying about: Swift does not count a
+    /// `where`-guarded case towards exhaustiveness, so a clause made `false` cannot turn an
+    /// exhaustive switch into one the compiler refuses. Measured, not assumed.
+    static let patternAlwaysMatches = Swap(
+        replacement: "true", name: "pattern-always-matches", family: "pattern-matching")
+
+    static let patternNeverMatches = Swap(
+        replacement: "false", name: "pattern-never-matches", family: "pattern-matching")
+
+    /// An optional `try` that fails every time.
+    ///
+    /// `try?` is the one line in a program whose whole purpose is that a failure stops
+    /// being a failure, which makes "does anything test the path this was written for" the
+    /// only question worth asking about it.
+    ///
+    /// It keeps the type by construction: `try? f()` and `nil` are both the optional the
+    /// expression already was. A plain `try` is not offered - it propagates rather than
+    /// swallowing, so there is nothing there to turn into nothing.
+    static let tryOptionalFails = Prune(
+        side: .left, name: "try-optional-fails", family: "error-handling")
+
     /// An integer literal one either side of what was written.
     ///
     /// Where an off-by-one lives when it is not in a range: a capacity, a retry count, an
@@ -368,13 +396,16 @@ enum Rules {
         }
         for swap in binaryOperators.values { table[swap.name] = swap.family }
         for swap in booleanLiterals.values { table[swap.name] = swap.family }
+        for swap in [patternAlwaysMatches, patternNeverMatches] {
+            table[swap.name] = swap.family
+        }
         for prunes in connectivePrunes.values {
             for prune in prunes { table[prune.name] = prune.family }
         }
         for prune in [
             dropCondition, neverDecides, concatSwap, replaceBody, stopBody,
             coalesceToDefault, coalesceToForce, widenRange, skipCall, skipAssignment,
-            literalOneMore, literalOneLess, dropNegation,
+            literalOneMore, literalOneLess, dropNegation, tryOptionalFails,
         ] {
             table[prune.name] = prune.family
         }
@@ -386,7 +417,7 @@ enum Rules {
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
         "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
         "range-operator", "optional-handling", "collection-boundary", "statement-deletion",
-        "constant-replacement", "unary-deletion",
+        "constant-replacement", "unary-deletion", "pattern-matching", "error-handling",
     ]
 
     /// The identifier for a swap, at the version this build emits.

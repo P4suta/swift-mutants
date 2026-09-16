@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# The tiers that are too slow or too wide to sit in front of a pull request, and the one
+# that needs Xcode rather than a Swift toolchain.
+#
+# Nightly rather than per-push because each of these is minutes to hours, and because what
+# they are for is finding out that something drifted rather than stopping a change. A gate
+# nobody can wait for is a gate people route around.
+name: Nightly
+
+on:
+  schedule:
+    # Late enough that a day's merges are all in it.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SWIFT_MUTANTS_TEST_KEEP: "1"
+
+jobs:
+  test-toolchain:
+    name: The Xcode path
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+      # Apart from the integration tier because it needs Xcode itself - schemes, an
+      # `.xctestrun`, a result bundle - rather than a Swift toolchain, and because one
+      # `build-for-testing` is slower than the whole of that tier.
+      - run: mise run test:toolchain
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: toolchain-evidence
+          path: ${{ runner.temp }}/swift-mutants-test-*
+          if-no-files-found: ignore
+
+  sanitizers:
+    name: Under a sanitizer
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread, undefined]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+      # A mutation run is a great many processes started, stopped and killed by a tree
+      # signal, and a scheduler that hands the wrong worker's directory to a trial is a
+      # race no assertion would catch. This is the tier that would.
+      - run: swift test --sanitize=${{ matrix.sanitizer }} --skip IntegrationTests --skip ToolchainTests
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sanitizer-${{ matrix.sanitizer }}-evidence
+          path: ${{ runner.temp }}/swift-mutants-test-*
+          if-no-files-found: ignore
+
+  dogfood:
+    name: swift-mutants measures swift-mutants
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+      - run: mise run dogfood
+      # The one tier that deliberately uploads nothing on failure. It fails thousands of
+      # this repository's own tests on purpose, and a job that kept the evidence would be
+      # keeping gigabytes of expected failures.
+      - name: Keep the report, which is the point of the run
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: dogfood-report
+          path: reports/mutation
+          if-no-files-found: ignore

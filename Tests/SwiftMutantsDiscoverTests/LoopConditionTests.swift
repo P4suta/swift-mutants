@@ -76,6 +76,10 @@ struct LoopConditionTests {
         // The literal rules, not the whole catalogue: `let ready = true` sits in a block
         // whose other statement is skippable, and what this test is about is which rule the
         // *literal* got.
-        #expect(Self.names(source).filter { !$0.hasPrefix("skip-") } == ["true-to-false"])
+        // The literal rules, not the whole catalogue - and `where true` on a loop is a
+        // pattern's condition as well as a literal, where one rule now stands for both.
+        #expect(
+            Self.names(source).filter { $0.hasSuffix("-to-false") || $0.hasPrefix("pattern-") }
+                == [source.contains("where true") ? "pattern-never-matches" : "true-to-false"])
     }
 }

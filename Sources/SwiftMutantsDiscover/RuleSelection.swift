@@ -35,6 +35,7 @@ public struct RuleSelection: Sendable, Hashable {
             [
                 "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
                 "condition-decision", "concatenation", "statement-deletion",
+                "pattern-matching", "error-handling",
             ]
         ),
         (

@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format follows
   pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
+- A pattern's `where` clause made always and never to hold, and a `try?` made to fail
+  every time. In `balanced`.
+- One mutant per edit: two rules that arrive at the same bytes with the same replacement
+  now yield one candidate rather than two.
+- Nightly and weekly workflows: the Xcode path, three sanitizers, the dogfood run, and
+  real packages at the revisions this repository already pins.
 - The `all` tier has something in it: an integer literal one either side of what was
   written, and a unary minus taken away. It selected exactly what `strong` did before.
 - A statement that does not run: the largest family there is, and the one with the best

@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Real packages, at commits that do not move.
+#
+# Every other tier measures this tool against code written to exercise it. This one
+# measures it against code written by people who have never heard of it, which is the only
+# way to find out what a Swift package actually contains: property wrappers, macros,
+# `@main`, result builders, C interop, a test suite that writes to disk.
+#
+# Pinned to a commit rather than a tag or a branch, so that a red run is a change here. A
+# suite that tracked `main` of five packages would go red for reasons that have nothing to
+# do with this repository, and a gate that does that is a gate people stop reading.
+#
+# What it asserts is deliberately narrow: the run finishes, the baseline is green, and the
+# catalogue is not empty. Not a score - a score would move when somebody else's tests
+# change, and it is their repository.
+name: Ecosystem
+
+on:
+  schedule:
+    # Weekly. These are somebody else's repositories and this is a guest.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecosystem-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: ${{ matrix.package.name }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Taken from this repository's own `Package.resolved`, which is the only list of
+        # real packages at real revisions that can be checked without a network. A commit
+        # written from memory is a commit that does not exist, and a run that fails because
+        # of one looks exactly like a run that found something.
+        #
+        # They are also the right subjects: this tool is built on them, so a package it
+        # cannot measure is a package it cannot be trusted about.
+        package:
+          - name: swift-argument-parser
+            repository: apple/swift-argument-parser
+            commit: 6a52f3251125d74daf04fcbd5e6f08a75d074382
+          - name: swift-system
+            repository: apple/swift-system
+            commit: 869129b7bf4ecc57b97d0193ad29690ca2134750
+          - name: swift-subprocess
+            repository: swiftlang/swift-subprocess
+            commit: b3937ab85dd32f6e9435914599c1519074769c1a
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          experimental: true
+      - name: Build the tool the way it ships
+        run: mise run gate:release
+      - name: Fetch the subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ${{ matrix.package.repository }}
+          ref: ${{ matrix.package.commit }}
+          path: subject
+          persist-credentials: false
+      - name: Measure it
+        run: |
+          .build-release/release/swift-mutants run \
+            --package-path subject --report json --json > ecosystem.json
+      - name: Say what came back
+        if: always()
+        run: |
+          .build-release/release/swift-mutants list --package-path subject | tail -2
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ecosystem-${{ matrix.package.name }}
+          path: ecosystem.json
+          if-no-files-found: ignore
