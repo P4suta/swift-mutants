@@ -86,9 +86,11 @@ The instrumented file is known to compile, to behave exactly as the original whe
 is activated, to change exactly one thing when one mutant is woken, and to survive `-O`.
 
 The Xcode path has its building blocks and not its wiring: reading a project's schemes,
-building once with `build-for-testing`, waking a mutant through a copy of the `.xctestrun`,
-and reading the result bundle are all built and tested against a real Xcode. `run` cannot
-use them yet, because validation on that path has no equivalent of SwiftPM's build plan.
+building once with `build-for-testing`, asking Xcode whether an instrumented tree compiles,
+waking a mutant through a copy of the `.xctestrun`, and reading the result bundle are all
+built and tested against a real Xcode. `run` cannot use them yet, because it names
+`SwiftPackageManager` directly rather than choosing, and nothing yet says which project,
+scheme and destination a run is about.
 [ADR 0006](docs/adr/0006-the-xcode-path-goes-through-the-xctestrun.md) says what was
 measured and what remains. **Nothing is published, tagged, or released, and the command
 tree will change.**

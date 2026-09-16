@@ -84,15 +84,28 @@ suite instead of the time to its first failing assertion. Coverage narrowing sti
 
 ### What is not built
 
-`run` cannot yet use any of this, and saying so is the point of writing it down.
+`run` cannot yet use any of this, and saying so is the point of writing it down. What is
+left is the wiring rather than the parts: describing a project's files, a pristine build, a
+validating build, a test build and a mutant host all exist and are tested against a real
+Xcode. What does not exist is the seam `Run` would choose between them at — today it names
+`SwiftPackageManager` directly at four points — nor the settings that would say which
+project, scheme and destination a run is about.
 
-**Validation has no Xcode equivalent.** The SwiftPM path asks each module separately using
-SwiftPM's own plan ([0004](0004-validation-asks-each-module-separately.md)), which reads
-`.build/debug.yaml`. An Xcode project has no such manifest. Without validation the
-instrumented tree's first type-incompatible mutant fails the build and the run dies, so this
-is a prerequisite rather than a refinement: it needs `xcodebuild` to compile the instrumented
-tree and its diagnostics attributed by byte span, which the existing attribution can do once
-something hands it the output.
+**Validation has an Xcode equivalent, and this part is done.** The paragraph that stood
+here called it the prerequisite for everything else: the SwiftPM path asks each module
+separately using SwiftPM's own plan ([0004](0004-validation-asks-each-module-separately.md)),
+which reads `.build/debug.yaml`, and an Xcode project has no such manifest. It was built as
+`XcodeBuildDriver`, and what made it small is that `xcodebuild` prints
+`path:line:col: error: message` — the form validation already reads. Nothing downstream
+changed: attributing a diagnostic to the mutant that caused it, asking again without those,
+halving when the answers stop converging, are the same code, because a diagnostic is a
+diagnostic whoever printed it.
+
+What it does differently is how many rounds it takes, and that was measured rather than
+assumed. How much `xcodebuild` reports is a race — every error inside a file that failed
+comes back, but whether a second file's errors come back depends on how far the parallel
+compile got — so the worst case is one build per file that has a rejection in it, against
+the SwiftPM path's handful of rounds for the whole tree.
 
 **Execution and probing share one seam, and this part is done.** `MutantHost` is that
 seam and has two conformances: `Trial` on the SwiftPM path and `XcodeHost` here. The
