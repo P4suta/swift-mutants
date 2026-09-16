@@ -195,6 +195,10 @@ public struct Run: Sendable {
         progress(.baseline)
         let baseline = try await provedBaseline(
             calibrating, environment: environment, within: deadline, progress: progress)
+        // Said once, here, because the baseline is the one run that offers the whole suite.
+        // A mutant's trial is filtered to the tests that reach it, so a skip there is a
+        // fact about the filter rather than about the package.
+        if !baseline.skippedTests.isEmpty { progress(.skipped(baseline.skippedTests)) }
 
         // Measured the way the mutants will be run, because that is the only figure a
         // deadline can be derived from. It also asks whether this suite can run beside

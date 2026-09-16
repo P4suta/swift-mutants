@@ -156,6 +156,13 @@ public enum RunStage: Sendable, Hashable {
     case proving
     case baseline
 
+    /// Tests that stepped aside in the copy, and so cannot catch anything here.
+    ///
+    /// Said once, after the baseline, because the baseline is the one run that offers the
+    /// whole suite - a mutant's trial is filtered to what reaches it, so a skip there says
+    /// nothing about the package.
+    case skipped([String])
+
     /// Working out whose failure a red baseline is, by building the package as written.
     ///
     /// Only ever reached when the run is about to stop, and said out loud because an

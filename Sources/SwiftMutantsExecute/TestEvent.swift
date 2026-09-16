@@ -24,6 +24,15 @@ public struct TestEvent: Sendable, Hashable {
         case runStarted
         case testStarted
         case testEnded
+
+        /// A test that did not run, because it declared itself disabled.
+        ///
+        /// Every run happens in a copy of the package, so a test whose fixtures live
+        /// outside it - a document in the repository above, a vector file, a seed corpus -
+        /// cannot run there, and a suite written to notice that steps aside rather than
+        /// failing. This was read as `other` and dropped, which made a skipped test
+        /// indistinguishable from one that ran and passed.
+        case testSkipped
         case issueRecorded
         case runEnded
         case other
@@ -92,6 +101,7 @@ extension TestEvent.Kind {
         case "runStarted": self = .runStarted
         case "testStarted": self = .testStarted
         case "testEnded": self = .testEnded
+        case "testSkipped": self = .testSkipped
         case "issueRecorded": self = .issueRecorded
         case "runEnded": self = .runEnded
         default: self = .other

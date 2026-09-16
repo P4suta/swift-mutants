@@ -258,7 +258,7 @@ struct DrawingTests {
 @Suite("What a drawing run draws")
 struct DrawnFramesTests {
 
-    static func drawn(_ stages: [RunStage]) -> [String] {
+    static func watching(_ stages: [RunStage]) -> (frames: [String], lines: [String]) {
         let frames = Mutex<[String]>([])
         let lines = Mutex<[String]>([])
         let progress = RunProgress(
@@ -268,9 +268,35 @@ struct DrawnFramesTests {
         )
         for stage in stages { progress.report(stage) }
         progress.finish()
-        // Lines and frames would scroll each other away, so a drawing run says nothing.
-        #expect(lines.withLock { $0 }.isEmpty)
-        return frames.withLock { $0 }
+        return (frames.withLock { $0 }, lines.withLock { $0 })
+    }
+
+    static func drawn(_ stages: [RunStage]) -> [String] { Self.watching(stages).frames }
+
+    /// Lines and frames would scroll each other away, so a phase goes in the frame and
+    /// nowhere else.
+    @Test("says nothing it could draw instead")
+    func drawsRatherThanSays() {
+        #expect(Self.watching([.discovering, .proving, .building]).lines.isEmpty)
+    }
+
+    /// Except what will not fit in one. A frame is one line of headline, replaced by the
+    /// next phase a second later; a finding about the package is several lines the reader
+    /// has to keep. Drawing it would both break the fixed height the redraw rests on and
+    /// wipe it off the screen immediately.
+    ///
+    /// So the frame stays where it is, the news is said under it, and drawing starts again
+    /// below - which is the same thing `finish` already does for the summary.
+    @Test("leaves the frame where it is and says the news that will not fit in one")
+    func saysNewsUnderTheFrame() {
+        let watched = Self.watching([
+            .building, .skipped(["P.NeedsRepository/alphabet()"]), .baseline,
+        ])
+        let said = watched.lines.joined(separator: "\n")
+        #expect(said.contains("alphabet()"), "\(watched.lines)")
+        #expect(said.lowercased().contains("copy"), "\(watched.lines)")
+        // And the phase in the frames is never the news: a frame holds one line.
+        #expect(!watched.frames.joined().contains("alphabet()"), "\(watched.frames)")
     }
 
     @Test("draws one frame per stage, and one more to move past the last")

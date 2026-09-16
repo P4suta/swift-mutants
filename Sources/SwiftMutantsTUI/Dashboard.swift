@@ -116,7 +116,13 @@ public struct Dashboard: Sendable {
     ///
     /// Cut, because a frame of known height is what the redraw rests on and a wrapped line
     /// is a frame one line taller than the thing drawing it believes.
-    private static func cut(_ line: String, to width: Int) -> String {
+    ///
+    /// A newline in the text does the same damage through the door the width check does not
+    /// cover, so the first line is all of it that is drawn. That is not hypothetical: what
+    /// a run has to say is not always one line long, and a frame given several would leave
+    /// a stripe of old frames down the terminal rather than look slightly wrong.
+    private static func cut(_ text: String, to width: Int) -> String {
+        let line = String(text.prefix(while: { !$0.isNewline }))
         guard line.count > width else { return line }
         guard width > 1 else { return String(line.prefix(width)) }
         return String(line.prefix(width - 1)) + "…"

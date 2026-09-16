@@ -29,6 +29,27 @@ struct DashboardTests {
             phase: "running 726 mutants", done: 250, total: 726, killed: 180, survived: 70)
     }
 
+    /// A frame is exactly as tall as the thing redrawing it believes, whatever it is given.
+    ///
+    /// `cut` bounds the *width* and says why: a wrapped line is a frame one line taller
+    /// than the screen's cursor arithmetic assumes, so the screen walks down the terminal
+    /// leaving a stripe of old frames. A line that already holds a newline does the same
+    /// damage through the door that check does not cover - and one exists, because what a
+    /// run has to say is not always one line long.
+    @Test("is three lines tall however many the phase has in it")
+    func staysThreeLines() {
+        let many = Dashboard.State(
+            phase: "2 stepped aside\n\nAnything only those cover cannot be caught.",
+            done: 1,
+            total: 2,
+            killed: 1,
+            survived: 0
+        )
+        let drawn = Self.frame(many)
+        #expect(drawn.count == 3, "\(drawn)")
+        #expect(!drawn.joined().contains("\n"), "\(drawn)")
+    }
+
     @Test("says what it is doing")
     func saysThePhase() {
         #expect(Self.frame(Self.running).contains { $0.contains("running 726 mutants") })

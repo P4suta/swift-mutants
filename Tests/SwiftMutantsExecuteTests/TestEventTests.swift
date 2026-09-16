@@ -32,6 +32,25 @@ struct TestEventTests {
         "messages":[{"symbol":"fail","text":"Expectation failed: 3 == 5"}]},"version":0}
         """
 
+    /// The line a disabled suite writes, taken from this toolchain's own output for a
+    /// `@Suite(..., .enabled(if:))` whose condition was false.
+    static let stepAside = """
+        {"kind":"event","payload":{"kind":"testSkipped",\
+        "testID":"P.NeedsRepository/alphabet()"},"version":0}
+        """
+
+    /// Reading it is a separate claim from acting on it, and only this one is about the
+    /// wire. A watcher given a `.testSkipped` value would go on doing the right thing
+    /// while the parser called it `.other` and dropped it - which is precisely the state
+    /// this tool was in, and a test built from values rather than lines could not see.
+    @Test("reads a test that stepped aside")
+    func readsASkip() throws {
+        let event = try #require(TestEvent(line: Self.stepAside))
+        #expect(event.kind == .testSkipped)
+        #expect(event.testID == "P.NeedsRepository/alphabet()")
+        #expect(!event.isFailure)
+    }
+
     @Test("reads a failure")
     func readsAFailure() throws {
         let event = try #require(TestEvent(line: Self.failure))

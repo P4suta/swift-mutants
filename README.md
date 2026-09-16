@@ -214,6 +214,38 @@ swift-mutants run -- --skip RepositoryGateTests
 This repository's own gates are exactly this kind of test, which is how the message came
 to exist.
 
+### Tests that cannot run in the copy
+
+The other half of the same fact. A test whose fixtures live *outside* the package — a
+document in the repository above it, a vector file, a seed corpus — cannot run in a copy of
+the package alone, and a suite written to notice that declares itself disabled rather than
+failing:
+
+```swift
+@Suite("Base32 matches the spec", .enabled(if: Repository.isPresent))
+```
+
+swift-testing reports that on the event stream, and swift-mutants says so before it
+measures anything:
+
+```console
+running the tests with nothing awake
+2 of your tests stepped aside in the copy this run happens in:
+  VectorTests.Base32Spec/alphabet()
+  VectorTests.CascadeSpec/saltOrder()
+
+A test whose fixtures live outside the package — a document in the repository above it, a
+vector file, a seed corpus — cannot run in a copy of the package alone. Anything only those
+tests cover cannot be caught here, and will report as surviving however good they are.
+Pinning the same constant inside the package is the answer; writing another test is not.
+```
+
+That last sentence is the point of saying it. Those mutants are survivors nobody can fix by
+writing a test, because the test already exists and cannot run here — so a `--strict` gate
+over the list can never go green until the constant is pinned a second time, inside the
+package. Nobody arrives at that while the tool is silent, and a skipped test used to be
+indistinguishable from one that ran and passed.
+
 ## Requirements
 
 - Swift 6.3 or newer

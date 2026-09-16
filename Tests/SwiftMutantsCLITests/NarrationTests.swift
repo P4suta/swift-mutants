@@ -219,3 +219,57 @@ struct NarrationValidationTests {
         )
     }
 }
+
+/// Saying that some of a package's tests do not run here.
+///
+/// Every run happens in a copy of the package, so a test whose fixtures live outside it -
+/// a document in the repository above, a vector file, a seed corpus - cannot run there,
+/// and a suite written to notice that declares itself disabled rather than failing.
+///
+/// The mutants only those tests cover then come back as survivors nobody can write a test
+/// for: the test already exists, and it cannot run here. A `--strict` gate over that list
+/// is a gate that can never go green, and the maintainer's answer is to pin the constant a
+/// second time inside the package rather than to write a test - which nobody arrives at
+/// while the tool says nothing.
+///
+/// Reported from a package with five such suites, pinning a Base32 alphabet, two
+/// key-derivation strings and a salt order against the documents that specify them.
+@Suite("Tests that do not run in the copy")
+struct SkippedNarrationTests {
+
+    @Test("says how many stepped aside, and names them")
+    func namesThem() {
+        let said = Narration.skipped([
+            "P.NeedsRepository/alphabet()", "P.NeedsVectors/hkdf()",
+        ])
+        #expect(said?.contains("2") == true, "\(said ?? "")")
+        #expect(said?.contains("alphabet()") == true, "\(said ?? "")")
+    }
+
+    /// And what it means, because the count alone reads as trivia. What it means is that
+    /// the score is about less of the package than it looks like.
+    @Test("says what it costs, not only that it happened")
+    func saysWhatItCosts() {
+        let said = Narration.skipped(["P.NeedsRepository/alphabet()"]) ?? ""
+        #expect(said.lowercased().contains("copy"), "\(said)")
+        #expect(
+            said.lowercased().contains("survivor") || said.lowercased().contains("cannot"),
+            "\(said)")
+    }
+
+    /// A long list is bounded, because a package that disables a hundred tests in a copy
+    /// would otherwise bury the summary under them.
+    @Test("names a few rather than all of a long list")
+    func boundsTheList() {
+        let many = (1...50).map { "P.S/test\($0)()" }
+        let said = Narration.skipped(many) ?? ""
+        #expect(said.contains("50"))
+        #expect(!said.contains("test50()"), "\(said)")
+    }
+
+    /// Nothing skipped is the ordinary case and says nothing at all.
+    @Test("says nothing when every test ran")
+    func nothingSkipped() {
+        #expect(Narration.skipped([]) == nil)
+    }
+}

@@ -132,6 +132,13 @@ final class RunProgress: Sendable {
         let counted = counter.withLock { $0.observe(stage) }
         guard verbosity > .quiet else { return }
         if let screen {
+            // News first, and under the frame rather than in it: `finish` leaves the last
+            // frame on the screen and starts the next one below, so what a reader has to
+            // keep is not wiped off a second later by the phase that follows it.
+            if let news = Narration.news(for: stage) {
+                screen.finish()
+                say(news)
+            }
             screen.draw(dashboard.frame(of: advanced(by: stage)))
             return
         }
@@ -140,6 +147,16 @@ final class RunProgress: Sendable {
             return
         }
         if let line = Narration.line(for: stage) { say(line) }
+    }
+
+    /// The one line of a stage that belongs in a frame, if it has one.
+    ///
+    /// Nothing for a stage whose message is news: that has already been said under the
+    /// frame, and a frame holds one line, so drawing it would be the same words twice with
+    /// all but the first line of them missing.
+    private static func headline(for stage: RunStage) -> String? {
+        guard Narration.news(for: stage) == nil else { return nil }
+        return Narration.line(for: stage)?.trimmingCharacters(in: .whitespaces)
     }
 
     /// What is known after this stage.
@@ -152,8 +169,7 @@ final class RunProgress: Sendable {
         let counts = counter.withLock { ($0.done, $0.total, $0.killed, $0.survived) }
         return state.withLock { state in
             state = Dashboard.State(
-                phase: Narration.line(for: stage)?.trimmingCharacters(in: .whitespaces)
-                    ?? state.phase,
+                phase: Self.headline(for: stage) ?? state.phase,
                 done: counts.0,
                 total: counts.1,
                 killed: counts.2,
