@@ -123,6 +123,32 @@ enum Rules {
     }
 
     /// The prunes each connective offers.
+    /// An integer literal one either side of what was written.
+    ///
+    /// Where an off-by-one lives when it is not in a range: a capacity, a retry count, an
+    /// index written out. One in each direction and never the literal itself, because a
+    /// mutant that replaces `1` with `1` cannot fail and is a line in every report that
+    /// means nothing.
+    ///
+    /// In `all` rather than below it: a constant appears in far more places than an
+    /// operator does, so this is the rule that most changes how long a run takes.
+    static let literalOneMore = Prune(
+        side: .left, name: "literal-one-more", family: "constant-replacement")
+
+    static let literalOneLess = Prune(
+        side: .left, name: "literal-one-less", family: "constant-replacement")
+
+    /// A negation taken away.
+    ///
+    /// `-x` becoming `x` is the sign error every numeric routine has had at least once.
+    /// Removed rather than added: `-(-x)` is something nobody writes, and a rule that
+    /// inserted a minus would offer it everywhere a number appears.
+    ///
+    /// Never on a literal, where the sign is part of how the number is written and the
+    /// literal rules are already asking about the value.
+    static let dropNegation = Prune(
+        side: .left, name: "drop-negation", family: "unary-deletion")
+
     /// A statement that does not run.
     ///
     /// The largest family there is by volume, and the one with the best record. Google's
@@ -348,6 +374,7 @@ enum Rules {
         for prune in [
             dropCondition, neverDecides, concatSwap, replaceBody, stopBody,
             coalesceToDefault, coalesceToForce, widenRange, skipCall, skipAssignment,
+            literalOneMore, literalOneLess, dropNegation,
         ] {
             table[prune.name] = prune.family
         }
@@ -359,6 +386,7 @@ enum Rules {
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
         "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
         "range-operator", "optional-handling", "collection-boundary", "statement-deletion",
+        "constant-replacement", "unary-deletion",
     ]
 
     /// The identifier for a swap, at the version this build emits.

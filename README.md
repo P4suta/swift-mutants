@@ -163,7 +163,7 @@ so what `list` describes is what `run` would do.
 | --- | --- |
 | `balanced` (the default) | comparison, boolean connectives and their pruning, boolean literals, integer arithmetic, whole-condition decisions, concatenation order, statement deletion |
 | `strong` | compound arithmetic assignment, bitwise, optional handling, range bounds, collection ends |
-| `all` | nothing yet — the rules its tier is for are not built |
+| `all` | integer literals moved by one either way, unary minus removed |
 
 `operators = ["lt-to-le"]` names them outright and wins over the tier, because a name is
 more specific than a tier.

@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows
   pragmas; instrumentation that puts every mutant in one tree behind a runtime guard
   without changing the line count, with an activation proof over both the spliced source
   and the built product.
+- The `all` tier has something in it: an integer literal one either side of what was
+  written, and a unary minus taken away. It selected exactly what `strong` did before.
 - A statement that does not run: the largest family there is, and the one with the best
   record in the literature. In `balanced`.
 - Validation's fallback compiler now lowers to SIL rather than only type-checking, which is

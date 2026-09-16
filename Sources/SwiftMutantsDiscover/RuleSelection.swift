@@ -44,7 +44,7 @@ public struct RuleSelection: Sendable, Hashable {
                 "collection-boundary",
             ]
         ),
-        (.all, []),
+        (.all, ["constant-replacement", "unary-deletion"]),
     ]
 
     /// Every family this build can produce, whatever tier it is in.

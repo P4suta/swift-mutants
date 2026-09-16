@@ -119,6 +119,38 @@ final class CandidateWalker: SyntaxVisitor {
 
     // MARK: - Candidates
 
+    /// An integer literal one either side of what was written.
+    override func visit(_ node: IntegerLiteralExprSyntax) -> SyntaxVisitorContinueKind {
+        guard let value = Int(node.literal.text.filter { $0 != "_" }) else {
+            // A literal written in another base, or one too large for this to reason about.
+            // Leaving it alone is right either way: a hexadecimal mask moved by one is not
+            // an off-by-one, it is a different mask.
+            return .visitChildren
+        }
+        record(Rules.literalOneMore, replacing: Syntax(node), with: "\(value + 1)")
+        // Never below zero. `-1` is a different kind of number from a count or an index,
+        // and on either it is a value the program was never going to see.
+        if value > 0 {
+            record(Rules.literalOneLess, replacing: Syntax(node), with: "\(value - 1)")
+        }
+        return .visitChildren
+    }
+
+    /// A negation taken away.
+    override func visit(_ node: PrefixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
+        guard node.operator.text == "-",
+            // Not on a literal: the sign is part of how the number is written, and the
+            // literal rules are already asking about the value.
+            !node.expression.is(IntegerLiteralExprSyntax.self),
+            !node.expression.is(FloatLiteralExprSyntax.self)
+        else { return .visitChildren }
+        record(
+            Rules.dropNegation,
+            replacing: Syntax(node),
+            with: node.expression.flattenableDescription)
+        return .visitChildren
+    }
+
     override func visit(_ node: CodeBlockItemListSyntax) -> SyntaxVisitorContinueKind {
         offerSkippable(in: node, of: Syntax(node))
         return .visitChildren
