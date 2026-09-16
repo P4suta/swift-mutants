@@ -214,9 +214,12 @@ around 80% productivity, the highest of any operator they kept, which is why it 
 
 Only statements that bind nothing: a call whose value is discarded, and an assignment to
 something that already exists. A `let` skipped this way would take its name out of scope
-for everything below it, which is not a mutant but a different program — and a block of one
-statement is never touched, because in a function body that statement is the implicit
-return and in a `guard` it is the only thing stopping a fall-through.
+for everything below it, which is not a mutant but a different program.
+
+A block's only statement is skipped where the block may simply end without it — an `if`, a
+loop, a `do`, a `catch` — and not where it carries the declaration's value: a function
+body, an accessor, a closure, or the `else` of a `guard`. So a `catch` that does nothing is
+offered, which asks whether anything tests that errors are handled at all.
 
 ### The ends of a collection
 
