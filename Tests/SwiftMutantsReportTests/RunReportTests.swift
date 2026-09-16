@@ -365,3 +365,65 @@ struct ReportExpectationTests {
         }
     }
 }
+
+/// What a report says about tests that did not run in the copy.
+///
+/// The narration says it once and scrolls away; the report is what a gate, an audit and
+/// anybody reading a survivor list a week later has. A mutant only a skipped test covers
+/// reports as surviving however good that test is, so the reason has to be in the same
+/// document as the list it explains.
+@Suite("A report carries what stepped aside")
+struct ReportedSkipsTests {
+
+    static func baseline(skipping tests: [String]) -> RunReport {
+        let outcome = RunReportTests.Fixture.outcome(results: [])
+        return RunReport(
+            of: RunOutcome(
+                results: outcome.results,
+                rejected: outcome.rejected,
+                summary: outcome.summary,
+                baseline: Verdict(
+                    outcome: .survived,
+                    killedBy: [],
+                    firstFailure: nil,
+                    startedTests: ["P.S/a()"],
+                    durationMilliseconds: 231,
+                    skippedTests: tests,
+                    termination: .exited(0)
+                ),
+                contendedBaseline: outcome.contendedBaseline,
+                filesInstrumented: outcome.filesInstrumented,
+                scope: outcome.scope,
+                positions: outcome.positions,
+                digests: outcome.digests,
+                expectations: outcome.expectations
+            )
+        )
+    }
+
+    @Test("names them in the baseline it reports")
+    func namesThem() {
+        let report = Self.baseline(skipping: ["P.NeedsRepository/alphabet()"])
+        #expect(report.baseline.testsSkipped == ["P.NeedsRepository/alphabet()"])
+    }
+
+    @Test("says nothing about skips when none happened")
+    func saysNothing() {
+        #expect(Self.baseline(skipping: []).baseline.testsSkipped.isEmpty)
+    }
+
+    /// A report written before this answer existed is a report about a run that happened,
+    /// not a report that cannot be read. `ReportStore.read` answers what it cannot decode
+    /// with `nil`, and every caller reads that as "nobody has run this yet" - so a required
+    /// key would turn every earlier report into a run that never was, silently.
+    @Test("reads a report written before this answer existed")
+    func readsAnOlderReport() throws {
+        let older = """
+            {"outcome":"survived","testsStarted":3,"durationMilliseconds":231}
+            """
+        let read = try JSONDecoder().decode(
+            RunReport.Behaviour.self, from: Data(older.utf8))
+        #expect(read.testsSkipped.isEmpty)
+        #expect(read.testsStarted == 3)
+    }
+}

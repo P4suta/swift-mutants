@@ -193,6 +193,49 @@ public struct RunReport: Codable, Sendable, Hashable {
 
         /// How long it took. Durations, never timestamps, so two reports can be diffed.
         public let durationMilliseconds: Int
+
+        /// The tests that declared themselves disabled and did not run.
+        ///
+        /// In the report as well as in what a run says out loud, because the narration
+        /// scrolls past and this is what a gate and an audit read. Anything only a skipped
+        /// test covers reports as surviving however good that test is, and somebody looking
+        /// at a list of permanent survivors needs the reason to be in the same document.
+        public let testsSkipped: [String]
+
+        /// One behaviour, with no skips unless there were some.
+        ///
+        /// The default is what every caller but the reader wants: a fixture, a merge and a
+        /// projection are all about a run whose tests ran.
+        public init(
+            outcome: String,
+            testsStarted: Int,
+            durationMilliseconds: Int,
+            testsSkipped: [String] = []
+        ) {
+            self.outcome = outcome
+            self.testsStarted = testsStarted
+            self.durationMilliseconds = durationMilliseconds
+            self.testsSkipped = testsSkipped
+        }
+
+        /// Reads one, tolerating a report written before this answer existed.
+        ///
+        /// Absent means absent, not undecodable. `ReportStore.read` answers a report it
+        /// cannot decode with `nil`, which every caller reads as "nobody has run this yet"
+        /// - so a required new key would turn every report written by an earlier build into
+        /// a run that never happened, silently, which is the shape this project exists to
+        /// refuse.
+        public init(from decoder: any Decoder) throws {
+            let fields = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                outcome: try fields.decode(String.self, forKey: .outcome),
+                testsStarted: try fields.decode(Int.self, forKey: .testsStarted),
+                durationMilliseconds: try fields.decode(
+                    Int.self, forKey: .durationMilliseconds),
+                testsSkipped: try fields.decodeIfPresent(
+                    [String].self, forKey: .testsSkipped) ?? []
+            )
+        }
     }
 
     /// What became of one mutant.

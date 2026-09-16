@@ -285,7 +285,12 @@ public enum EmbeddedSchemas {
                   "properties": {
                     "outcome": { "type": "string" },
                     "testsStarted": { "$ref": "#/$defs/count" },
-                    "durationMilliseconds": { "$ref": "#/$defs/count" }
+                    "durationMilliseconds": { "$ref": "#/$defs/count" },
+                    "testsSkipped": {
+                      "description": "Tests that declared themselves disabled and did not run in the copy.",
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
                   }
                 },
                 "expectations": {

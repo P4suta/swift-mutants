@@ -251,7 +251,8 @@ extension RunReport.Behaviour {
         self.init(
             outcome: verdict.outcome.rawValue,
             testsStarted: verdict.testsStarted,
-            durationMilliseconds: verdict.durationMilliseconds
+            durationMilliseconds: verdict.durationMilliseconds,
+            testsSkipped: verdict.skippedTests
         )
     }
 }
