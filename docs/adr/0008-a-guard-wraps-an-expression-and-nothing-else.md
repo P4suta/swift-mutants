@@ -83,3 +83,35 @@ If a statement guard is ever built, it will be for statement-level *operators* �
 a call statement, emptying a `defer` body — where the tool chooses the site and can choose
 one whose bindings nothing outside it uses. It will not be a way to make arbitrary
 hand-written anchors work, and this ADR exists so that nobody builds it expecting that.
+
+## Addendum: a guard also needs both its branches to be one type
+
+The statement guard was built after all, for the reason this ADR anticipated: bodies
+choose their own site. The body form is now `{ if g { return x } <body> }`, which
+prepends and moves nothing.
+
+But building it turned up a constraint on the *expression* guard that the plan had
+assumed away, and that is worth writing down because it decides what an operator rule may
+be.
+
+The plan argued that a ternary guard is cheap for the type checker because "the two
+branches are the same expression differing by one operator, so they are the same type from
+the start". That is true of `<` against `<=`, of `&&` against `||`, of every pair in the
+original catalogue — and false in general.
+
+`..<` and `...` build **different types**: `Range` and `ClosedRange`. A ternary whose
+branches are those two does not type-check at all, so every mutant the obvious range rule
+would have produced is a rejection. The same shape appears wherever an operator's result
+type depends on which operator it is, and for `??` it appears in the operands: `a ?? b`
+has the type of `b`, and `a` alone is the optional.
+
+**So a rule is only expressible as an expression guard when its replacement has the same
+type as what it replaces.** Where it does not, the rule has to be rewritten until it does
+— the range family shifts a bound rather than swapping an operator, and the coalescing
+family writes `(a)!` rather than `a` — or it does not exist.
+
+Nothing in discovery can check this. A span is a span and a replacement is text, and both
+rules were self-consistent, produced sensible-looking catalogues, and would have spent a
+build on every file to report a rejection for every range and every `??` in the package.
+Only a compiler could see it, which is why each operator family now ships with a gate that
+instruments a fixture and hands it to `swiftc`.
