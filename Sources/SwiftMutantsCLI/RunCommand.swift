@@ -308,6 +308,15 @@ struct RunCommand: AsyncParsableCommand {
 
         // Whatever was drawn stays on the screen, and the summary starts below it.
         progress.finish()
+        try conclude(outcome, at: root, settings: settings)
+    }
+
+    /// Writes down what the run found, then lets a policy judge it.
+    ///
+    /// The two things that happen once there is an answer, and neither of them can change
+    /// it: an exit code is a reading of the report, so a run whose report failed to write
+    /// has nothing to be judged on and says so by throwing first.
+    private func conclude(_ outcome: RunOutcome, at root: URL, settings: Configuration) throws {
         try publish(outcome, at: root, settings: settings)
         // The report supersedes the running account, so it goes. What is left behind is a
         // ledger for a run that did not get here, which is the only kind worth keeping.

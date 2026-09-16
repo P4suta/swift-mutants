@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 public import SwiftMutantsConfig
-public import SwiftMutantsCore
+import SwiftMutantsCore
 
 /// Which of the rules this build knows about a run is asking for.
 ///
@@ -89,7 +89,7 @@ public struct RuleSelection: Sendable, Hashable {
     /// a request. A caller with nothing written down has said nothing about whether they
     /// want the catalogue multiplied by the number of declarations in their package, and
     /// reading silence as yes is how a tool ends up doing something nobody chose.
-    public static let everything = RuleSelection(Self.everyTier)
+    public static let everything = Self(Self.everyTier)
 
     private static var everyTier: Configuration.Mutation {
         var mutation = Configuration.Mutation()

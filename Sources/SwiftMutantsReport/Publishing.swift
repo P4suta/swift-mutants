@@ -44,8 +44,12 @@ public enum Publishing {
     ///   rather than swallowing.
     @discardableResult
     public static func write(
-        _ report: RunReport, formats: Set<ReportFormat>, into root: URL,
-        at directory: String = Self.directory, high: Int = 80, low: Int = 60
+        _ report: RunReport,
+        formats: Set<ReportFormat>,
+        into root: URL,
+        at directory: String = Self.directory,
+        high: Int = 80,
+        low: Int = 60
     ) throws -> [URL] {
         guard !formats.isEmpty else { return [] }
         let home = root.appending(path: directory)

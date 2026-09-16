@@ -163,7 +163,7 @@ struct BodyReplacementTests {
     /// The span is empty and sits at the brace. Replacing no bytes is the whole of the
     /// design: the body does not move, so every line number in the file is what it was.
     @Test("replaces no bytes, so nothing below it moves")
-    func replacesNoBytes() {
+    func replacesNoBytes() throws {
         let source = """
             func total() -> Int {
                 let sum = items.reduce(0, +)
@@ -172,10 +172,10 @@ struct BodyReplacementTests {
             """
         let only = Self.stopped(Self.discover(source)).first
         #expect(only?.span.start == only?.span.end)
-        #expect(only?.original == "")
+        #expect(only?.original.isEmpty == true)
         // Just after the opening brace, which is where a guard lands on the brace's line.
-        let brace = source.utf8.firstIndex(of: UInt8(ascii: "{"))
-        let afterBrace = source.utf8.distance(from: source.utf8.startIndex, to: brace!) + 1
+        let brace = try #require(source.utf8.firstIndex(of: UInt8(ascii: "{")))
+        let afterBrace = source.utf8.distance(from: source.utf8.startIndex, to: brace) + 1
         #expect(only?.span.start == afterBrace)
     }
 

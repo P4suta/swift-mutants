@@ -109,8 +109,8 @@ struct ArithmeticTests {
     /// arithmetic walk does not also read it as a subtraction.
     @Test("leaves a unary minus alone")
     func unaryMinus() {
-        #expect(Self.found("-a").filter { $0.rule.name.hasSuffix("-to-sub") }.isEmpty)
-        #expect(Self.found("-a").filter { $0.rule.name.hasSuffix("-to-add") }.isEmpty)
+        #expect(!Self.found("-a").contains { $0.rule.name.hasSuffix("-to-sub") })
+        #expect(!Self.found("-a").contains { $0.rule.name.hasSuffix("-to-add") })
     }
 
     /// `+` on strings and arrays is concatenation, and `-` is not defined for either. The

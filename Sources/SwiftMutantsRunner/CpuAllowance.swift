@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-public import Foundation
+import Foundation
 
 /// Running a command inside an allowance of processor time, and reading back what it used.
 ///

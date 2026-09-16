@@ -11,17 +11,9 @@ import SwiftSyntax
 /// away.
 final class CandidateWalker: SyntaxVisitor {
 
-    private(set) var candidates: [Candidate] = []
-    private(set) var skips: [Skip] = []
-
-    private let locations: SourceLocationConverter
-    private let suppressions: Suppressions
-
-    /// Whether this walk is the throwaway one a skip uses to count what it is hiding.
-    ///
-    /// A counting walk produces candidates and no skips, so that the count is of what the
-    /// region *would* have yielded rather than of what a second suppression pass decides.
-    private let countOnly: Bool
+    /// What this walk writes down. Shared with the throwaway counting walks a skip makes,
+    /// only in the sense that each gets one of its own: a ledger is never handed around.
+    let ledger: CandidateLedger
 
     /// Whether this run asked for statements to be skipped.
     ///
@@ -35,8 +27,8 @@ final class CandidateWalker: SyntaxVisitor {
     /// whether a body can be replaced is work worth skipping when nobody asked for it.
     let replacesBodies: Bool
 
-    /// The declaration names this walk is currently inside, outermost first.
-    private var declarationPath: [String]
+    var candidates: [Candidate] { ledger.candidates }
+    var skips: [Skip] { ledger.skips }
 
     init(
         locations: SourceLocationConverter,
@@ -46,13 +38,12 @@ final class CandidateWalker: SyntaxVisitor {
         replacesBodies: Bool = false,
         skipsStatements: Bool = false
     ) {
-        // One converter per file, built by the caller. Constructing one lays out the whole
-        // line table, so building one per node - which is what Muter does - makes discovery
-        // quadratic in file size.
-        self.locations = locations
-        self.suppressions = suppressions
-        self.countOnly = countOnly
-        self.declarationPath = declarationPath
+        self.ledger = CandidateLedger(
+            locations: locations,
+            suppressions: suppressions,
+            countOnly: countOnly,
+            path: declarationPath
+        )
         self.replacesBodies = replacesBodies
         self.skipsStatements = skipsStatements
         super.init(viewMode: .sourceAccurate)
@@ -130,10 +121,10 @@ final class CandidateWalker: SyntaxVisitor {
         // is a mutant that cannot fail.
         let written = node.condition.trimmedDescription
         if written != "true" {
-            record(Rules.patternAlwaysMatches, replacing: condition, within: condition)
+            ledger.record(Rules.patternAlwaysMatches, replacing: condition, within: condition)
         }
         if written != "false" {
-            record(Rules.patternNeverMatches, replacing: condition, within: condition)
+            ledger.record(Rules.patternNeverMatches, replacing: condition, within: condition)
         }
         return .visitChildren
     }
@@ -143,7 +134,7 @@ final class CandidateWalker: SyntaxVisitor {
         guard node.questionOrExclamationMark?.tokenKind == .postfixQuestionMark else {
             return .visitChildren
         }
-        record(Rules.tryOptionalFails, replacing: Syntax(node), with: "nil")
+        ledger.record(Rules.tryOptionalFails, replacing: Syntax(node), with: "nil")
         return .visitChildren
     }
 
@@ -155,11 +146,11 @@ final class CandidateWalker: SyntaxVisitor {
             // an off-by-one, it is a different mask.
             return .visitChildren
         }
-        record(Rules.literalOneMore, replacing: Syntax(node), with: "\(value + 1)")
+        ledger.record(Rules.literalOneMore, replacing: Syntax(node), with: "\(value + 1)")
         // Never below zero. `-1` is a different kind of number from a count or an index,
         // and on either it is a value the program was never going to see.
         if value > 0 {
-            record(Rules.literalOneLess, replacing: Syntax(node), with: "\(value - 1)")
+            ledger.record(Rules.literalOneLess, replacing: Syntax(node), with: "\(value - 1)")
         }
         return .visitChildren
     }
@@ -172,7 +163,7 @@ final class CandidateWalker: SyntaxVisitor {
             !node.expression.is(IntegerLiteralExprSyntax.self),
             !node.expression.is(FloatLiteralExprSyntax.self)
         else { return .visitChildren }
-        record(
+        ledger.record(
             Rules.dropNegation,
             replacing: Syntax(node),
             with: node.expression.flattenableDescription)
@@ -192,7 +183,7 @@ final class CandidateWalker: SyntaxVisitor {
         guard let other = CollectionEnds.opposite(of: node.declName.baseName.text) else {
             return .visitChildren
         }
-        record(
+        ledger.record(
             Rules.endSwap(to: other),
             replacing: Syntax(node.declName.baseName),
             within: Self.guarded(node))
@@ -240,124 +231,20 @@ final class CandidateWalker: SyntaxVisitor {
             // An operator this tool has no meaning for. Swift lets a package define its
             // own, and swapping one for another would be swapping something for something
             // else at random.
-            note(.userDefinedOperator, over: Syntax(token), hiding: 0)
+            ledger.note(.userDefinedOperator, over: Syntax(token), hiding: 0)
             return .visitChildren
         }
         if Rules.isArithmetic(swap), Self.isVisiblyNotANumber(node) {
             // The arithmetic swap is still impossible, and still worth a skip: `+` to `-`
             // on two arrays does not compile. But the operands turning round does, and on
             // a concatenation it is the mutation that matters most.
-            note(.nonNumericOperand, over: Syntax(token), hiding: 1)
+            ledger.note(.nonNumericOperand, over: Syntax(token), hiding: 1)
             if token.operator.text == "+" { recordConcatSwap(of: node) }
             return .visitChildren
         }
-        record(swap, replacing: Syntax(token), within: Syntax(node))
+        ledger.record(swap, replacing: Syntax(token), within: Syntax(node))
         recordPrunes(of: node, spelled: token.operator.text)
         return .visitChildren
-    }
-
-    /// Offers a concatenation with its operands the other way round.
-    ///
-    /// Nothing when they are written the same way. `a + a` is the same program whichever
-    /// order it is in, and a mutant nothing can kill only drags a score down - this is the
-    /// one case of that the syntax can see, and the compiler cannot be asked about the rest.
-    private func recordConcatSwap(of node: InfixOperatorExprSyntax) {
-        let left = node.leftOperand.flattenableDescription
-        let right = node.rightOperand.flattenableDescription
-        guard left != right else { return }
-        // Parenthesised, because the operands may be chains themselves. `(x + y) + z`
-        // swapped is `z + (x + y)`, and writing that as `z + x + y` re-parses as
-        // `(z + x) + y` - the same value only if `+` associates, which it does for the
-        // standard library and need not for somebody's own operator. The mutation is meant
-        // to be "these two the other way round" and this is that, exactly.
-        record(Rules.concatSwap, replacing: Syntax(node), with: "(\(right)) + (\(left))")
-    }
-
-    /// Whether an expression is one syntax alone can tell is not arithmetic.
-    ///
-    /// True only for what can be read off the tree: a string, array or dictionary literal,
-    /// or a `+` chain that reaches one. `a + b` could be two integers, so it is false -
-    /// the compiler stays the judge of everything this cannot see, which is most of it.
-    ///
-    /// The recursion is over the folded tree, where `x + y + z` is `(x + y) + z`. A literal
-    /// buried on the left of a chain is still what the whole chain produces, and the outer
-    /// operator is the one that costs the most: it carries the largest expression.
-    static func isVisiblyNotANumber(_ node: some ExprSyntaxProtocol) -> Bool {
-        let expression = Self.unwrapped(ExprSyntax(node))
-        if expression.is(StringLiteralExprSyntax.self) { return true }
-        if expression.is(ArrayExprSyntax.self) { return true }
-        if expression.is(DictionaryExprSyntax.self) { return true }
-        if let infix = expression.as(InfixOperatorExprSyntax.self) {
-            return isVisiblyNotANumber(infix.leftOperand)
-                || isVisiblyNotANumber(infix.rightOperand)
-        }
-        if let assignment = expression.as(SequenceExprSyntax.self) {
-            return assignment.elements.contains { isVisiblyNotANumber($0) }
-        }
-        return false
-    }
-
-    /// The expression inside however many layers of parentheses surround it.
-    private static func unwrapped(_ expression: ExprSyntax) -> ExprSyntax {
-        guard let tuple = expression.as(TupleExprSyntax.self), tuple.elements.count == 1,
-            let only = tuple.elements.first, only.label == nil
-        else {
-            return expression
-        }
-        return unwrapped(only.expression)
-    }
-
-    /// Offers each operand of a connective as a replacement for the whole expression.
-    ///
-    /// The operand is taken from the folded tree rather than from the flat sequence
-    /// SwiftSyntax parses. `a && b || c` arrives as one `SequenceExprSyntax` with no
-    /// grouping at all, so a walk over the raw tree would have to guess which operands
-    /// belong to which connective - and would guess wrong in exactly the cases where
-    /// precedence is the thing under test.
-    /// A range that reaches one element further than it was written to.
-    ///
-    /// The bound is shifted rather than the operator swapped, because `..<` and `...` build
-    /// different types and a ternary guard needs its branches to unify. Shifting keeps the
-    /// type by construction.
-    ///
-    /// Not offered where the bound is visibly not a number: `"a"..<"z"` has no `+ 1`, and a
-    /// mutant no compiler accepts costs a build and reports a rejection.
-    private func recordWiderRange(of node: InfixOperatorExprSyntax, spelled text: String) {
-        guard !Self.isVisiblyNotANumber(node.rightOperand) else {
-            note(.nonNumericOperand, over: Syntax(node), hiding: 1)
-            return
-        }
-        record(
-            Rules.widenRange,
-            replacing: Syntax(node),
-            with: "\(node.leftOperand.flattenableDescription) \(text) "
-                + "((\(node.rightOperand.flattenableDescription)) + 1)")
-    }
-
-    /// The two mutants a coalescing operator has.
-    ///
-    /// Asymmetric, and the asymmetry is the whole of it. The default side is already the
-    /// type the expression has, so it is kept as it stands. The value side is the
-    /// *optional*, so keeping it alone is a type error wherever the result is used - it has
-    /// to be written as a force unwrap, which has the right type and traps exactly where
-    /// nothing tested the absent case.
-    ///
-    /// Parenthesised, because the operand can be any expression and `a as? T` followed by
-    /// `!` is not what anybody meant.
-    private func recordCoalescing(of node: InfixOperatorExprSyntax) {
-        record(Rules.coalesceToDefault, keeping: Syntax(node.rightOperand), of: Syntax(node))
-        record(
-            Rules.coalesceToForce,
-            replacing: Syntax(node),
-            with: "(\(node.leftOperand.flattenableDescription))!")
-    }
-
-    private func recordPrunes(of node: InfixOperatorExprSyntax, spelled operatorText: String) {
-        guard let prunes = Rules.connectivePrunes[operatorText] else { return }
-        for prune in prunes {
-            let operand = prune.side == .left ? node.leftOperand : node.rightOperand
-            record(prune, keeping: Syntax(operand), of: Syntax(node))
-        }
     }
 
     /// Offers a condition list with one of its clauses taken out.
@@ -395,10 +282,10 @@ final class CandidateWalker: SyntaxVisitor {
     override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind {
         guard let swap = Rules.booleanLiterals[node.literal.text] else { return .skipChildren }
         if Self.isWholeConditionOfALoop(node) {
-            note(.loopConditionLiteral, over: Syntax(node), hiding: 1)
+            ledger.note(.loopConditionLiteral, over: Syntax(node), hiding: 1)
             return .skipChildren
         }
-        record(swap, replacing: Syntax(node.literal), within: Syntax(node))
+        ledger.record(swap, replacing: Syntax(node.literal), within: Syntax(node))
         return .skipChildren
     }
 
@@ -435,12 +322,12 @@ final class CandidateWalker: SyntaxVisitor {
     // MARK: - Bookkeeping
 
     private func enter(_ name: String) -> SyntaxVisitorContinueKind {
-        declarationPath.append(name)
+        ledger.enter(name)
         return .visitChildren
     }
 
     private func leave() {
-        if !declarationPath.isEmpty { declarationPath.removeLast() }
+        ledger.leave()
     }
 
     /// Records a region as passed over, counting what it would have produced.
@@ -452,168 +339,15 @@ final class CandidateWalker: SyntaxVisitor {
         // A counting walk descends into what a real walk would pass over: the number it is
         // after is what the region *would* have yielded, which is the only number that
         // answers "is this rule too broad".
-        guard !countOnly else { return .visitChildren }
+        guard !ledger.countOnly else { return .visitChildren }
         let counter = CandidateWalker(
-            locations: locations,
-            suppressions: suppressions,
+            locations: ledger.locations,
+            suppressions: ledger.suppressions,
             countOnly: true,
-            declarationPath: declarationPath
+            declarationPath: ledger.path
         )
         counter.walk(node)
-        note(reason, over: node, hiding: counter.candidates.count)
+        ledger.note(reason, over: node, hiding: counter.candidates.count)
         return .skipChildren
-    }
-
-    /// Records a region as passed over.
-    ///
-    /// Kept even when it hid nothing, because the record is of the rule having matched,
-    /// and "this rule fires on four hundred sites, of which three hundred held nothing" is
-    /// exactly what a reader checking whether a rule is too broad needs. The exception is
-    /// an operator this tool has no meaning for, which is not a decision worth a line: it
-    /// is a fact about somebody's own operator.
-    /// Records one declaration this rule could not offer.
-    ///
-    /// One, because a body is one site: the count is what the decision cost there, and a
-    /// body it could not replace cost exactly the one mutant it would have made.
-    func note(_ reason: SkipReason, at node: Syntax) {
-        note(reason, over: node, hiding: 1)
-    }
-
-    private func note(_ reason: SkipReason, over node: Syntax, hiding: Int) {
-        guard !countOnly else { return }
-        if reason == .userDefinedOperator, hiding == 0 { return }
-        guard let region = Self.span(of: node) else { return }
-        skips.append(Skip(reason: reason, span: region, candidatesHidden: hiding))
-    }
-
-    private func record(_ swap: Rules.Swap, replacing token: Syntax, within expression: Syntax) {
-        guard let edit = Self.span(of: token), let wrapped = Self.span(of: expression) else {
-            return
-        }
-        if !countOnly, isSuppressed(swap.family, at: token) {
-            skips.append(Skip(reason: .disabledByComment, span: edit, candidatesHidden: 1))
-            return
-        }
-        candidates.append(
-            Candidate(
-                rule: Rules.identifier(for: swap),
-                span: edit,
-                original: token.trimmedDescription,
-                replacement: swap.replacement,
-                guardSpan: wrapped,
-                form: .expression,
-                enclosingDeclaration: declarationPath.joined(separator: ".")
-            )
-        )
-    }
-
-    /// Records a prune: the expression replaced by one of its own operands.
-    private func record(_ prune: Rules.Prune, keeping operand: Syntax, of expression: Syntax) {
-        guard let region = Self.span(of: expression) else { return }
-        if !countOnly, isSuppressed(prune.family, at: expression) {
-            skips.append(Skip(reason: .disabledByComment, span: region, candidatesHidden: 1))
-            return
-        }
-        candidates.append(
-            Candidate(
-                rule: Rules.identifier(for: prune),
-                span: region,
-                original: expression.trimmedDescription,
-                replacement: operand.flattenableDescription,
-                guardSpan: region,
-                form: .expression,
-                enclosingDeclaration: declarationPath.joined(separator: ".")
-            )
-        )
-    }
-
-    /// Records a statement that does not run.
-    ///
-    /// The span is the statement itself and the replacement is empty: the guard is written
-    /// around what is there, so the original keeps every byte and every newline it had and
-    /// only its first and last lines gain any text.
-    func record(_ prune: Rules.Prune, skipping statement: Syntax) {
-        guard let span = Self.span(of: statement) else { return }
-        if !countOnly, isSuppressed(prune.family, at: statement) {
-            skips.append(Skip(reason: .disabledByComment, span: span, candidatesHidden: 1))
-            return
-        }
-        candidates.append(
-            Candidate(
-                rule: Rules.identifier(for: prune),
-                span: span,
-                original: statement.trimmedDescription,
-                replacement: "",
-                guardSpan: span,
-                form: .skipping,
-                enclosingDeclaration: declarationPath.joined(separator: ".")
-            )
-        )
-    }
-
-    /// Records a mutant whose guard is a statement in front of a body.
-    ///
-    /// The span is empty and sits just after the opening brace, which is the whole of the
-    /// design: an empty span replaces no bytes, so the body below it does not move and
-    /// every line number in the file is what it was. The guard covers the body, so a mutant
-    /// that stops it is attributed to the declaration it stopped.
-    func record(
-        _ prune: Rules.Prune, inside interior: SourceSpan, of region: Syntax, doing: String
-    ) {
-        // The guard covers what is *between* the braces, never the braces themselves. A
-        // guard that covered the whole block would be spliced in front of the `{`, and the
-        // declaration would read `func f() if g { return } { ... }` - two things on a line
-        // where Swift allows one. Found by a compile gate; discovery could not see it,
-        // because a span covering a block is a perfectly ordinary span.
-        let covered = interior
-        guard let here = SourceSpan(start: interior.start, end: interior.start) else { return }
-        if !countOnly, isSuppressed(prune.family, at: region) {
-            skips.append(Skip(reason: .disabledByComment, span: covered, candidatesHidden: 1))
-            return
-        }
-        candidates.append(
-            Candidate(
-                rule: Rules.identifier(for: prune),
-                span: here,
-                original: "",
-                replacement: doing,
-                guardSpan: covered,
-                form: .statement,
-                enclosingDeclaration: declarationPath.joined(separator: ".")
-            )
-        )
-    }
-
-    /// Records a prune whose replacement is built rather than taken from the tree.
-    ///
-    /// A condition list with one clause removed is not a subtree of anything, so there is
-    /// no node to point at - only text to put in its place.
-    func record(_ prune: Rules.Prune, replacing region: Syntax, with text: String) {
-        guard let span = Self.span(of: region) else { return }
-        if !countOnly, isSuppressed(prune.family, at: region) {
-            skips.append(Skip(reason: .disabledByComment, span: span, candidatesHidden: 1))
-            return
-        }
-        candidates.append(
-            Candidate(
-                rule: Rules.identifier(for: prune),
-                span: span,
-                original: region.trimmedDescription,
-                replacement: text,
-                guardSpan: span,
-                form: .expression,
-                enclosingDeclaration: declarationPath.joined(separator: ".")
-            )
-        )
-    }
-
-    private func isSuppressed(_ family: String, at token: Syntax) -> Bool {
-        let position = token.positionAfterSkippingLeadingTrivia
-        return suppressions.disables(family, onLine: locations.location(for: position).line)
-    }
-
-    private static func span(of node: Syntax) -> SourceSpan? {
-        let range = node.trimmedRange
-        return SourceSpan(start: range.lowerBound.utf8Offset, end: range.upperBound.utf8Offset)
     }
 }

@@ -29,7 +29,7 @@ extension CandidateWalker {
         guard block.count > 1 || Self.mayFallOut(of: block) else { return }
         for item in block {
             guard let rule = Self.skippable(item) else { continue }
-            record(rule, skipping: Syntax(item))
+            ledger.record(rule, skipping: Syntax(item))
         }
     }
 

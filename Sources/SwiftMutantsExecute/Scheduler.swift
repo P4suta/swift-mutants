@@ -3,7 +3,7 @@
 
 public import Foundation
 public import SwiftMutantsBuild
-public import SwiftMutantsCore
+import SwiftMutantsCore
 public import SwiftMutantsInstrument
 public import SwiftMutantsRunner
 

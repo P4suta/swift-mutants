@@ -77,8 +77,8 @@ public final class Ledger: Sendable {
     public init?(at file: URL) {
         try? FileManager.default.createDirectory(
             at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let opened = file.withUnsafeFileSystemRepresentation { path in
-            path.map { open($0, O_WRONLY | O_APPEND | O_CREAT, 0o644) } ?? -1
+        let opened = unsafe file.withUnsafeFileSystemRepresentation { path in
+            unsafe path.map { unsafe open($0, O_WRONLY | O_APPEND | O_CREAT, 0o644) } ?? -1
         }
         guard opened >= 0 else { return nil }
         descriptor = opened
@@ -99,7 +99,7 @@ public final class Ledger: Sendable {
         guard var line = try? JSONEncoder().encode(answer) else { return }
         line.append(0x0A)
         _ = [UInt8](line).withUnsafeBufferPointer { bytes in
-            bytes.baseAddress.map { write(descriptor, $0, bytes.count) }
+            unsafe bytes.baseAddress.map { unsafe write(descriptor, $0, bytes.count) }
         }
     }
 

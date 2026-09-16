@@ -42,7 +42,7 @@ extension CandidateWalker {
     /// declaration that quietly is not in the catalogue.
     func offerBody(of node: InitializerDeclSyntax) {
         guard replacesBodies, let body = node.body, !body.statements.isEmpty else { return }
-        note(.unstoppableBody, at: Syntax(body))
+        ledger.note(.unstoppableBody, at: Syntax(body))
     }
 
     /// One block of accessors, in whichever of the two shapes it was written.
@@ -65,7 +65,7 @@ extension CandidateWalker {
             // `_read` and `_modify` are coroutines: returning before yielding is not a
             // mutant, it is a trap. Named rather than passed over in silence.
             default:
-                note(.unstoppableBody, at: Syntax(body))
+                ledger.note(.unstoppableBody, at: Syntax(body))
             }
         }
     }
@@ -134,11 +134,11 @@ extension CandidateWalker {
         // notice when this stops doing its work? There is no value to return, so it can
         // only be said as a statement - which is why this waited for the second form.
         guard let type, !BodyValues.returnsNothing(type) else {
-            record(Rules.stopBody, inside: interior, of: region, doing: "return")
+            ledger.record(Rules.stopBody, inside: interior, of: region, doing: "return")
             return
         }
         guard let constant = BodyValues.constant(for: type) else {
-            note(.unspellableReturnType, at: region)
+            ledger.note(.unspellableReturnType, at: region)
             return
         }
         // One expression is an expression, so it takes the guard that disturbs nothing
@@ -149,9 +149,9 @@ extension CandidateWalker {
         {
             // A body that already is the constant would be replaced by itself.
             guard expression.trimmedDescription != constant else { return }
-            record(Rules.replaceBody, replacing: Syntax(expression), with: constant)
+            ledger.record(Rules.replaceBody, replacing: Syntax(expression), with: constant)
             return
         }
-        record(Rules.stopBody, inside: interior, of: region, doing: "return \(constant)")
+        ledger.record(Rules.stopBody, inside: interior, of: region, doing: "return \(constant)")
     }
 }

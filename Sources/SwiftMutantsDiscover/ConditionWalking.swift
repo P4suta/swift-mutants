@@ -29,7 +29,7 @@ extension CandidateWalker {
         guard clauses.count > 1 else { return }
         for clause in clauses {
             guard case .expression(let expression) = clause.condition else { continue }
-            record(Rules.dropCondition, replacing: Syntax(expression), with: "true")
+            ledger.record(Rules.dropCondition, replacing: Syntax(expression), with: "true")
         }
     }
 
@@ -55,6 +55,6 @@ extension CandidateWalker {
             case .expression(let expression) = only.condition,
             expression.as(BooleanLiteralExprSyntax.self) == nil
         else { return }
-        record(Rules.neverDecides, replacing: Syntax(expression), with: constant)
+        ledger.record(Rules.neverDecides, replacing: Syntax(expression), with: constant)
     }
 }
