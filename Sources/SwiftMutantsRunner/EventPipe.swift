@@ -101,9 +101,19 @@ public final class EventPipe: Sendable {
                 var pending: [UInt8] = []
                 var buffer = [UInt8](repeating: 0, count: 1 << 16)
                 reading: while true {
+                    // Both spellings: 6.4 calls a marker on `withUnsafeMutableBytes`
+                    // unnecessary and 6.3 requires it, and `-warnings-as-errors` makes
+                    // either disagreement a build failure. Same condition as the runtime
+                    // this tool generates, for the same reason.
+                    #if compiler(>=6.4)
                     let count = buffer.withUnsafeMutableBytes {
                         unsafe read(descriptor, $0.baseAddress, $0.count)
                     }
+                    #else
+                    let count = unsafe buffer.withUnsafeMutableBytes {
+                        unsafe read(descriptor, $0.baseAddress, $0.count)
+                    }
+                    #endif
                     guard count > 0 else { break }
                     for byte in buffer[0..<count] {
                         guard byte == UInt8(ascii: "\n") else {
