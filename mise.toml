@@ -16,6 +16,7 @@ actionlint = "1.7.12"
 zizmor = "1.30.1"
 shellcheck = "0.11.0"
 gitleaks = "8.30.1"
+"pipx:reuse" = "6.2.0"
 "osv-scanner" = "2.5.1"
 syft = "1.51.1"
 committed = "1.1.11"
@@ -44,6 +45,7 @@ depends = [
   "lint:yaml",
   "lint:actions",
   "lint:shell",
+  "lint:adr",
   "lint:licenses",
   "lint:secrets",
   "test:unit",
@@ -81,9 +83,13 @@ run = ["actionlint", "zizmor --min-severity medium .github/workflows"]
 [tasks."lint:shell"]
 run = "git ls-files -z --cached --others --exclude-standard '*.sh' | xargs -0 -r shellcheck --severity=style"
 
+[tasks."lint:adr"]
+description = "Every decision record is in the index beside it, and every index row exists"
+run = "./scripts/check-adr-index.sh"
+
 [tasks."lint:licenses"]
 description = "SPDX headers and LICENSES/ agree (REUSE)"
-run = "uvx --quiet --from 'reuse[charset-normalizer]==5.0.2' reuse lint"
+run = "reuse lint --lines"
 
 [tasks."lint:secrets"]
 run = "gitleaks detect --no-banner --redact"

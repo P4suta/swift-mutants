@@ -66,3 +66,9 @@ All notable changes to this project are documented here. The format follows
   `WorkspaceRelativePath`, `RuleIdentifier`, `MutantIdentity`, `Mutant`, `Catalog`,
   `Outcome`, `MutationScore`, `Glob`, `GlobSet` and `IntervalForest` — none of which
   opens a file, starts a process or reads a clock.
+
+### Changed
+
+- `reuse lint` runs from the pinned tool set like every other gate, rather than being
+  fetched at run time by a tool that is not pinned at all, and reports a file it objects to
+  by name rather than only failing.
