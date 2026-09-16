@@ -56,9 +56,18 @@ public struct RuleSelection: Sendable, Hashable {
     /// The rules named outright, which answer instead of the tier when there are any.
     private let named: Set<String>
 
+    /// Whether whole-body replacement was asked for.
+    ///
+    /// Its own question rather than a tier, because it is a different kind of decision: the
+    /// tiers trade noise for coverage among operators, and this multiplies the catalogue by
+    /// the number of declarations. A project choosing `all` has said what it wants from the
+    /// operators and nothing at all about this.
+    private let replacesBodies: Bool
+
     /// Reads a run's settings.
     public init(_ mutation: Configuration.Mutation) {
         self.named = Set(mutation.operators)
+        self.replacesBodies = mutation.extreme
         var taken: Set<String> = []
         for step in Self.tiers {
             taken.formUnion(step.adds)
@@ -67,10 +76,15 @@ public struct RuleSelection: Sendable, Hashable {
         self.families = taken
     }
 
-    /// Everything this build knows how to do.
-    public static let everything = RuleSelection(Self.widest)
+    /// Every tier, for a caller with no settings in hand.
+    ///
+    /// Not body replacement, which is asked for rather than tiered - and a default is not
+    /// a request. A caller with nothing written down has said nothing about whether they
+    /// want the catalogue multiplied by the number of declarations in their package, and
+    /// reading silence as yes is how a tool ends up doing something nobody chose.
+    public static let everything = RuleSelection(Self.everyTier)
 
-    private static var widest: Configuration.Mutation {
+    private static var everyTier: Configuration.Mutation {
         var mutation = Configuration.Mutation()
         mutation.profile = .all
         return mutation
@@ -81,7 +95,16 @@ public struct RuleSelection: Sendable, Hashable {
     /// A name is more specific than a tier, so naming one outside the tier offers it: a
     /// setting that quietly lost to another setting would be the same defect one level up.
     public func verdict(rule: String, family: String) -> SkipReason? {
+        guard family != Self.bodies else { return replacesBodies ? nil : .outsideProfile }
         guard named.isEmpty else { return named.contains(rule) ? nil : .notSelected }
         return families.contains(family) ? nil : .outsideProfile
     }
+
+    /// Whether a run was asked to replace whole bodies, which discovery needs before it
+    /// walks a declaration rather than after it has produced a candidate: the work of
+    /// deciding whether a body can be replaced is worth skipping when nobody asked.
+    public var replacesWholeBodies: Bool { replacesBodies }
+
+    /// The family that is asked for rather than tiered.
+    static let bodies = "body-replacement"
 }

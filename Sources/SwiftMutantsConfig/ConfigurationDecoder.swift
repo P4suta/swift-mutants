@@ -70,24 +70,6 @@ extension Configuration {
         }
         if let extreme = table["extreme"] {
             mutation.extreme = try Reader.boolean(extreme, "extreme", in: table, path: "mutation")
-            // Refused rather than accepted and ignored. Whole-body replacement is not in
-            // this build, and a setting that is read, validated, stored and then honoured
-            // by nothing gives a project exactly the run they would have had without it -
-            // with no way to find that out short of reading this tool's source.
-            //
-            // `false` is accepted, because that is what this build does. Saying no to a
-            // request for nothing would be pedantry rather than honesty.
-            guard !mutation.extreme else {
-                throw ConfigurationError(
-                    line: table.line(of: "extreme") ?? 0,
-                    reason: """
-                        `extreme` asks for whole function bodies to be replaced, which this \
-                        build does not do. It is refused rather than ignored so that a run \
-                        is never quietly narrower than the settings say. Remove the line, \
-                        or set it to false.
-                        """
-                )
-            }
         }
         mutation.include = try Reader.globs(table, "include", path: "mutation")
         mutation.exclude = try Reader.globs(table, "exclude", path: "mutation")

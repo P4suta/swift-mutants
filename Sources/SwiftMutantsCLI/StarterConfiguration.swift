@@ -62,6 +62,13 @@ enum StarterConfiguration {
         # A rule a tier leaves out is reported by `why-skipped`, not silently absent.
         # profile = "balanced"
 
+        # Replace whole bodies with a constant, as well as changing operators. Asks whether
+        # a declaration is tested at all rather than whether one operator is right, and
+        # produces almost no equivalent mutants - but multiplies the catalogue by the number
+        # of declarations, so it is off until you ask. Bodies that are one expression, which
+        # is most of them; the rest are reported by `why-skipped`.
+        # extreme = true
+
         # Which files to measure. Absent means every file the package builds.
         # include = ["Sources/**"]
         # exclude = ["Sources/Generated/**"]

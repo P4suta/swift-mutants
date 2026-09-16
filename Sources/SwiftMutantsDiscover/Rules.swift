@@ -171,6 +171,23 @@ enum Rules {
     static let neverDecides = Prune(
         side: .left, name: "condition-never-decides", family: "condition-decision")
 
+    /// A declaration's body replaced by a constant.
+    ///
+    /// The only rule here that is about a declaration rather than an operator, and it asks
+    /// the sharpest question in the catalogue: does anything notice when this stops doing
+    /// anything at all? A survivor is a *pseudo-tested* declaration - covered by tests that
+    /// assert nothing whatever about it - which is a median of one method in ten across
+    /// every project the literature surveys.
+    ///
+    /// Almost no equivalent mutants, because a body that can be replaced by a constant with
+    /// nothing noticing is a finding whichever constant was chosen.
+    ///
+    /// Its own family, and in no tier: it is off unless a run asks for it, because it
+    /// multiplies the catalogue by the number of declarations rather than by the number of
+    /// operators, and that is a decision about how long a run takes.
+    static let replaceBody = Prune(
+        side: .left, name: "replace-body", family: "body-replacement")
+
     /// A concatenation with its operands the other way round.
     ///
     /// `+` on something syntax alone can tell is not a number was passed over entirely:
@@ -243,7 +260,7 @@ enum Rules {
         for prunes in connectivePrunes.values {
             for prune in prunes { table[prune.name] = prune.family }
         }
-        for prune in [dropCondition, neverDecides, concatSwap] {
+        for prune in [dropCondition, neverDecides, concatSwap, replaceBody] {
             table[prune.name] = prune.family
         }
         return table
@@ -252,7 +269,7 @@ enum Rules {
     /// Every family a rule belongs to.
     static let families: Set<String> = [
         "comparison", "boolean-connective", "boolean-literal", "integer-arithmetic",
-        "arithmetic-assignment", "bitwise", "condition-decision",
+        "arithmetic-assignment", "bitwise", "condition-decision", "body-replacement",
     ]
 
     /// The identifier for a swap, at the version this build emits.

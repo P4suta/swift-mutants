@@ -188,6 +188,24 @@ below it meaningless — a mutant is reported as caught by a failure that had no
 with it — so the baseline is measured `baseline_runs` times and a disagreement is named for
 what it is, rather than blamed on the instrumentation.
 
+### Replacing a body outright
+
+`extreme = true` adds a rule that asks a different question from the rest of the catalogue:
+not whether one operator is right, but whether the declaration is **tested at all**. It
+replaces a body with a constant, and a survivor is a declaration your tests run and assert
+nothing whatever about — a median of one method in ten, across every project the literature
+has surveyed. It produces almost no equivalent mutants, because a body that can be replaced
+by a constant with nothing noticing is a finding whichever constant was chosen.
+
+Bodies that are one expression, which is most of Swift and all of its shorthand computed
+properties. A body of several statements, or a return type with no value anybody can write
+down — `some P`, `any P`, a generic parameter, a type of your own — is reported by
+`why-skipped` as `multi-statement-body` or `unspellable-return-type`, not passed over in
+silence.
+
+Off until you ask, because it multiplies the catalogue by the number of declarations rather
+than by the number of operators, and that is a decision about how long a run takes.
+
 ### Survivors you have accounted for
 
 Some survivors are not holes. A mutant in code unreachable by construction survives every

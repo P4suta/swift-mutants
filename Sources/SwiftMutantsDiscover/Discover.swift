@@ -39,9 +39,11 @@ public enum Discover {
         let folded = OperatorTable.standardOperators.foldAll(tree) { _ in }
 
         let suppressions = Suppressions(source: source)
+        let selection = mutation.map(RuleSelection.init) ?? .everything
         let walker = CandidateWalker(
             locations: SourceLocationConverter(fileName: "<source>", tree: folded),
-            suppressions: suppressions
+            suppressions: suppressions,
+            replacesBodies: selection.replacesWholeBodies
         )
         walker.walk(folded)
 
@@ -60,7 +62,6 @@ public enum Discover {
         // A project's own mutants are never narrowed: `profile` is about the catalogue this
         // tool generates, and somebody who wrote a mutation down by hand has already said
         // they want it.
-        let selection = mutation.map(RuleSelection.init) ?? .everything
         let wanted = Self.selected(walker.candidates, by: selection)
         let offered = Self.flattenable(wanted.candidates + own.candidates, by: scan)
 

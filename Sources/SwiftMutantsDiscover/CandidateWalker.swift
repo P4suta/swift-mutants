@@ -23,6 +23,12 @@ final class CandidateWalker: SyntaxVisitor {
     /// region *would* have yielded rather than of what a second suppression pass decides.
     private let countOnly: Bool
 
+    /// Whether this run asked for whole bodies to be replaced.
+    ///
+    /// Decided before the walk rather than after a candidate exists, because working out
+    /// whether a body can be replaced is work worth skipping when nobody asked for it.
+    let replacesBodies: Bool
+
     /// The declaration names this walk is currently inside, outermost first.
     private var declarationPath: [String]
 
@@ -30,7 +36,8 @@ final class CandidateWalker: SyntaxVisitor {
         locations: SourceLocationConverter,
         suppressions: Suppressions,
         countOnly: Bool = false,
-        declarationPath: [String] = []
+        declarationPath: [String] = [],
+        replacesBodies: Bool = false
     ) {
         // One converter per file, built by the caller. Constructing one lays out the whole
         // line table, so building one per node - which is what Muter does - makes discovery
@@ -39,6 +46,7 @@ final class CandidateWalker: SyntaxVisitor {
         self.suppressions = suppressions
         self.countOnly = countOnly
         self.declarationPath = declarationPath
+        self.replacesBodies = replacesBodies
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -80,9 +88,15 @@ final class CandidateWalker: SyntaxVisitor {
     override func visitPost(_ node: ExtensionDeclSyntax) { leave() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
-        enter(node.name.text)
+        offerBody(of: node)
+        return enter(node.name.text)
     }
     override func visitPost(_ node: FunctionDeclSyntax) { leave() }
+
+    override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
+        offerBody(of: node)
+        return .visitChildren
+    }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         enter("init")
@@ -292,6 +306,14 @@ final class CandidateWalker: SyntaxVisitor {
     /// exactly what a reader checking whether a rule is too broad needs. The exception is
     /// an operator this tool has no meaning for, which is not a decision worth a line: it
     /// is a fact about somebody's own operator.
+    /// Records one declaration this rule could not offer.
+    ///
+    /// One, because a body is one site: the count is what the decision cost there, and a
+    /// body it could not replace cost exactly the one mutant it would have made.
+    func note(_ reason: SkipReason, at node: Syntax) {
+        note(reason, over: node, hiding: 1)
+    }
+
     private func note(_ reason: SkipReason, over node: Syntax, hiding: Int) {
         guard !countOnly else { return }
         if reason == .userDefinedOperator, hiding == 0 { return }

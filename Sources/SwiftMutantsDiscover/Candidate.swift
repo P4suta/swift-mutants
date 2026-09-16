@@ -164,6 +164,23 @@ public enum SkipReason: String, Sendable, Hashable, CaseIterable {
 
     case excluded
 
+    /// A declaration whose return type this cannot spell a value for.
+    ///
+    /// `some P`, `any P`, a generic parameter and any named type this does not recognise
+    /// have no value that can be written down without knowing what they resolve to. Named
+    /// rather than passed over in silence, because "why is this declaration not in the
+    /// catalogue" is a question somebody will ask about their own code.
+    case unspellableReturnType = "unspellable-return-type"
+
+    /// A body of several statements, which needs a guard placed inside its braces.
+    ///
+    /// A body that is one expression can be replaced where it stands, because an expression
+    /// is what a guard wraps. Several statements need a statement put in front of them,
+    /// which this build does not place - so the declaration is passed over, and said,
+    /// because a reader comparing two files and finding the longer one untouched deserves
+    /// to know it was a limit rather than a judgement.
+    case multiStatementBody = "multi-statement-body"
+
     /// The tier of operators this run asked for does not include this rule's family.
     ///
     /// Named rather than silently absent. `profile` narrows the catalogue by design, and
