@@ -103,9 +103,14 @@ struct ArithmeticTests {
 
     /// A unary minus is not a subtraction, and reading it as one would produce `a + -b`
     /// out of `-b` - a different expression that happens to compile.
+    ///
+    /// The *arithmetic* rules, not the whole catalogue: a unary minus has a rule of its
+    /// own - `drop-negation`, which takes it away - and this is the claim that the
+    /// arithmetic walk does not also read it as a subtraction.
     @Test("leaves a unary minus alone")
     func unaryMinus() {
-        #expect(Self.found("-a").isEmpty)
+        #expect(Self.found("-a").filter { $0.rule.name.hasSuffix("-to-sub") }.isEmpty)
+        #expect(Self.found("-a").filter { $0.rule.name.hasSuffix("-to-add") }.isEmpty)
     }
 
     /// `+` on strings and arrays is concatenation, and `-` is not defined for either. The
@@ -279,8 +284,11 @@ struct NonNumericArithmeticTests {
     /// two integers, and refusing to mutate them would lose real mutants to a guess.
     @Test("leaves arithmetic between names alone")
     func leavesNamesAlone() {
-        #expect(Self.names("a + b") == ["add-to-sub"])
-        #expect(Self.names("a + 1") == ["add-to-sub"])
+        // The arithmetic rule, not the whole catalogue. `a + 1` holds a literal, and a
+        // literal has rules of its own in the tier above; what this asserts is that the
+        // operand being a name rather than a visible non-number leaves the *swap* in place.
+        #expect(Self.names("a + b").filter { $0 == "add-to-sub" } == ["add-to-sub"])
+        #expect(Self.names("a + 1").filter { $0 == "add-to-sub" } == ["add-to-sub"])
     }
 
     /// `xs += [x]` is real Swift and `xs -= [x]` is not, so the compound form is a decided

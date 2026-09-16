@@ -183,6 +183,10 @@ struct WholeConditionTests {
             func f(_ a: Int, _ b: Int) -> Int { if a < b { return 0 }; return a }
             """
         #expect(Self.noOps(source).isEmpty)
-        #expect(Self.candidates(source).map(\.rule.name) == ["lt-to-le"])
+        // The comparison, not the whole catalogue: the line is also a statement and holds a
+        // literal, and what this asserts is that suppressing one family leaves the others.
+        #expect(
+            Self.candidates(source).map(\.rule.name).filter { $0 == "lt-to-le" }
+                == ["lt-to-le"])
     }
 }

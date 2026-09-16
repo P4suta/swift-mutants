@@ -20,14 +20,43 @@ extension CandidateWalker {
     /// block means to everything around it.
     func offerSkippable(in block: CodeBlockItemListSyntax, of parent: Syntax) {
         guard skipsStatements else { return }
-        // A block of one statement is never touched. In a function body it is the implicit
-        // return, in a `guard` it is the only thing stopping a fall-through, and in a
-        // closure it is both - and none of those is a statement this rule may skip.
-        guard block.count > 1 else { return }
+        // A block of one statement is touched only where falling out of it is what the
+        // block does anyway. In a function body that statement is the implicit return, in a
+        // `guard` it is the only thing stopping a fall-through, and in a closure it is
+        // both. In an `if`, a loop, a `do` or a `catch` it is none of those - and a `catch`
+        // that does nothing is one of the best mutants there is, because it asks whether
+        // anything tests that errors are handled at all.
+        guard block.count > 1 || Self.mayFallOut(of: block) else { return }
         for item in block {
             guard let rule = Self.skippable(item) else { continue }
             record(rule, skipping: Syntax(item))
         }
+    }
+
+    /// Whether a block may simply end without its statements having run.
+    ///
+    /// Decided from what encloses it rather than from what is in it. A `CodeBlockSyntax`
+    /// under a function, an initialiser or an accessor carries that declaration's value or
+    /// its effect; under a `guard` it is the only exit; a closure's body is its value. Every
+    /// other block - `if`, `else`, a loop, `do`, `catch` - is a block a program falls out
+    /// of, and skipping its only statement is a mutant rather than a different program.
+    ///
+    /// A `switch` case is the other shape: its statements are not in a `CodeBlockSyntax` at
+    /// all, and a case that does nothing still matches.
+    private static func mayFallOut(of block: CodeBlockItemListSyntax) -> Bool {
+        guard let code = block.parent?.as(CodeBlockSyntax.self) else {
+            // Not a braced block: a `switch` case's statement list, which may be empty.
+            return block.parent?.is(SwitchCaseSyntax.self) == true
+        }
+        guard let owner = code.parent else { return false }
+        let carriesTheValue =
+            owner.is(FunctionDeclSyntax.self)
+            || owner.is(InitializerDeclSyntax.self)
+            || owner.is(DeinitializerDeclSyntax.self)
+            || owner.is(AccessorDeclSyntax.self)
+            || owner.is(ClosureExprSyntax.self)
+            || owner.is(GuardStmtSyntax.self)
+        return !carriesTheValue
     }
 
     /// Which rule a statement is for, or nothing when it is not one this may skip.

@@ -80,6 +80,34 @@ struct StatementDeletionCompileTests {
                 record(x)
                 return x
             }
+
+            // Blocks whose one statement is safe to skip, because nothing downstream needs
+            // them to have run and falling out of them is what they do anyway.
+            func handling() {
+                do {
+                    try risky()
+                } catch {
+                    record(1)
+                }
+            }
+
+            func conditional(_ flag: Bool) {
+                if flag {
+                    record(1)
+                }
+                while n > 0 {
+                    n -= 1
+                }
+            }
+
+            func switching(_ n: Int) {
+                switch n {
+                case 0:
+                    record(0)
+                default:
+                    record(1)
+                }
+            }
         }
         """
 
@@ -96,6 +124,26 @@ struct StatementDeletionCompileTests {
     func theStatementsAreWrapped() throws {
         let found = try Self.deletions(Self.source)
         #expect(found.count >= 10, "\(found.map(\.original))")
+    }
+
+    /// A block of one statement is skippable when nothing downstream needs it to have run.
+    /// A `catch` that does nothing is one of the best mutants there is - it asks whether
+    /// anything tests that errors are handled at all - and the rule refused it for a reason
+    /// that is only true of function bodies and `guard`.
+    @Test(
+        "skips the only statement of a block that may fall out of it",
+        arguments: [
+            "func f() throws {\n    do {\n        try g()\n    } catch {\n        log()\n    }\n}",
+            "func f(_ flag: Bool) {\n    if flag {\n        log()\n    }\n}",
+            "func f(_ xs: [Int]) {\n    for x in xs {\n        record(x)\n    }\n}",
+        ]
+    )
+    func skipsLoneStatements(source: String) throws {
+        let whole = "func g() throws {}\nfunc log() {}\nfunc record(_ n: Int) {}\n" + source
+        #expect(!(try Self.deletions(whole)).isEmpty, "\(whole)")
+        let instrumented = try Self.instrument(whole)
+        let said = try InlinableTests.compile(["Subject.swift": instrumented.source])
+        #expect(said.exitCode == 0, "\(said.text)")
     }
 
     /// The line count, which every line number a run reports rests on. A wrap puts text on
