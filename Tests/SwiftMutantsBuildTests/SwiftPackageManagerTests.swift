@@ -180,6 +180,46 @@ struct SwiftPackageManagerTests {
         }
     }
 
+    /// The first invariant of the family, at the one place it was being broken.
+    ///
+    /// `swift package describe` is not a read. SwiftPM lays a scratch directory down beside
+    /// the manifest it compiled - `.build/CACHEDIR.TAG` and a build-system marker - so the
+    /// command this tool reaches for *because* it changes nothing was writing into the
+    /// repository somebody was working in. `list` does it too, on a tree it never copies.
+    ///
+    /// Asserted on the argv rather than on a directory afterwards, because the promise is
+    /// about what the process was told: a test that checked the tree could pass on a
+    /// machine whose SwiftPM happened to write nothing that day.
+    @Test("tells the toolchain to put its scratch somewhere that is not the package")
+    func keepsItsScratchOutOfThePackage() async throws {
+        let fake = try FakeToolchain([
+            FakeToolchainRule(
+                whenArgumentsContain: ["swift", "package", "describe"],
+                standardOutput: #"{"name":"Example","targets":[]}"#
+            )
+        ])
+        defer { fake.cleanUp() }
+
+        let recorder = TraceRecorder(retaining: 8)
+        _ = try await SwiftPackageManager(
+            root: Self.root,
+            runner: Runner(recorder: recorder),
+            executable: "\(fake.pathEntry)/swift"
+        ).describe(environment: fake.environment)
+
+        let asked = recorder.retainedEvents().compactMap { event -> TraceEvent.Execution? in
+            if case .exec(let execution) = event.kind { return execution }
+            return nil
+        }.first
+        let arguments = try #require(asked?.arguments)
+        let index = try #require(arguments.firstIndex(of: "--scratch-path"))
+        // Before the subcommand: SwiftPM refuses it after `describe` with exit 64.
+        #expect(arguments.firstIndex(of: "describe").map { index < $0 } == true)
+        let scratch = try #require(
+            arguments.indices.contains(index + 1) ? arguments[index + 1] : nil)
+        #expect(!scratch.hasPrefix(Self.root.standardizedFileURL.path), "\(scratch)")
+    }
+
     /// Every command a run makes is in its account, including the ones that failed.
     @Test("writes down what it asked")
     func recordsWhatItAsked() async throws {

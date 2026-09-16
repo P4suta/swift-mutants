@@ -31,15 +31,31 @@ public struct SwiftPackageManager: Sendable {
     }
 
     /// Reads the package's description.
+    ///
+    /// With a scratch directory of its own, because this is not a read. SwiftPM compiles
+    /// the manifest to answer, and it lays the result down beside it: a `CACHEDIR.TAG` and
+    /// a build-system marker under `.build`, in the tree this tool promises never to write
+    /// to. `list` asks this on a tree it never copies, so the promise was being broken by
+    /// the one command that makes no copy *because* it changes nothing.
+    ///
+    /// The directory is outside the package and keyed by where the package is, like the
+    /// answers a run remembers. Two packages do not share a manifest cache, and a second
+    /// `list` of the same package finds the manifest already compiled.
     public func describe(
         environment: [String: String] = [:],
         timeout: Duration? = .seconds(120)
     ) async throws(BuildSystemError) -> WorkspaceDescription {
+        let scratch = Self.manifestScratch(for: root)
+        try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         let outcome = await runner.run(
             ProcessSpec(
                 kind: .describe,
                 executable: executable,
-                arguments: ["package", "describe", "--type", "json"],
+                // Before the subcommand. SwiftPM's global options are not accepted after
+                // one, and `describe --scratch-path` exits 64 with `Unknown option`.
+                arguments: [
+                    "package", "--scratch-path", scratch.path, "describe", "--type", "json",
+                ],
                 directory: root.path,
                 environment: environment,
                 timeout: timeout
@@ -124,4 +140,28 @@ private struct DescribedTarget: Decodable {
     let type: String
     let path: String
     let sources: [String]
+}
+
+extension SwiftPackageManager {
+
+    /// Where SwiftPM may put what it needs to answer a question about a package.
+    ///
+    /// Outside the package, for the reason the outcome cache is: a run must not write into
+    /// somebody's repository. Keyed by where the package is so that two of them do not
+    /// share a manifest cache, and named by a digest so that it is a filename on every
+    /// platform and says nothing about the directories it came from.
+    public static func manifestScratch(for package: URL) -> URL {
+        let root =
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let name = DigestBuilder()
+            .adding("swift-mutants-manifest")
+            .adding(package.standardizedFileURL.path)
+            .finalize()
+        return
+            root
+            .appending(path: "swift-mutants")
+            .appending(path: "manifests")
+            .appending(path: name.hexadecimal)
+    }
 }
