@@ -58,7 +58,7 @@ let package = Package(
 
         // Parsing Swift. The major version is a hard toolchain boundary - 603 is Swift 6.3 -
         // so it is pinned to the range rather than left to float.
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", "603.0.2"..<"604.0.0"),
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", "603.0.2"..<"605.0.0"),
 
         // The command line. 1.8 is the first that requires Swift 6, which this does anyway.
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
