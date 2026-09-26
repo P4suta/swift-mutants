@@ -87,15 +87,15 @@ public struct FakeToolchain: Sendable {
 
     /// Where the built fake sits.
     ///
-    /// `Bundle.main` is no help: under swift-testing the running executable is the xctest
-    /// runner out of the toolchain, so the main bundle points into Xcode rather than at
-    /// this package's products. The build directory is found from the repository root
-    /// instead, which `RepositoryGate` already resolves from a source path, and every
-    /// candidate is named in the failure so that an unexpected layout says which places
-    /// were tried.
+    /// `Bundle.main` is no help: under swift-testing the running executable is the xctest runner out of the toolchain, so the main bundle points into Xcode rather than at this package's products.
+    /// Swift 6.4 puts the package test executable beside its products, while Swift 6.3 runs the tests from the toolchain's executable and therefore needs the scratch path carried by `scripts/swift-test.sh`.
+    /// The repository layouts remain as fallbacks, and every candidate is named in the failure so that an unexpected layout says which places were tried.
     private static func builtExecutable() throws -> URL {
         let candidates =
-            Self.buildDirectories().map {
+            Self.buildDirectories(
+                around: URL(filePath: CommandLine.arguments[0]),
+                buildRoots: Self.buildRoots
+            ).map {
                 $0.appending(path: "swift-mutants-fake-toolchain")
             }
         if let found = candidates.first(where: {
@@ -103,34 +103,80 @@ public struct FakeToolchain: Sendable {
         }) {
             return found
         }
+        // Name what each build root actually holds, because the layout is the thing that changes and a list of places that were wrong does not say which place is right.
+        let held = Self.buildRoots.map { build in
+            let contents =
+                (try? FileManager.default.contentsOfDirectory(atPath: build.path))
+                .map { $0.isEmpty ? "<empty>" : $0.sorted().joined(separator: ", ") }
+                ?? "<not readable>"
+            return "\(build.path) holds: \(contents)"
+        }.joined(separator: "\n")
         throw Failure(
             """
             swift-mutants-fake-toolchain was not found. `swift build --build-tests` builds \
             it; if it is missing, the package layout has changed.
             Looked in:
             \(candidates.map { "  " + $0.path }.joined(separator: "\n"))
+            \(held)
             """
         )
     }
 
+    /// Build roots named by the test runner, followed by the default SwiftPM root.
+    private static var buildRoots: [URL] {
+        var roots: [URL] = []
+        if let scratch = ProcessInfo.processInfo.environment["SWIFT_MUTANTS_TEST_SCRATCH_PATH"],
+            !scratch.isEmpty
+        {
+            roots.append(
+                URL(fileURLWithPath: scratch, relativeTo: RepositoryGate.root)
+                    .standardizedFileURL
+            )
+        }
+        roots.append(RepositoryGate.root.appending(path: ".build"))
+        var seen: Set<String> = []
+        return roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
+    }
+
     /// Every place a build might have put its products, most likely first.
     ///
-    /// `.build/debug` is the symlink SwiftPM maintains to the triple-specific directory, so
-    /// it is stable across architectures; the glob under it covers a build that used a
-    /// scratch path or a configuration this does not know about.
-    private static func buildDirectories() -> [URL] {
-        let build = RepositoryGate.root.appending(path: ".build")
-        var directories = [build.appending(path: "debug"), build.appending(path: "release")]
-        let contents =
-            (try? FileManager.default.contentsOfDirectory(
-                at: build,
-                includingPropertiesForKeys: nil
-            )) ?? []
-        for triple in contents.sorted(by: { $0.path < $1.path }) {
-            directories.append(triple.appending(path: "debug"))
-            directories.append(triple.appending(path: "release"))
+    /// The named build roots cover an arbitrary `--scratch-path`, while the ancestors of the test executable cover runners that live beside their products.
+    /// The compatibility configuration links, the triple-specific directories, and `out/Products` cover SwiftPM's supported layouts.
+    static func buildDirectories(around executable: URL) -> [URL] {
+        Self.buildDirectories(around: executable, buildRoots: Self.buildRoots)
+    }
+
+    /// Every product directory beneath explicit build roots and around one executable.
+    static func buildDirectories(around executable: URL, buildRoots: [URL]) -> [URL] {
+        var directories: [URL] = []
+        for build in buildRoots {
+            directories += [
+                build.appending(path: "debug"),
+                build.appending(path: "release"),
+                build.appending(path: "out/Products/Debug"),
+                build.appending(path: "out/Products/Release"),
+            ]
+            let contents =
+                (try? FileManager.default.contentsOfDirectory(
+                    at: build,
+                    includingPropertiesForKeys: nil
+                )) ?? []
+            for triple in contents.sorted(by: { $0.path < $1.path }) {
+                directories.append(triple.appending(path: "debug"))
+                directories.append(triple.appending(path: "release"))
+            }
         }
-        return directories
+        for spelling in [executable.standardizedFileURL, executable.resolvingSymlinksInPath()] {
+            var directory = spelling.deletingLastPathComponent()
+            for _ in 0..<6 {
+                directories.append(directory)
+                let parent = directory.deletingLastPathComponent()
+                guard parent.path != directory.path else { break }
+                directory = parent
+            }
+        }
+        var seen: Set<String> = []
+        return directories.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     /// A fake toolchain that could not be installed.

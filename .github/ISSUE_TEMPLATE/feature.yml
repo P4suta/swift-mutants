@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+---
+
+name: Feature request
+description: Propose a focused improvement to swift-mutants
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Describe the user problem first. Deliberately outside the current scope:
+        mutating code a macro expanded, `#if` configurations other than the host's,
+        higher-order mutants, and measuring a swift-mutants run from inside one.
+        The Xcode path has its parts and not its wiring - see ADR 0006 for what is
+        measured and what remains.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is difficult or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe observable behaviour, not only an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >-
+        For a new mutation operator: where it would have caught something real,
+        and why its mutants are not equivalent. A rule that mostly produces
+        mutants nothing can kill drags a score down and teaches a reader to
+        ignore the report.
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: >-
+        Effects on the CLI, configuration, the report schema, or stable mutant
+        IDs. A rule's name and version participate in mutant identity.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
