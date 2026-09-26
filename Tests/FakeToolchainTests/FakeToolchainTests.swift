@@ -18,15 +18,18 @@ import Testing
 @Suite("Fake toolchain")
 struct FakeToolchainTests {
 
-    @Test("finds the scripted tool beside a test in any scratch directory")
-    func findsAProductBesideTheTestRunner() {
-        let products = URL(filePath: "/work/custom-scratch/arm64-apple-macosx/release")
-        let runner = products.appending(
-            path: "swift-mutantsPackageTests.xctest/Contents/MacOS/swift-mutantsPackageTests"
+    @Test("finds the scripted tool in any named scratch directory")
+    func findsAProductInTheNamedScratchDirectory() {
+        let scratch = URL(filePath: "/work/custom-scratch")
+        let products = scratch.appending(path: "release")
+        let toolchainRunner = URL(
+            filePath:
+                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
         )
 
         #expect(
-            FakeToolchain.buildDirectories(around: runner).map(\.path).contains(products.path)
+            FakeToolchain.buildDirectories(around: toolchainRunner, buildRoots: [scratch])
+                .map(\.path).contains(products.path)
         )
     }
 

@@ -10,13 +10,26 @@
 
 set -euo pipefail
 
+parallelism_requested=false
+previous=""
 for argument in "$@"; do
+    if [[ "$previous" == "--scratch-path" ]]; then
+        export SWIFT_MUTANTS_TEST_SCRATCH_PATH="$argument"
+    fi
     case "$argument" in
+    --scratch-path=*)
+        export SWIFT_MUTANTS_TEST_SCRATCH_PATH="${argument#*=}"
+        ;;
     --parallel | --no-parallel | --num-workers | --num-workers=*)
-        exec swift test "$@"
+        parallelism_requested=true
         ;;
     esac
+    previous="$argument"
 done
+
+if [[ "$parallelism_requested" == true ]]; then
+    exec swift test "$@"
+fi
 
 version="$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p' | head -1)"
 version="${version:-$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)}"

@@ -21,10 +21,11 @@ struct AmbientGateTests {
     /// The one file allowed to read the process's own environment.
     static let doorway = "Sources/SwiftMutantsCLI/Ambient.swift"
 
-    /// Test support supplies an environment rather than reaching for one, except the
-    /// scripted toolchain, which *is* a process being told what to do and can only be
-    /// told through its own environment.
-    static let exempt = ["Sources/swift-mutants-fake-toolchain"]
+    /// Test support supplies an environment rather than reaching for one, except for the scripted toolchain process and the harness that has to find the scratch directory from which SwiftPM started it.
+    static let exempt = [
+        "Sources/SwiftMutantsTestKit/FakeToolchain.swift",
+        "Sources/swift-mutants-fake-toolchain",
+    ]
 
     @Test("only one file reads the process's own environment")
     func oneDoorway() throws {
