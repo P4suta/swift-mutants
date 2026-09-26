@@ -16,6 +16,7 @@ path = [
   "VERSION",
   # JSON has no comments, so the schemas are annotated here rather than in themselves.
   "schema/**",
+  "renovate.json",
   # And neither does a document xcresulttool wrote, which is kept exactly as it came so
   # that the reader is fixed against Xcode's idea of the format rather than against ours.
   "Tests/SwiftMutantsXcodeTests/Corpus/**",
