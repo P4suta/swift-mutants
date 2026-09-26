@@ -86,16 +86,15 @@ jobs:
           path: ${{ runner.temp }}/swift-mutants-test-*
           if-no-files-found: ignore
 
-  # One check for a branch rule to require, rather than a list the rule has to be
-  # kept in step with. A job renamed or added here changes what this waits on; a
-  # list in a repository setting changes nothing and goes quietly out of date,
-  # which is a gate that stops gating without ever saying so.
-  ci-success:
-    name: ci-success
+  # One check gives the branch rule a stable contract instead of a list that can drift from the workflow.
+  # A job renamed or added here changes what this aggregate waits on, so the gate cannot silently stop gating.
+  required:
+    name: required
     if: always()
     needs: [check, test-integration, gate-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions: {}
     steps:
       - name: Require every gating job
         env:
