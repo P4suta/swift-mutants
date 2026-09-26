@@ -11,7 +11,7 @@ import SwiftMutantsValidate
 public import SwiftMutantsConfig
 import SwiftMutantsCache
 import SwiftMutantsCore
-public import SwiftMutantsExecute
+import SwiftMutantsExecute
 import SwiftMutantsInstrument
 public import SwiftMutantsRunner
 

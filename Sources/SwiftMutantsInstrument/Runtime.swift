@@ -163,12 +163,14 @@ enum Runtime {
             repeating: false, count: \(count))
         @usableFromInline internal func __sm_record_\(token)(_ index: UInt32) {
             let slot = Int(index) - \(base)
-            // Spelled twice again, and this time the second condition is the compiler
-            // rather than the setting: reading a `nonisolated(unsafe)` global from code
-            // that may run concurrently became something Swift 6.4 wants marked, and 6.3
-            // calls the same marker unnecessary. Neither of them is a warning this tool
-            // may leave in somebody else's file.
-            #if hasFeature(StrictMemorySafety) && compiler(>=6.4)
+            // Spelled twice, on the setting alone. It carried `&& compiler(>=6.4)` as
+            // well, on the belief that 6.3 calls these markers unnecessary - and the first
+            // time this was compiled by a 6.3 toolchain, which was the first time it was
+            // compiled anywhere but the machine it was written on, 6.3 asked for them:
+            // `expression uses unsafe constructs but is not marked with 'unsafe'`, three
+            // times, on the branch the version condition had sent it to. Both toolchains
+            // want the markers under the setting, so the setting is the whole condition.
+            #if hasFeature(StrictMemorySafety)
                 guard slot >= 0, unsafe slot < __sm_seen_\(token).count,
                     unsafe !__sm_seen_\(token)[slot]
                 else { return }

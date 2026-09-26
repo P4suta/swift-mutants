@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+name: dependabot-auto-merge
+
+# A dependency bump is a change whose review is the pipeline: every static gate,
+# the unit tier, the fixture corpus against a real toolchain, and the shipped
+# binary built with the optimiser and run end to end. A person reading the diff
+# afterwards adds nothing `ci-success` did not already say, and a queue of bumps
+# waiting on a hand is a queue of advisories nobody has taken. So the merge is
+# asked for as the pull request opens, and GitHub performs it when the required
+# checks pass and not before.
+#
+# Every push to the branch asks again, because a bump dependabot rebases is a
+# bump whose merge has to be asked for again. That is also why turning it off by
+# hand does not work: switch auto-merge off and the next rebase switches it back
+# on. What says no is the `no-auto-merge` label, because a label survives the
+# rebase and the answer is about the pull request rather than about the moment.
+#
+# `pull_request_target` rather than `pull_request`, because a workflow started by
+# dependabot gets a read-only token and no secrets, and enabling a merge needs to
+# write. It runs in the base repository's context with the base repository's
+# code: nothing here checks out the branch under review, which is the one thing
+# that would make the elevated token reachable from it.
+
+# Suppressed with the reason rather than the audit turned off. `pull_request_target`
+# is dangerous because it runs with a writable token against a pull request an
+# outsider wrote; the exploit is always the same shape, a checkout of the branch
+# under review followed by anything that executes what was checked out. This
+# workflow has no `checkout` step at all and runs one `gh` call against a URL the
+# event supplied. There is nothing here for the elevated token to reach.
+#
+# The trigger cannot be `pull_request`: a workflow dependabot starts gets a
+# read-only token, and asking for a merge needs to write. That is GitHub's own
+# documented arrangement for this, not a way around it.
+on:  # zizmor: ignore[dangerous-triggers]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]'
+      && !contains(github.event.pull_request.labels.*.name, 'no-auto-merge')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Ask for the merge the gate decides
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PULL_REQUEST: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "${PULL_REQUEST}"

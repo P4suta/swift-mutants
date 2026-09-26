@@ -3,9 +3,10 @@
 
 import Foundation
 import SwiftMutantsRunner
-import SwiftMutantsTestKit
 import SwiftMutantsTrace
 import Testing
+
+@testable import SwiftMutantsTestKit
 
 /// A toolchain that misbehaves on purpose, in the unit tier.
 ///
@@ -16,6 +17,21 @@ import Testing
 /// between having these tests and not.
 @Suite("Fake toolchain")
 struct FakeToolchainTests {
+
+    @Test("finds the scripted tool in any named scratch directory")
+    func findsAProductInTheNamedScratchDirectory() {
+        let scratch = URL(filePath: "/work/custom-scratch")
+        let products = scratch.appending(path: "release")
+        let toolchainRunner = URL(
+            filePath:
+                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
+        )
+
+        #expect(
+            FakeToolchain.buildDirectories(around: toolchainRunner, buildRoots: [scratch])
+                .map(\.path).contains(products.path)
+        )
+    }
 
     static func spec(
         _ tool: String,

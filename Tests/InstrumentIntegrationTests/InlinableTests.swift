@@ -8,6 +8,16 @@ import Testing
 
 @testable import SwiftMutantsInstrument
 
+/// Something the harness itself got wrong, as opposed to something the compiler said.
+///
+/// Its own type so that a failure here cannot be read as a verdict about the source under
+/// test, which is exactly how `error opening input file` read when the file was missing
+/// because this function had not managed to write it.
+struct HarnessFailure: Error, CustomStringConvertible {
+    let description: String
+    init(_ description: String) { self.description = description }
+}
+
 /// Instrumenting code a package has marked `@inlinable`.
 ///
 /// Swift will not let an `@inlinable` function reference a `private` symbol, so a guard
@@ -60,8 +70,27 @@ struct InlinableTests {
 
         var paths: [String] = []
         for (name, source) in sources.sorted(by: { $0.key < $1.key }) {
-            let file = directory.appending(path: "\(name).swift")
-            try Data(source.utf8).write(to: file)
+            // `.swift` once. Every caller but two passes a bare name, and those two pass
+            // `Subject.swift` - which made `Subject.swift.swift`. Harmless, since the same
+            // path was written and compiled, and confusing in a diagnostic that names it.
+            let leaf = name.hasSuffix(".swift") ? name : "\(name).swift"
+            let file = directory.appending(path: leaf)
+            try Data(source.utf8).write(to: file, options: .atomic)
+            // The file this is about to hand a compiler exists. Asserted rather than
+            // assumed because CI reported `error opening input file` for a path this
+            // function had just written, and a compiler complaining about a missing input
+            // reads as a fact about the source rather than about the harness.
+            guard FileManager.default.fileExists(atPath: file.path) else {
+                let listing =
+                    (try? FileManager.default.contentsOfDirectory(atPath: directory.path))
+                    ?? ["<unreadable>"]
+                throw HarnessFailure(
+                    """
+                    wrote \(file.path) and it is not there.
+                    The directory holds: \(listing.sorted())
+                    """
+                )
+            }
             paths.append(file.path)
         }
 

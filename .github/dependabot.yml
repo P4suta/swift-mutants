@@ -1,0 +1,34 @@
+---
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Two ecosystems, because those are the two this repository actually has a lock
+# file for. The tools every gate runs are pinned in `mise.toml`, which dependabot
+# does not read: those move when `mise outdated` says so and a person looks.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:17"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: swift
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:37"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      swift-dependencies:
+        patterns:
+          - "*"

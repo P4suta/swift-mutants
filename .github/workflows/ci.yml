@@ -22,7 +22,7 @@ env:
 jobs:
   check:
     name: Static analysis and the unit tier
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -45,7 +45,7 @@ jobs:
 
   test-integration:
     name: Integration tier
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -65,7 +65,7 @@ jobs:
 
   gate-release:
     name: The shipped configuration
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -85,3 +85,25 @@ jobs:
           name: release-evidence
           path: ${{ runner.temp }}/swift-mutants-test-*
           if-no-files-found: ignore
+
+  # One check for a branch rule to require, rather than a list the rule has to be
+  # kept in step with. A job renamed or added here changes what this waits on; a
+  # list in a repository setting changes nothing and goes quietly out of date,
+  # which is a gate that stops gating without ever saying so.
+  ci-success:
+    name: ci-success
+    if: always()
+    needs: [check, test-integration, gate-release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every gating job
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          if jq --exit-status 'all(.[]; .result == "success")' <<<"$NEEDS" >/dev/null; then
+            echo "every CI gate passed"
+          else
+            jq . <<<"$NEEDS"
+            exit 1
+          fi

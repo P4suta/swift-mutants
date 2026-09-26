@@ -17,11 +17,13 @@ note: |
 files:
   - "Sources/**/*.swift"
 ignores:
-  # The scripted toolchain *is* a process being told what to do, and the only thing it can
-  # be told through is its own environment. It is test support and never ships.
+  # The harness and scripted toolchain *are* processes being told what to do,
+  # and the only place Swift 6.3 tells the harness its custom scratch path is the environment.
+  # Both are test support and never ship.
+  - "Sources/SwiftMutantsTestKit/FakeToolchain.swift"
   - "Sources/swift-mutants-fake-toolchain/**"
-  # A program has to read its own environment somewhere. `Ambient` is that somewhere, and
-  # `AmbientGateTests` asserts it stays the only one.
+  # A program has to read its own environment somewhere.
+  # `Ambient` is that somewhere, and `AmbientGateTests` asserts it stays the only production doorway.
   - "Sources/SwiftMutantsCLI/Ambient.swift"
 rule:
   pattern: ProcessInfo.processInfo.environment

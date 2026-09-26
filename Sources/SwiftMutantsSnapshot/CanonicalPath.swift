@@ -43,14 +43,23 @@ public enum CanonicalPath {
         // Every path in and out of it is bytes, and Swift's own `String(cString:)` is the
         // only reader of them.
         //
-        // One marker, on the `realpath` call and not on `withCString` around it: Swift 6.4
-        // reports the outer one as covering no unsafe operation, and under
-        // `-warnings-as-errors` that is a build failure rather than a note.
-        guard
-            let buffer = path.withCString({ unsafe realpath($0, nil) })
-        else {
+        // Spelled both ways, because the two toolchains this package supports disagree
+        // about the *outer* call. 6.4 reports a marker on `withCString` as covering no
+        // unsafe operation; 6.3 requires one. Under `-warnings-as-errors` either
+        // disagreement is a build failure rather than a note, so neither spelling works on
+        // both and the compiler chooses.
+        // Inline in the `guard` rather than bound first: a `let` holding the pointer makes
+        // every later mention of it an unsafe expression of its own, which is three more
+        // markers for no more safety.
+        #if compiler(>=6.4)
+        guard let buffer = path.withCString({ unsafe realpath($0, nil) }) else {
             return nil
         }
+        #else
+        guard let buffer = unsafe path.withCString({ unsafe realpath($0, nil) }) else {
+            return nil
+        }
+        #endif
         defer { unsafe free(buffer) }
         return unsafe String(cString: buffer)
     }
