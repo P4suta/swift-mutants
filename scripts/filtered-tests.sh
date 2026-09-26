@@ -19,7 +19,7 @@ log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
 set +e
-swift test "$@" 2>&1 | tee "$log"
+./scripts/swift-test.sh "$@" 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
 set -e
 

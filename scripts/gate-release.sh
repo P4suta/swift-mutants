@@ -38,6 +38,7 @@ scratch="${SWIFT_MUTANTS_RELEASE_SCRATCH:-.build-release}"
 strict_flags="${SWIFT_MUTANTS_STRICT_BUILD_FLAGS:--Xswiftc -warnings-as-errors}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
+mkdir -p "$scratch"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
@@ -69,7 +70,7 @@ done
 # exists as well: that one builds the product exactly as a release builds it.
 say "running the unit tier with the optimiser on"
 # shellcheck disable=SC2086  # the flags are a deliberate word list, not one argument
-swift test -c release $strict_flags \
+./scripts/swift-test.sh -c release $strict_flags \
     -Xswiftc -enable-testing \
     --scratch-path "$scratch" \
     --skip IntegrationTests --skip ToolchainTests

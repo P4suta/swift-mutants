@@ -101,11 +101,11 @@ run = "gitleaks detect --no-banner --redact"
 
 [tasks."test:unit"]
 description = "No toolchain, no network, no clock. Seconds."
-run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip IntegrationTests --skip ToolchainTests"
+run = "./scripts/swift-test.sh $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip IntegrationTests --skip ToolchainTests"
 
 [tasks."test:integration"]
 description = "Drives a real Swift toolchain against the fixture corpus"
-run = "swift test $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip XcodeIntegrationTests --skip XcodeBuildDriverTests"
+run = "./scripts/swift-test.sh $SWIFT_MUTANTS_STRICT_BUILD_FLAGS --skip XcodeIntegrationTests --skip XcodeBuildDriverTests"
 
 [tasks."test:toolchain"]
 description = "Drives Xcode itself: schemes, .xctestrun, result bundles"
@@ -166,7 +166,7 @@ run = ["periphery scan --strict"]
 
 [tasks.watch]
 description = "The TDD inner loop"
-run = "watchexec --clear --exts swift --restart -- swift test --skip IntegrationTests --skip ToolchainTests"
+run = "watchexec --clear --exts swift --restart -- ./scripts/swift-test.sh --skip IntegrationTests --skip ToolchainTests"
 
 [tasks.doctor]
 description = "Is this machine set up to develop swift-mutants?"
