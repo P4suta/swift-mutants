@@ -10,8 +10,8 @@ swiftlint = "0.65.1"
 # macOS only, and mise installs the whole set on every runner: an Ubuntu job asking
 # for this fails before it reaches the gate it was there to run.
 periphery = { version = "3.8.0", os = ["macos"] }
-typos = "1.48.0"
-rumdl = "0.2.43"
+typos = "1.50.3"
+rumdl = "0.2.78"
 taplo = "0.10.0"
 yamllint = "1.38.0"
 actionlint = "1.7.12"
@@ -19,14 +19,14 @@ zizmor = "1.30.1"
 shellcheck = "0.11.0"
 gitleaks = "8.30.1"
 "pipx:reuse" = { version = "6.2.0", extras = ["charset-normalizer"] }
-"osv-scanner" = "2.5.1"
-syft = "1.51.1"
+"osv-scanner" = "2.6.0"
+syft = "1.54.0"
 committed = "1.1.11"
-lefthook = "2.1.12"
+lefthook = "2.1.16"
 "ast-grep" = "0.45.3"
 hyperfine = "1.20.0"
 jq = "1.8.2"
-watchexec = "2.7.2"
+watchexec = "2.7.4"
 
 [env]
 # The oldest toolchain this package supports. A floor rather than the version it happens
