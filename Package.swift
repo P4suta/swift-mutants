@@ -54,7 +54,7 @@ let package = Package(
         // Foundation.Process has no structured-concurrency cancellation and deadlocks when
         // a child fills a pipe nobody is draining. A mutant deadline needs both, and a
         // teardown sequence besides, so the runner is built on this instead.
-        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "1.0.0"),
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "1.0.1"),
 
         // Parsing Swift. The major version is a hard toolchain boundary - 603 is Swift 6.3 -
         // so it is pinned to the range rather than left to float.
