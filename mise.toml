@@ -24,7 +24,7 @@ syft = "1.54.1"
 committed = "1.1.11"
 lefthook = "2.2.2"
 "ast-grep" = "0.51.0"
-hyperfine = "1.21.0"
+hyperfine = "2.0.0"
 jq = "1.8.2"
 watchexec = "2.8.0"
 
