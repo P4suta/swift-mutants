@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+name = "swift-mutants"
+summary = "Mutation testing for Swift"
+install = """
+# Requires macOS 15 or later and Swift 6.3 or later.
+git clone https://github.com/P4suta/swift-mutants.git
+cd swift-mutants
+swift build -c release
+"""
+usage = ".build/release/swift-mutants list"
+usage_language = "sh"
+documentation_index = true
+copyright = "2026 swift-mutants contributors"
+license = "MIT OR Apache-2.0"
+
+[preserved_licenses]
+mit_sha256 = "6c60ad0e5f0c1c8155b5a95db92df0faea0d90aaf604864290d39cd101061d30"
+apache_sha256 = "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+
+[[consent]]
+contributor = "Yasunobu"
+evidence = "https://github.com/P4suta/swift-mutants/commit/2f812dc74b88f1242a85332c636d218167a78be8"
