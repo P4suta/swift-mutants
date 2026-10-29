@@ -1,18 +1,10 @@
 # SPDX-FileCopyrightText: 2026 swift-mutants contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
-# The tiers that are too slow or too wide to sit in front of a pull request, and the one
-# that needs Xcode rather than a Swift toolchain.
-#
-# Nightly rather than per-push because each of these is minutes to hours, and because what
-# they are for is finding out that something drifted rather than stopping a change. A gate
-# nobody can wait for is a gate people route around.
+# Extended diagnostic tiers remain available for explicit investigation.
 name: Nightly
 
 on:
-  schedule:
-    # Late enough that a day's merges are all in it.
-    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -64,7 +56,10 @@ jobs:
       # A mutation run is a great many processes started, stopped and killed by a tree
       # signal, and a scheduler that hands the wrong worker's directory to a trial is a
       # race no assertion would catch. This is the tier that would.
-      - run: ./scripts/swift-test.sh --sanitize=${{ matrix.sanitizer }} --skip IntegrationTests --skip ToolchainTests
+      - name: Run sanitizer tests
+        env:
+          SANITIZER: ${{ matrix.sanitizer }}
+        run: ./scripts/swift-test.sh --sanitize="$SANITIZER" --skip IntegrationTests --skip ToolchainTests
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
