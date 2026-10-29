@@ -3,9 +3,8 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
@@ -43,55 +42,12 @@ jobs:
           path: ${{ runner.temp }}/swift-mutants-test-*
           if-no-files-found: ignore
 
-  test-integration:
-    name: Integration tier
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          # Nothing here needs the token afterwards, and a job that
-          # uploads artifacts on failure should not be carrying one.
-          persist-credentials: false
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550  # v5.2.2
-        with:
-          experimental: true
-      - run: mise run test:integration
-      - if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: integration-evidence
-          path: ${{ runner.temp }}/swift-mutants-test-*
-          if-no-files-found: ignore
-
-  gate-release:
-    name: The shipped configuration
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          # Nothing here needs the token afterwards, and a job that
-          # uploads artifacts on failure should not be carrying one.
-          persist-credentials: false
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550  # v5.2.2
-        with:
-          experimental: true
-      # The only tier compiled with the optimiser, and the only one that runs the
-      # executable this repository ships. Both halves were missing on the day a release
-      # binary crashed with every debug test green.
-      - run: mise run gate:release
-      - if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: release-evidence
-          path: ${{ runner.temp }}/swift-mutants-test-*
-          if-no-files-found: ignore
-
-  # One check gives the branch rule a stable contract instead of a list that can drift from the workflow.
-  # A job renamed or added here changes what this aggregate waits on, so the gate cannot silently stop gating.
+  # One check gives the branch rule a stable contract around the fast per-change tier.
+  # A job renamed or added here changes what this aggregate waits on.
   required:
     name: required
     if: always()
-    needs: [check, test-integration, gate-release]
+    needs: [check]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}

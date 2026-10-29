@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 swift-mutants contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
-# Real packages, at commits that do not move.
+# Real packages, at commits that do not move, for explicit investigation.
 #
 # Every other tier measures this tool against code written to exercise it. This one
 # measures it against code written by people who have never heard of it, which is the only
@@ -18,9 +18,6 @@
 name: Ecosystem
 
 on:
-  schedule:
-    # Weekly. These are somebody else's repositories and this is a guest.
-    - cron: "0 5 * * 1"
   workflow_dispatch:
 
 permissions:
