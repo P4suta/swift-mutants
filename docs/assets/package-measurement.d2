@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+direction: down
+title: "Component diagram: package measurement" {
+  shape: text
+  near: top-center
+  style.font-color: black
+}
+key: "Rectangles name components or result data.\nArrows label calls and returned data." {
+  shape: text
+  near: bottom-center
+  style.font-color: black
+}
+classes: {
+  component: {
+    style: {
+      fill: white
+      stroke: black
+      font-color: black
+    }
+  }
+}
+cli: "swift-mutants\nCLI executable" { class: component }
+consumer: "Swift caller\nConsumer code" { class: component }
+library: "MutationTesting\nPublic Swift library" { class: component }
+snapshot: "Snapshot\nDisposable package files" { class: component }
+swiftpm: "SwiftPM\nOwned child processes" { class: component }
+report: "MutationReport\nOutcomes and optional score" { class: component }
+cli -> library: Calls list or run { style: { stroke: black; font-color: black } }
+consumer -> library: Calls the same Swift API { style: { stroke: black; font-color: black } }
+library -> snapshot: Copies the original package { style: { stroke: black; font-color: black } }
+library -> swiftpm: Builds and tests the snapshot { style: { stroke: black; font-color: black } }
+swiftpm -> library: Returns XML and execution diagnostics { style: { stroke: black; font-color: black } }
+library -> report: Classifies results and computes score { style: { stroke: black; font-color: black } }
