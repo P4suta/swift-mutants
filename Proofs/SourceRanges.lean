@@ -79,4 +79,3 @@ def rows : List String :=
         String.intercalate "," ([toString start, toString finish, toString distance] ++ result)
 
 end SourceRanges
-
