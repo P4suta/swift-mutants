@@ -124,9 +124,14 @@ extension MeasurementSession {
 
     private static func abnormalTestExit(_ result: ProcessOutcome) -> Bool {
         let output = result.standardOutputText + "\n" + result.standardErrorText
-        return output.contains("exited with unexpected signal code")
-            || output.contains("error: Exited with signal")
-            || output.contains("error: Test process exited with signal")
+        return output.split(whereSeparator: \.isNewline).contains { raw in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            return
+                (line.hasPrefix("error: Process '")
+                && line.contains("exited with unexpected signal code"))
+                || line.hasPrefix("error: Exited with signal")
+                || line.hasPrefix("error: Test process exited with signal")
+        }
     }
 
     func requireBaseline(

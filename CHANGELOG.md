@@ -13,6 +13,7 @@ Support Swift Testing counts that exclude skipped cases.
 Keep compatible instrumentation when another guard fails to compile.
 Check verdict and score contracts with Lean proofs and exhaustive Swift correspondence fixtures.
 Return `nil` for source-range shifts that overflow integer offsets.
+Find activation tokens beyond retained symbol diagnostics while keeping output memory bounded.
 
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.
 The CLI uses the public library and offers `list` and `run`.

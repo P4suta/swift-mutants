@@ -145,7 +145,7 @@ extension MeasurementSession {
         }
         guard built.exitCode == 0 else { return nil }
         let products = try await products()
-        let builtSymbols = try await symbols(in: products)
+        let builtSymbols = try await symbols(in: products, matching: prepared.tokens)
         guard ActivationProof.missingTokens(prepared.tokens, inSymbols: builtSymbols).isEmpty else {
             return nil
         }

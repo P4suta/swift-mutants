@@ -22,7 +22,7 @@ package struct Runner: Sendable {
         self.outputLimit = outputLimit
     }
 
-    package func run(_ spec: ProcessSpec) async -> ProcessOutcome {
+    package func run(_ spec: ProcessSpec, matchingOutput: [String] = []) async -> ProcessOutcome {
         let start = ContinuousClock.now
         let deadline = Deadline()
         let monitor = ProcessMonitor(timeout: spec.timeout) { deadline.markExceeded() }
@@ -39,7 +39,8 @@ package struct Runner: Sendable {
             platformOptions: options
         )
         do {
-            let collected = try await invoke(configuration, monitor: monitor)
+            let collected = try await invoke(
+                configuration, monitor: monitor, matching: matchingOutput)
             let code: Int
             switch collected.terminationStatus {
             case .exited(let status): code = Int(status)
@@ -69,7 +70,8 @@ package struct Runner: Sendable {
 
     private func invoke(
         _ configuration: Configuration,
-        monitor: ProcessMonitor
+        monitor: ProcessMonitor,
+        matching: [String]
     ) async throws -> ExecutionResult<Streams, SequenceOutput, SequenceOutput> {
         // Discover descendants before Swift Subprocess can tear down their parent.
         let task = Task {
@@ -80,7 +82,7 @@ package struct Runner: Sendable {
                 error: .sequence
             ) { execution in
                 monitor.start(root: execution.processIdentifier.value)
-                do { return try await collect(execution) } catch {
+                do { return try await collect(execution, matching: matching) } catch {
                     monitor.cancel()
                     throw error
                 }
@@ -94,9 +96,11 @@ package struct Runner: Sendable {
     }
 
     private func collect(
-        _ execution: Execution<NoInput, SequenceOutput, SequenceOutput>
+        _ execution: Execution<NoInput, SequenceOutput, SequenceOutput>,
+        matching: [String]
     ) async throws -> Streams {
-        async let output = Self.drain(execution.standardOutput, limit: outputLimit)
+        async let output = Self.drain(
+            execution.standardOutput, limit: outputLimit, matching: matching)
         async let errors = Self.drain(execution.standardError, limit: outputLimit)
         return Streams(output: try await output, errors: try await errors)
     }
@@ -140,15 +144,17 @@ package struct Runner: Sendable {
             standardOutputBytes: streams.output.total,
             standardError: streams.errors.retained,
             startFailure: failure,
-            traceSequence: event.sequence
+            traceSequence: event.sequence,
+            matchedOutput: streams.output.matches
         )
     }
 
     private static func drain(
         _ stream: SubprocessOutputSequence,
-        limit: Int
+        limit: Int,
+        matching: [String] = []
     ) async throws -> BoundedBytes {
-        var bytes = BoundedBytes(limit: limit)
+        var bytes = BoundedBytes(limit: limit, matching: matching)
         for try await chunk in stream {
             bytes.append(unsafe chunk.withUnsafeBytes { unsafe Array($0) })
         }
@@ -165,12 +171,18 @@ struct BoundedBytes: Sendable {
     private(set) var retained: [UInt8] = []
     private(set) var total = 0
     let limit: Int
+    private var matcher: OutputMatcher
+    var matches: Set<String> { matcher.found }
 
-    mutating func append(_ chunk: some Sequence<UInt8>) {
-        for byte in chunk {
-            total += 1
-            if retained.count < limit { retained.append(byte) }
-        }
+    init(limit: Int, matching: [String] = []) {
+        self.limit = limit
+        matcher = OutputMatcher(matching)
+    }
+
+    mutating func append(_ chunk: [UInt8]) {
+        matcher.append(chunk)
+        total += chunk.count
+        retained.append(contentsOf: chunk.prefix(max(0, limit - retained.count)))
     }
 }
 

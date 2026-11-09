@@ -16,6 +16,12 @@ Timeout takes precedence.
 Only trustworthy results with a nonempty matching inventory can become killed or survived.
 The inventory includes executed and skipped identities with multiplicities.
 
+![The verdict checks the deadline, trustworthy results, and complete inventories before distinguishing killed from survived.](assets/measurement-verdict.svg)
+
+A recorded failure with a changed inventory produces `errored`.
+The decision flow excludes compiler rejection, which comes from an individual edit's build.
+The [editable D2 source](assets/measurement-verdict.d2) shows each condition and outcome.
+
 `Proofs/Measurement.lean` proves the verdict conditions and score completeness over natural-number counts.
 An available score has a positive denominator.
 Compiler rejection doesn't affect the fraction.
@@ -39,6 +45,9 @@ The model doesn't prove the Swift compiler, Foundation XML parsing, process supe
 Correspondence tests check the finite policy boundary.
 Generated XML tests cover 1,024 documents with independent expected identities and counts.
 Real package tests cover the framework output dialects and operating system behavior.
+A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.
+Streaming matcher tests cover every token split, overlapping tokens, invalid UTF-8, and output beyond the diagnostic limit.
+Activation checks still require successful symbol-tool completion.
 A malformed fixture must fail the proof command even when Lake reuses build artifacts.
 
 ## Focused self-mutation

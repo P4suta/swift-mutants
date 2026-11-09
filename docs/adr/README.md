@@ -21,3 +21,5 @@ Historical records describe the [SwiftPM testing helper](0003-tests-are-launched
 [Trust complete test results before scoring](trust-complete-test-results.md) defines result evidence, supported XML counts, and the boundary of the measurement proofs.
 
 [Keep compatible instrumentation after a guard failure](retain-compatible-instrumentation.md) limits individual builds to candidates without usable guards.
+
+[Match activation tokens while draining symbols](match-activation-tokens-while-draining-symbols.md) checks large symbol tables with bounded diagnostic memory.

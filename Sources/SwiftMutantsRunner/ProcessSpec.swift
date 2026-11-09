@@ -59,6 +59,7 @@ package struct ProcessOutcome: Sendable {
     package let standardError: [UInt8]
     package let startFailure: String?
     package let traceSequence: Int
+    package var matchedOutput: Set<String> = []
     package var standardOutputText: String { String(decoding: standardOutput, as: UTF8.self) }
     package var standardErrorText: String { String(decoding: standardError, as: UTF8.self) }
 }
