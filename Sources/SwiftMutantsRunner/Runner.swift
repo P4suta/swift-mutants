@@ -6,259 +6,112 @@ import Darwin
 #else
 import Glibc
 #endif
-
 import Subprocess
 import Synchronization
 import SwiftMutantsCore
 public import SwiftMutantsTrace
 import System
 
-/// Starts one process, watches it, and writes down what happened.
-///
-/// This is the only place in the engine that starts a subprocess, and that is the point. A
-/// run starts them from a dozen places - a version probe, two baselines, a compile per
-/// module, the coverage pass, a validation build, a run per mutant - and a rule that every
-/// one of them must remember to record would have a dozen chances to be broken silently, in
-/// exactly the run somebody is trying to diagnose. Recorded here, a call site can forget
-/// nothing: the label is a closed enum, and the record is written whether the command
-/// succeeded, failed, or never started at all.
-public struct Runner: Sendable {
-
+/// Supervises owned process trees and drains both output streams.
+package struct Runner: Sendable {
     private let recorder: TraceRecorder
+    package let outputLimit: Int
 
-    /// How many bytes of each stream are kept.
-    ///
-    /// The whole output of a failed build is what makes a failure diagnosable, and the whole
-    /// output of a runaway test is what makes a machine run out of memory. The head is kept
-    /// and the total is counted, so the record is honest about what it is not holding.
-    public let outputLimit: Int
-
-    /// Creates a runner that records into `recorder`.
-    public init(recorder: TraceRecorder, outputLimit: Int = 1 << 20) {
+    package init(recorder: TraceRecorder, outputLimit: Int = 1 << 20) {
         self.recorder = recorder
         self.outputLimit = outputLimit
     }
 
-    /// Runs a command to completion, to its deadline, or to the point where it turns out it
-    /// cannot be started.
-    ///
-    /// Never throws. A command that could not be started is an outcome with exit `-1` and a
-    /// reason, because a command that never became a process is precisely what a reader of
-    /// the account needs to be told about, and an error thrown past the recorder would be a
-    /// command nobody wrote down.
-    public func run(_ spec: ProcessSpec) async -> ProcessOutcome {
-        await run(spec, watching: nil, onLine: { _ in true })
-    }
-
-    /// Runs a command while reading the lines it writes into a pipe, stopping it the
-    /// moment `onLine` says the answer is known.
-    ///
-    /// This is what makes a mutant cost "time until something notices" rather than "time
-    /// for the whole suite". swift-testing writes an event per line as it happens, so a
-    /// failure is readable while the rest of the suite is still running - and once one test
-    /// has noticed the mutant, every further second is spent establishing something already
-    /// established.
-    ///
-    /// `onLine` returning `false` ends the whole process tree, not just the command: the
-    /// test binary is usually a grandchild.
-    public func run(
-        _ spec: ProcessSpec,
-        watching pipe: EventPipe?,
-        onLine: @escaping @Sendable (String) -> Bool
-    ) async -> ProcessOutcome {
-        let started = ContinuousClock.now
-        let supervision = Supervision(
-            timeout: spec.timeout,
-            limit: outputLimit,
-            timedOut: Deadline(),
-            stopped: Deadline(),
-            pipe: pipe,
-            onLine: onLine
+    package func run(_ spec: ProcessSpec) async -> ProcessOutcome {
+        let start = ContinuousClock.now
+        let deadline = Deadline()
+        let monitor = ProcessMonitor(timeout: spec.timeout) { deadline.markExceeded() }
+        defer { monitor.finish() }
+        var options = PlatformOptions()
+        options.processGroupID = 0
+        let environment = spec.environment.sorted { $0.key < $1.key }
+            .map { Array("\($0.key)=\($0.value)".utf8) }
+        let configuration = Configuration(
+            executable: .path(FilePath(spec.executable)),
+            arguments: Arguments(spec.arguments),
+            environment: .custom(environment),
+            workingDirectory: FilePath(spec.directory),
+            platformOptions: options
         )
         do {
-            let collected = try await Subprocess.run(
-                Self.configuration(for: spec),
-                input: .none,
-                output: .sequence,
-                error: .sequence
-            ) { execution in
-                try await Self.superviseLoop(execution: execution, supervision: supervision)
+            let collected = try await invoke(configuration, monitor: monitor)
+            let code: Int
+            switch collected.terminationStatus {
+            case .exited(let status): code = Int(status)
+            case .signaled(let number): code = 128 + Int(number)
             }
-            let status = Self.status(of: collected.terminationStatus)
             return finish(
                 spec,
-                Completion(
-                    exitCode: status.code,
-                    stoppedEarly: supervision.stopped.wasExceeded,
-                    timedOut: supervision.timedOut.wasExceeded,
-                    duration: Self.milliseconds(since: started),
-                    output: collected.closureResult.standardOutput,
-                    error: collected.closureResult.standardError,
-                    startFailure: nil
-                )
+                code: code,
+                streams: collected.closureResult,
+                timedOut: deadline.wasExceeded,
+                elapsed: ContinuousClock.now - start
             )
         } catch {
             return finish(
                 spec,
-                Completion(
-                    exitCode: -1,
-                    stoppedEarly: supervision.stopped.wasExceeded,
-                    timedOut: supervision.timedOut.wasExceeded,
-                    duration: Self.milliseconds(since: started),
+                code: -1,
+                streams: Streams(
                     output: BoundedBytes(limit: outputLimit),
-                    error: BoundedBytes(limit: outputLimit),
-                    startFailure: String(describing: error)
-                )
+                    errors: BoundedBytes(limit: outputLimit)
+                ),
+                timedOut: deadline.wasExceeded,
+                elapsed: ContinuousClock.now - start,
+                failure: String(describing: error)
             )
         }
     }
 
-    /// How one command is spelled to the process layer.
-    ///
-    /// Its own process group, always: the thing that has to be ended when a deadline runs
-    /// out or an answer arrives is usually a grandchild, and a group is what reaches it.
-    private static func configuration(for spec: ProcessSpec) -> Configuration {
-        // Wrapped only when there is an allowance to enforce, so every build, every probe
-        // and everything else is spawned exactly as it was before.
-        let started: (executable: String, arguments: [String]) =
-            spec.cpuLimit.map {
-                CpuAllowance.wrapping(spec.executable, spec.arguments, within: $0)
-            } ?? (spec.executable, spec.arguments)
-        return Configuration(
-            executable: .path(FilePath(started.executable)),
-            arguments: Arguments(started.arguments),
-            environment: .custom(Self.environmentBlock(spec.environment)),
-            workingDirectory: FilePath(spec.directory),
-            platformOptions: Self.ownProcessGroup()
-        )
-    }
-
-    /// Everything the supervision of one command needs to know, gathered so that adding a
-    /// way to watch a command does not add a parameter to everything that supervises one.
-    private struct Supervision: Sendable {
-        let timeout: Duration?
-        let limit: Int
-        let timedOut: Deadline
-        let stopped: Deadline
-        let pipe: EventPipe?
-        let onLine: @Sendable (String) -> Bool
-    }
-
-    private static func superviseLoop(
-        execution: Execution<NoInput, SequenceOutput, SequenceOutput>,
-        supervision: Supervision
-    ) async throws -> Streams {
-        let identifier = execution.processIdentifier.value
-        let deadline = Self.deadlineTask(for: identifier, supervision: supervision)
-        defer { deadline?.cancel() }
-
-        // Started before the drains, because the child is already running and writing.
-        //
-        // The flag is set here, by the one thing that knows: the handler saying stop. It
-        // cannot be inferred from the reader having ended, because the reader also ends
-        // when the child goes - and a run that read that as a decision would mark a
-        // perfectly ordinary completion as "stopped", which downstream reads as a mutant
-        // nobody learned anything about.
-        let watcher = supervision.pipe.map { pipe in
-            Task {
-                await pipe.lines { line in
-                    guard supervision.onLine(line) else {
-                        supervision.stopped.markExceeded()
-                        return false
-                    }
-                    return true
+    private func invoke(
+        _ configuration: Configuration,
+        monitor: ProcessMonitor
+    ) async throws -> ExecutionResult<Streams, SequenceOutput, SequenceOutput> {
+        // Discover descendants before Swift Subprocess can tear down their parent.
+        let task = Task {
+            try await Subprocess.run(
+                configuration,
+                input: .none,
+                output: .sequence,
+                error: .sequence
+            ) { execution in
+                monitor.start(root: execution.processIdentifier.value)
+                do { return try await collect(execution) } catch {
+                    monitor.cancel()
+                    throw error
                 }
             }
         }
-
-        async let output = Self.drain(execution.standardOutput, limit: supervision.limit)
-        async let errors = Self.drain(execution.standardError, limit: supervision.limit)
-
-        guard let pipe = supervision.pipe, let watcher else {
-            return Streams(standardOutput: try await output, standardError: try await errors)
-        }
-
-        // The reader ends either because it decided, or because the child is gone. The
-        // first case has to end the child; the second has to end the reader. Racing them is
-        // what makes this a stream rather than a report.
-        let ending = Task {
-            await watcher.value
-            guard supervision.stopped.wasExceeded else { return }
-            await Self.killTree(identifier)
-        }
-        defer { ending.cancel() }
-
-        let streams = Streams(
-            standardOutput: try await output, standardError: try await errors)
-        // The child has gone, so the reader is told so and then waited for: whatever was
-        // written just before it exited is still in the pipe, and a line dropped here is a
-        // mutant reported as surviving the test that caught it.
-        pipe.finish()
-        await watcher.value
-        return streams
-    }
-
-    /// The task that ends a command which has run out of time, if it was given any.
-    private static func deadlineTask(
-        for identifier: pid_t, supervision: Supervision
-    ) -> Task<Void, Never>? {
-        supervision.timeout.map { budget in
-            Task {
-                try? await Task.sleep(for: budget)
-                guard !Task.isCancelled else { return }
-                supervision.timedOut.markExceeded()
-                await Self.killTree(identifier)
-            }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            monitor.cancel()
         }
     }
 
-    /// Ends the whole tree the command started, not only the command.
-    ///
-    /// The stuck process is usually a grandchild: `swift test` starts `xctest`, which starts
-    /// the binary under test. The child was spawned as its own process group leader, so its
-    /// group id is its pid and a negative signal reaches every descendant. Politely first,
-    /// then not.
-    private static func killTree(_ identifier: pid_t) async {
-        kill(-identifier, SIGTERM)
-        try? await Task.sleep(for: .milliseconds(200))
-        kill(-identifier, SIGKILL)
+    private func collect(
+        _ execution: Execution<NoInput, SequenceOutput, SequenceOutput>
+    ) async throws -> Streams {
+        async let output = Self.drain(execution.standardOutput, limit: outputLimit)
+        async let errors = Self.drain(execution.standardError, limit: outputLimit)
+        return Streams(output: try await output, errors: try await errors)
     }
 
-    /// Reads a stream, keeping the head and counting the whole.
-    private static func drain(
-        _ stream: SubprocessOutputSequence,
-        limit: Int
-    ) async throws -> BoundedBytes {
-        var bounded = BoundedBytes(limit: limit)
-        for try await chunk in stream {
-            // The buffer's only safe accessor is a raw span; copying it out is the unsafe
-            // step, and -strict-memory-safety wants that said rather than hidden.
-            bounded.append(unsafe chunk.withUnsafeBytes { unsafe Array($0) })
-        }
-        return bounded
-    }
-
-    /// Writes the record and assembles the outcome.
-    ///
-    /// One record per call, always, at the one place that can see everything about the
-    /// command: what it was, what it was given, and what became of it.
-    /// Everything known about a command once it is over.
-    private struct Completion {
-        let exitCode: Int
-        let stoppedEarly: Bool
-        let timedOut: Bool
-        let duration: Int
-        let output: BoundedBytes
-        let error: BoundedBytes
-        let startFailure: String?
-    }
-
-    /// Writes the record and assembles the outcome.
-    ///
-    /// One record per call, always, at the one place that can see everything about the
-    /// command: what it was, what it was given, and what became of it.
-    private func finish(_ spec: ProcessSpec, _ completion: Completion) -> ProcessOutcome {
-        let output = completion.output
+    private func finish(
+        _ spec: ProcessSpec,
+        code: Int,
+        streams: Streams,
+        timedOut: Bool,
+        elapsed: Duration,
+        failure: String? = nil
+    ) -> ProcessOutcome {
+        let milliseconds =
+            Int(elapsed.components.seconds) * 1000
+            + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
         let event = recorder.record(
             .exec(
                 TraceEvent.Execution(
@@ -266,134 +119,63 @@ public struct Runner: Sendable {
                     arguments: [spec.executable] + spec.arguments,
                     directory: spec.directory,
                     environmentNames: spec.environment.keys.sorted(),
-                    timeoutMilliseconds: spec.timeout.map(Self.milliseconds),
-                    exitCode: completion.exitCode,
-                    durationMilliseconds: completion.duration,
-                    standardOutputDigest: output.total == 0 ? nil : Digest.of(output.retained),
-                    standardOutputBytes: output.total,
-                    failure: completion.startFailure ?? (completion.timedOut ? "timed out" : nil)
+                    timeoutMilliseconds: spec.timeout.map {
+                        Int($0.components.seconds) * 1000
+                            + Int($0.components.attoseconds / 1_000_000_000_000_000)
+                    },
+                    exitCode: code,
+                    durationMilliseconds: milliseconds,
+                    standardOutputDigest: streams.output.total == 0
+                        ? nil : Digest.of(streams.output.retained),
+                    standardOutputBytes: streams.output.total,
+                    failure: failure ?? (timedOut ? "timed out" : nil)
                 )
             )
         )
-
-        // The accounting comes off before anybody sees the error stream: a trial's is read
-        // for what the tests said, and a line this tool added to measure with would be a
-        // line somebody has to explain.
-        let accounted = CpuAllowance.taking(completion.error.retained)
         return ProcessOutcome(
-            exitCode: completion.exitCode,
-            cpuMilliseconds: accounted.cpuMilliseconds,
-            timedOut: completion.timedOut,
-            stoppedEarly: completion.stoppedEarly,
-            durationMilliseconds: completion.duration,
-            standardOutput: output.retained,
-            standardOutputBytes: output.total,
-            standardError: accounted.error,
-            startFailure: completion.startFailure,
+            exitCode: code,
+            timedOut: timedOut,
+            durationMilliseconds: milliseconds,
+            standardOutput: streams.output.retained,
+            standardOutputBytes: streams.output.total,
+            standardError: streams.errors.retained,
+            startFailure: failure,
             traceSequence: event.sequence
         )
     }
 
-    private static func status(of termination: TerminationStatus) -> (code: Int, signal: Int?) {
-        switch termination {
-        case .exited(let code): (Int(code), nil)
-        case .signaled(let signal): (128 + Int(signal), Int(signal))
+    private static func drain(
+        _ stream: SubprocessOutputSequence,
+        limit: Int
+    ) async throws -> BoundedBytes {
+        var bytes = BoundedBytes(limit: limit)
+        for try await chunk in stream {
+            bytes.append(unsafe chunk.withUnsafeBytes { unsafe Array($0) })
         }
-    }
-
-    private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
-        milliseconds(ContinuousClock.now - start)
-    }
-
-    private static func milliseconds(_ duration: Duration) -> Int {
-        let parts = duration.components
-        return Int(parts.seconds) * 1000 + Int(parts.attoseconds / 1_000_000_000_000_000)
-    }
-
-    /// Renders an environment as the `KEY=VALUE` block a spawn takes.
-    ///
-    /// Sorted, so that two runs of the same command compose the same block and a recording
-    /// of one can be compared with a recording of the other.
-    private static func environmentBlock(_ environment: [String: String]) -> [[UInt8]] {
-        environment
-            .sorted { $0.key < $1.key }
-            .map { Array("\($0.key)=\($0.value)".utf8) }
-    }
-
-    /// Spawns the child as its own process group leader, so that ending the group ends
-    /// every descendant and no signal of ours ever reaches this process.
-    ///
-    /// ## What it costs, and what is not built
-    ///
-    /// The second half of that sentence cuts both ways: a signal sent to *this* process
-    /// does not reach the child either. So when swift-mutants is killed - `pkill`, a CI
-    /// step timing out, somebody closing a terminal - its compiles are reparented to
-    /// `init` and keep running. The deadline that would have ended them lives in this
-    /// process and died with it.
-    ///
-    /// Observed on this machine: a `swift build` and two `swift-frontend` processes from a
-    /// killed run, `ppid 1`, still going three and a half hours later with an hour and
-    /// fifty minutes of accumulated CPU each. They were found by somebody else wondering
-    /// what was competing with their build, and they had been taxing every measurement
-    /// taken on that machine all afternoon - including baselines, which is how a stale
-    /// process becomes a wrong deadline for a later run.
-    ///
-    /// The fix is a handler for SIGINT, SIGTERM and SIGHUP that ends every group this
-    /// process has started and then re-raises. It is not built, and the reason is that a
-    /// signal handler may allocate nothing and lock nothing, so the registry it reads has
-    /// to be a preallocated lock-free one - and killing a *group* by a remembered id has a
-    /// pid-reuse hazard that a careless version would turn into signalling somebody else's
-    /// processes. That is worth building carefully and is not worth building quickly.
-    ///
-    /// Until then, a killed run leaves its compiles behind, and `pkill -g` on the group
-    /// ids in `ps -eo pid,ppid,pgid` is the manual reaping.
-    private static func ownProcessGroup() -> PlatformOptions {
-        var options = PlatformOptions()
-        options.processGroupID = 0
-        return options
-    }
-
-    private struct Streams: Sendable {
-        let standardOutput: BoundedBytes
-        let standardError: BoundedBytes
+        return bytes
     }
 }
 
-/// A stream's head, and how long the whole stream was.
+private struct Streams: Sendable {
+    let output: BoundedBytes
+    let errors: BoundedBytes
+}
+
 struct BoundedBytes: Sendable {
-    /// The bytes kept.
     private(set) var retained: [UInt8] = []
-
-    /// How many there were altogether.
     private(set) var total = 0
-
-    private let limit: Int
-
-    init(limit: Int) {
-        self.limit = limit
-    }
+    let limit: Int
 
     mutating func append(_ chunk: some Sequence<UInt8>) {
         for byte in chunk {
             total += 1
-            if retained.count < limit {
-                retained.append(byte)
-            }
+            if retained.count < limit { retained.append(byte) }
         }
     }
 }
 
-/// Whether a command outlived its deadline.
-///
-/// A reference rather than a value because the watcher that sets it and the caller that
-/// reads it are in different tasks, and `Mutex` is noncopyable so it cannot travel between
-/// them on its own.
-final class Deadline: Sendable {
+private final class Deadline: Sendable {
     private let exceeded = Mutex(false)
-
-    /// Whether the deadline passed before the command finished.
     var wasExceeded: Bool { exceeded.withLock { $0 } }
-
-    /// Records that the deadline passed.
     func markExceeded() { exceeded.withLock { $0 = true } }
 }

@@ -24,6 +24,6 @@ ignores:
   - "Sources/swift-mutants-fake-toolchain/**"
   # A program has to read its own environment somewhere.
   # `Ambient` is that somewhere, and `AmbientGateTests` asserts it stays the only production doorway.
-  - "Sources/SwiftMutantsCLI/Ambient.swift"
+  - "Sources/SwiftMutants/Ambient.swift"
 rule:
   pattern: ProcessInfo.processInfo.environment

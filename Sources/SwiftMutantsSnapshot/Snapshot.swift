@@ -10,10 +10,8 @@ public import SwiftMutantsCore
 
 /// A disposable copy of somebody's package.
 ///
-/// The first invariant of this tool rests here: discovery reads the tree a run was pointed
-/// at, and every build, edit and test happens in this copy instead. That is what makes it
-/// safe to point swift-mutants at a repository somebody is in the middle of working in, and
-/// what makes a failed run leave a working tree exactly as it found it.
+/// The first invariant of this tool rests here: discovery reads the tree a run was pointed at, and every build, edit and test happens in this copy instead.
+/// That is what makes it safe to point swift-mutants at a repository somebody is in the middle of working in, and what makes a failed run leave a working tree exactly as it found it.
 public struct Snapshot: Sendable {
 
     /// Where the copy is.
@@ -24,20 +22,11 @@ public struct Snapshot: Sendable {
 
     /// Directories that are never source, wherever they appear.
     ///
-    /// Copying them is pointless, and a package with a package inside it has a `.build` at
-    /// every level. None of these names can be a source directory, so excluding them
-    /// everywhere costs nothing.
+    /// Copying them is pointless, and a package with a package inside it has a `.build` at every level.
+    /// None of these names can be a source directory, so excluding them everywhere costs nothing.
     public static let excludedEverywhere: Set<String> = [
         ".git", ".build", ".swiftpm", "DerivedData", ".index-build",
     ]
-
-    /// Directories excluded only at the root.
-    ///
-    /// The report directory grows *while* a run digests the tree, so a run that copied it
-    /// would report drift it had caused itself - a diagnostic failing the run it is a
-    /// diagnostic of. Only at the root, because `Sources/Reporting/reports` is a name
-    /// somebody may legitimately have given to source.
-    public static let excludedAtRoot: Set<String> = ["reports"]
 
     /// Copies a tree, refusing anything a copy cannot faithfully hold.
     public static func create(of source: URL, at destination: URL) throws -> Self {
@@ -86,10 +75,8 @@ public struct Snapshot: Sendable {
 
     /// Which paths in the copy no longer match the manifest.
     ///
-    /// A test that writes into the package directory it runs in would make every later
-    /// mutant a measurement of a different program, and nothing else in the pipeline would
-    /// notice. This is the gate that does: a changed file, one that appeared, and one that
-    /// vanished are all reported.
+    /// A test that writes into the package directory it runs in would make every later mutant a measurement of a different program, and nothing else in the pipeline would notice.
+    /// This is the gate that does: a changed file, one that appeared, and one that vanished are all reported.
     public func drift() throws -> [WorkspaceRelativePath] {
         var seen: Set<WorkspaceRelativePath> = []
         var drifted: [WorkspaceRelativePath] = []
@@ -117,11 +104,10 @@ public struct Snapshot: Sendable {
 
     /// Walks a tree, refusing anything that is not a plain file or a directory.
     ///
-    /// Refused rather than skipped, and that is the decision. A link that leaves the tree
-    /// makes the copy a copy of something else; one that stays inside makes two paths into
-    /// one file, so an edit for one mutant would silently change a second place. A device, a
-    /// socket or a pipe cannot be copied at all. None of those is a thing to discover
-    /// halfway through a run, so the walk stops at the first one and names it.
+    /// Refused rather than skipped, and that is the decision.
+    /// A link that leaves the tree makes the copy a copy of something else; one that stays inside makes two paths into one file, so an edit for one mutant would silently change a second place.
+    /// A device, a socket or a pipe cannot be copied at all.
+    /// None of those is a thing to discover halfway through a run, so the walk stops at the first one and names it.
     static func walk(
         _ directory: URL,
         relativeTo prefix: [String],
@@ -136,7 +122,6 @@ public struct Snapshot: Sendable {
 
         for name in names.sorted() {
             if Self.excludedEverywhere.contains(name) { continue }
-            if prefix.isEmpty, Self.excludedAtRoot.contains(name) { continue }
             let child = directory.appending(path: name)
             let attributes: [FileAttributeKey: Any]
             do {
