@@ -9,15 +9,18 @@ enum XCTestTranscript {
     }
 
     static func reconcile(_ results: inout XUnitResults, output: String, framework: String) throws {
-        var completions: [String: [Completion]] = [:]
+        var completions: [TestIdentity: [Completion]] = [:]
         for line in output.split(separator: "\n") {
             guard let start = line.range(of: "Test Case '-["),
                 let end = line[start.upperBound...].range(of: "]' ")
             else { continue }
             let title = line[start.upperBound..<end.lowerBound]
             guard let separator = title.lastIndex(of: " ") else { continue }
-            let identity =
-                "\(framework):\(title[..<separator])/\(title[title.index(after: separator)...])"
+            let identity = TestIdentity(
+                framework: framework,
+                className: String(title[..<separator]),
+                name: String(title[title.index(after: separator)...])
+            )
             let status = line[end.upperBound...]
             let completion: Completion
             if status.hasPrefix("passed (") {

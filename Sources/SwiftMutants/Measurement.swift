@@ -22,18 +22,23 @@ extension MeasurementSession {
             suite: suite,
             state: original.state
         )
-        var results: [MutationResult] = []
-        for mutation in plan.selected {
+        let selected = Array(plan.selected.enumerated())
+        let order =
+            selected.filter { suite.indices[$0.element.id] != nil }
+            + selected.filter { suite.indices[$0.element.id] == nil }
+        var results: [(position: Int, result: MutationResult)] = []
+        for (position, mutation) in order {
             try Task.checkCancellation()
             progress(.stage(.measurement))
             progress(
                 .measuring(mutation: mutation, completed: results.count, total: plan.selected.count)
             )
             let result = try await measure(mutation, context: context)
-            results.append(result)
+            results.append((position, result))
             progress(.measured(result))
         }
-        let report = MutationReport(results: results)
+        let report = MutationReport(
+            results: results.sorted { $0.position < $1.position }.map(\.result))
         progress(.finished(report))
         return report
     }
@@ -86,13 +91,59 @@ extension MeasurementSession {
         _ plan: MeasurementPlan,
         timeout: Duration
     ) async throws -> PreparedSuite? {
-        let prepared = try prepare(plan.sources, selected: Set(plan.selected.map(\.id)))
-        guard !prepared.indices.isEmpty else { return nil }
+        let selected = Set(plan.selected.map(\.id))
+        if let suite = try await probe(plan, selected: selected, timeout: timeout) { return suite }
+        var accepted: Set<String> = []
+        let middle = plan.selected.count / 2
+        if middle > 0 {
+            try await retain(
+                plan.selected[..<middle], plan: plan, accepted: &accepted, timeout: timeout)
+            try await retain(
+                plan.selected[middle...], plan: plan, accepted: &accepted, timeout: timeout)
+        }
+        guard !accepted.isEmpty else { return nil }
+        guard let suite = try await probe(plan, selected: accepted, timeout: timeout) else {
+            throw MutationTestingError(
+                stage: .instrumentation,
+                diagnostic: "Previously compilable instrumentation couldn't be rebuilt."
+            )
+        }
+        return suite
+    }
+
+    private func retain(
+        _ candidates: ArraySlice<Mutation>,
+        plan: MeasurementPlan,
+        accepted: inout Set<String>,
+        timeout: Duration
+    ) async throws {
+        try Task.checkCancellation()
+        let selected = accepted.union(candidates.map(\.id))
+        if let suite = try await probe(plan, selected: selected, timeout: timeout) {
+            accepted = Set(suite.indices.keys)
+        } else if candidates.count > 1 {
+            let middle = candidates.index(candidates.startIndex, offsetBy: candidates.count / 2)
+            try await retain(
+                candidates[..<middle], plan: plan, accepted: &accepted, timeout: timeout)
+            try await retain(
+                candidates[middle...], plan: plan, accepted: &accepted, timeout: timeout)
+        }
+    }
+
+    private func probe(
+        _ plan: MeasurementPlan,
+        selected: Set<String>,
+        timeout: Duration
+    ) async throws -> PreparedSuite? {
+        let prepared = try prepare(plan.sources, selected: selected)
+        guard !prepared.indices.isEmpty, prepared.indices.count == selected.count else {
+            return nil
+        }
         let built = try await build(.instrumented, timeout: timeout)
         if built.startFailure != nil || built.timedOut || built.exitCode > 1 || built.exitCode < 0 {
             try requireSuccess(built, stage: .instrumentation)
         }
-        guard built.exitCode == 0, prepared.indices.count == plan.selected.count else { return nil }
+        guard built.exitCode == 0 else { return nil }
         let products = try await products()
         let builtSymbols = try await symbols(in: products)
         guard ActivationProof.missingTokens(prepared.tokens, inSymbols: builtSymbols).isEmpty else {
@@ -185,11 +236,12 @@ extension MeasurementSession {
         observation: TestObservation,
         baseline: XUnitResults
     ) -> MutationResult {
-        MutationResult(
+        let verdict = observation.verdict(comparedTo: baseline)
+        return MutationResult(
             mutation: mutation,
-            outcome: observation.verdict(comparedTo: baseline),
+            outcome: verdict.outcome,
             durationMilliseconds: observation.durationMilliseconds,
-            diagnostic: observation.diagnostic
+            diagnostic: observation.diagnostic ?? verdict.diagnostic
         )
     }
 

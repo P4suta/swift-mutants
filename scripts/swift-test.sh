@@ -13,30 +13,30 @@ set -euo pipefail
 parallelism_requested=false
 previous=""
 for argument in "$@"; do
-    if [[ "$previous" == "--scratch-path" ]]; then
-        export SWIFT_MUTANTS_TEST_SCRATCH_PATH="$argument"
-    fi
-    case "$argument" in
-    --scratch-path=*)
-        export SWIFT_MUTANTS_TEST_SCRATCH_PATH="${argument#*=}"
-        ;;
-    --parallel | --no-parallel | --num-workers | --num-workers=*)
-        parallelism_requested=true
-        ;;
-    esac
-    previous="$argument"
+	if [[ ${previous} == "--scratch-path" ]]; then
+		export SWIFT_MUTANTS_TEST_SCRATCH_PATH="${argument}"
+	fi
+	case "${argument}" in
+	--scratch-path=*)
+		export SWIFT_MUTANTS_TEST_SCRATCH_PATH="${argument#*=}"
+		;;
+	--parallel | --no-parallel | --num-workers | --num-workers=*)
+		parallelism_requested=true
+		;;
+	*) ;;
+	esac
+	previous="${argument}"
 done
 
-if [[ "$parallelism_requested" == true ]]; then
-    exec swift test "$@"
+if [[ ${parallelism_requested} == true ]]; then
+	exec swift test "$@"
 fi
 
-version="$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p' | head -1)"
-version="${version:-$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)}"
+toolchain_banner="$(swift --version 2>&1)"
 
-if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]] \
-    && ((BASH_REMATCH[1] > 6 || (BASH_REMATCH[1] == 6 && BASH_REMATCH[2] >= 4))); then
-    exec swift test --parallel "$@"
+if [[ ${toolchain_banner} =~ Swift[[:space:]]version[[:space:]]([0-9]+)\.([0-9]+) ]] &&
+	((BASH_REMATCH[1] > 6 || (BASH_REMATCH[1] == 6 && BASH_REMATCH[2] >= 4))); then
+	exec swift test --parallel "$@"
 fi
 
 exec swift test --no-parallel "$@"

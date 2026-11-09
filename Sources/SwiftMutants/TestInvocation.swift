@@ -10,14 +10,21 @@ struct TestObservation: Sendable {
     var diagnostic: String?
     var durationMilliseconds = 0
 
-    func verdict(comparedTo baseline: XUnitResults) -> MutationOutcome {
-        if timedOut { return .timedOut }
-        guard diagnostic == nil, results.errors == 0, !results.executed.isEmpty else {
-            return .errored
+    func verdict(comparedTo baseline: XUnitResults) -> TestVerdict {
+        let inventory: TestInventory
+        if results.executed.isEmpty {
+            inventory = .empty
+        } else if results.executed == baseline.executed && results.skipped == baseline.skipped {
+            inventory = .matched
+        } else {
+            inventory = .changed
         }
-        if results.failures > 0 { return .killed }
-        return results.executed == baseline.executed && results.skipped == baseline.skipped
-            ? .survived : .errored
+        return TestVerdict.classify(
+            timedOut: timedOut,
+            trustworthy: diagnostic == nil && results.errors == 0,
+            inventory: inventory,
+            failed: results.failures > 0
+        )
     }
 }
 
