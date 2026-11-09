@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-public import Foundation
+package import Foundation
 import SwiftMutantsCore
-public import SwiftMutantsRunner
+package import SwiftMutantsRunner
 
 /// Reads package-owned targets through SwiftPM's description command.
 package struct SwiftPackageManager: Sendable {

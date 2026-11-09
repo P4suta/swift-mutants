@@ -9,7 +9,7 @@ import Glibc
 import Subprocess
 import Synchronization
 import SwiftMutantsCore
-public import SwiftMutantsTrace
+package import SwiftMutantsTrace
 import System
 
 /// Supervises owned process trees and drains both output streams.

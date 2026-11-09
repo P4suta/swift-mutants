@@ -14,9 +14,15 @@ final class ProcessTree: Sendable {
         static func read(_ pid: pid_t) -> Self? {
             var info = proc_bsdinfo()
             let size = MemoryLayout<proc_bsdinfo>.size
+            #if compiler(>=6.4)
             let count = withUnsafeMutablePointer(to: &info) {
                 unsafe proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, Int32(size))
             }
+            #else
+            let count = unsafe withUnsafeMutablePointer(to: &info) {
+                unsafe proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, Int32(size))
+            }
+            #endif
             guard count == size else { return nil }
             return Self(
                 pid: pid,
@@ -80,9 +86,15 @@ final class ProcessTree: Sendable {
             return []
         }
         var pids = [pid_t](repeating: 0, count: capacity)
+        #if compiler(>=6.4)
         let received = pids.withUnsafeMutableBytes {
             unsafe proc_listchildpids(pid, $0.baseAddress, Int32($0.count))
         }
+        #else
+        let received = unsafe pids.withUnsafeMutableBytes {
+            unsafe proc_listchildpids(pid, $0.baseAddress, Int32($0.count))
+        }
+        #endif
         return Array(pids.prefix(max(0, min(capacity, Int(received))))).filter { $0 > 0 }
     }
 }

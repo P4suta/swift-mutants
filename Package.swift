@@ -145,7 +145,7 @@ let package = Package(
         ),
         .testTarget(
             name: "RepositoryGateTests",
-            dependencies: ["SwiftMutantsTestKit"],
+            dependencies: ["SwiftMutantsTestKit", "SwiftMutantsRunner", "SwiftMutantsTrace"],
             swiftSettings: strict
         ),
         .testTarget(
