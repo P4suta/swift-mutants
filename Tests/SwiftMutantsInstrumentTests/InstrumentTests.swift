@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
-import SwiftMutantsConfig
 import SwiftMutantsCore
 import SwiftMutantsDiscover
 import Testing
@@ -11,10 +10,9 @@ import Testing
 
 /// Putting every compilable mutant into one tree, each dormant behind a guard.
 ///
-/// This is the reason the tool is usable at all. Swift builds are slow, and a mutation run
-/// that rebuilt once per mutant would be an overnight job on a package of any size; Muter's
-/// open issues about memory exhaustion and hour-long runs are what that looks like. Here the
-/// toolchain builds once and one environment variable decides which mutant is awake.
+/// This is the reason the tool is usable at all.
+/// Swift builds are slow, and a mutation run that rebuilt once per mutant would be an overnight job on a package of any size; Muter's open issues about memory exhaustion and hour-long runs are what that looks like.
+/// Here the toolchain builds once and one environment variable decides which mutant is awake.
 @Suite("Instrument")
 struct InstrumentTests {
 
@@ -26,19 +24,14 @@ struct InstrumentTests {
     }
 
     static func instrument(
-        _ source: String, extreme: Bool = false
+        _ source: String
     ) throws -> InstrumentedFile {
-        var mutation = Configuration.Mutation()
-        mutation.profile = .all
-        mutation.extreme = extreme
         let discovery = Discover.candidates(
-            in: source, at: Self.path(), selecting: mutation)
+            in: source, at: Self.path())
         return try Instrument.file(source, discovery: discovery)
     }
 
-    /// The invariant that makes coverage data usable at all: a line in the instrumented
-    /// file is the same line in the file the user wrote, so a profile that says "line 14
-    /// ran" says it about the same line either way.
+    /// The invariant that makes coverage data usable at all: a line in the instrumented file is the same line in the file the user wrote, so a profile that says "line 14 ran" says it about the same line either way.
     @Test(
         "keeps the file the same number of lines",
         arguments: [
@@ -61,9 +54,7 @@ struct InstrumentTests {
         try Self.assertLineCountIsKept(source)
     }
 
-    /// The same invariant for a guard that is a statement rather than an expression, which
-    /// is the shape that can break it: a ternary is inside a line by construction, and a
-    /// statement in front of a body would sit on its own line if anything let it.
+    /// The same invariant for a guard that is a statement rather than an expression, which is the shape that can break it: a ternary is inside a line by construction, and a statement in front of a body would sit on its own line if anything let it.
     @Test(
         "keeps the file the same number of lines around a statement guard",
         arguments: [
@@ -91,11 +82,11 @@ struct InstrumentTests {
         ]
     )
     func preservesLineCountAroundStatements(source: String) throws {
-        try Self.assertLineCountIsKept(source, extreme: true)
+        try Self.assertLineCountIsKept(source)
     }
 
-    static func assertLineCountIsKept(_ source: String, extreme: Bool = false) throws {
-        let instrumented = try Self.instrument(source, extreme: extreme)
+    static func assertLineCountIsKept(_ source: String) throws {
+        let instrumented = try Self.instrument(source)
         let before = source.split(separator: "\n", omittingEmptySubsequences: false).count
         let after = instrumented.source
             .split(separator: "\n", omittingEmptySubsequences: false).count
@@ -116,16 +107,11 @@ struct InstrumentTests {
         #expect(instrumented.source.hasSuffix(instrumented.runtime))
     }
 
-    /// A runtime that adds nothing to a package is what lets this work on an Xcode
-    /// project: nothing goes in a manifest, no target membership has to be known, and the
-    /// file does not gain a dependency it did not have.
+    /// A runtime that adds nothing to a package is what lets this work on an Xcode project: nothing goes in a manifest, no target membership has to be known, and the file does not gain a dependency it did not have.
     ///
     /// `internal`, not `private`, and that is the one thing here that is not obvious.
-    /// Swift will not let an `@inlinable` function reference a private symbol, so a private
-    /// guard makes every mutant inside one unbuildable - and a package marks its hot paths
-    /// `@inlinable`, which is the code somebody cares most about being right. Module-wide
-    /// visibility costs nothing, because the name carries a digest of the file's path and
-    /// contents.
+    /// Swift will not let an `@inlinable` function reference a private symbol, so a private guard makes every mutant inside one unbuildable - and a package marks its hot paths `@inlinable`, which is the code somebody cares most about being right.
+    /// Module-wide visibility costs nothing, because the name carries a digest of the file's path and contents.
     ///
     /// Never `public`, which would change what the package exports.
     @Test("adds nothing to the package that a manifest would have to know about")
@@ -136,8 +122,7 @@ struct InstrumentTests {
         #expect(!instrumented.runtime.contains("private"))
     }
 
-    /// Every declaration the guard reaches, not only the guard: an `@inlinable` body that
-    /// calls the guard reaches everything the guard reads.
+    /// Every declaration the guard reaches, not only the guard: an `@inlinable` body that calls the guard reaches everything the guard reads.
     @Test("makes every part of its runtime reachable from inlinable code")
     func runtimeIsUsableFromInline() throws {
         let instrumented = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
@@ -147,7 +132,7 @@ struct InstrumentTests {
                 $0.contains("__sm_")
                     && ($0.contains(" let ") || $0.contains(" func ") || $0.contains(" var "))
             }
-        #expect(declarations.count >= 4)
+        #expect(declarations.count == 2)
         for declaration in declarations {
             #expect(
                 declaration.contains("@usableFromInline"),
@@ -155,24 +140,21 @@ struct InstrumentTests {
         }
     }
 
-    /// Muter reads `ProcessInfo.processInfo.environment` inside every guard, which builds a
-    /// dictionary from the environment on each evaluation. A guard in a loop pays that
-    /// every time round.
+    /// Muter reads `ProcessInfo.processInfo.environment` inside every guard, which builds a dictionary from the environment on each evaluation.
+    /// A guard in a loop pays that every time round.
     @Test("reads the environment once, not once per guard")
     func environmentIsReadOnce() throws {
         let instrumented = try Self.instrument("func f(_ a: Int, _ b: Int) -> Bool { a < b }")
         #expect(instrumented.runtime.contains("getenv"))
         #expect(!instrumented.source.contains("ProcessInfo"))
 
-        // The call lives in the runtime and nowhere else: a guard is an integer compare
-        // against a global that was initialised once.
+        // The call lives in the runtime and nowhere else: a guard is an integer compare against a global that was initialised once.
         let call = "getenv(\"" + "SWIFT_MUTANTS_ACTIVE" + "\")"
         let body = instrumented.source.dropLast(instrumented.runtime.count)
         #expect(!body.contains(call))
 
-        // Twice in the runtime, because it is spelled twice: a package built with
-        // -strict-memory-safety needs the call marked `unsafe` and one built without it
-        // warns about a mark that was not needed. Only one branch is ever compiled.
+        // Twice in the runtime, because it is spelled twice: a package built with -strict-memory-safety needs the call marked `unsafe` and one built without it warns about a mark that was not needed.
+        // Only one branch is ever compiled.
         #expect(instrumented.runtime.contains("#if hasFeature(StrictMemorySafety)"))
         #expect(instrumented.runtime.components(separatedBy: call).count == 3)
     }
@@ -186,24 +168,21 @@ struct InstrumentTests {
         #expect(instrumented.source.contains("? (a <= b) : (a < b))"))
     }
 
-    /// Several rules at one expression are alternatives at one site, chained rather than
-    /// nested copies of the surrounding code.
+    /// Several rules at one expression are alternatives at one site, chained rather than nested copies of the surrounding code.
     @Test("chains the mutants of one expression")
     func chainsOneSite() throws {
         let source = "func f(_ a: Bool, _ b: Bool) -> Bool { a && b }"
         let instrumented = try Self.instrument(source)
         #expect(instrumented.mutants.count == 3)
         #expect(instrumented.source.contains("? (a || b) : ("))
-        // Three alternatives, one copy of the expression they are alternatives to. Nesting
-        // whole copies instead would be exponential in the number of rules at a site.
+        // Three alternatives, one copy of the expression they are alternatives to.
+        // Nesting whole copies instead would be exponential in the number of rules at a site.
         let originals = instrumented.source.components(separatedBy: "(a && b)").count - 1
         #expect(originals == 1, "the original was copied per mutant: \(instrumented.source)")
     }
 
-    /// Only one mutant is ever awake, so the mutated side of an outer guard carries the
-    /// pristine inner expression rather than a second copy of its guard. That is what keeps
-    /// the file growing with the size of the rewritten expressions instead of with the
-    /// number of mutants times the size of the file.
+    /// Only one mutant is ever awake, so the mutated side of an outer guard carries the pristine inner expression rather than a second copy of its guard.
+    /// That is what keeps the file growing with the size of the rewritten expressions instead of with the number of mutants times the size of the file.
     @Test("does not repeat an inner guard inside an outer mutant")
     func nestedSitesDoNotDuplicate() throws {
         let source = "func f(_ a: Int, _ b: Int, _ c: Bool) -> Bool { return a < b && c }"
@@ -215,9 +194,8 @@ struct InstrumentTests {
         #expect(uses == 1, "the inner guard was duplicated: \(instrumented.source)")
     }
 
-    /// The activation proof looks for these in the built binary. A marker that cannot be
-    /// found is a mutant that was never spliced in, which is the failure that made Muter
-    /// report four hundred false regressions.
+    /// The activation proof looks for these in the built binary.
+    /// A marker that cannot be found is a mutant that was never spliced in, which is the failure that made Muter report four hundred false regressions.
     @Test("gives every mutant a marker that appears in the file exactly once")
     func markersAreUniqueAndPresent() throws {
         let source = """

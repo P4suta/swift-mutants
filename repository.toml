@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 name = "swift-mutants"
-summary = "Mutation testing for Swift"
+summary = "Discover and measure Swift source mutations through a library or CLI"
 install = """
 # Requires macOS 15 or later and Swift 6.3 or later.
 git clone https://github.com/P4suta/swift-mutants.git
 cd swift-mutants
 swift build -c release
 """
-usage = ".build/release/swift-mutants list"
+usage = ".build/release/swift-mutants run"
 usage_language = "sh"
 documentation_index = true
 copyright = "2026 swift-mutants contributors"

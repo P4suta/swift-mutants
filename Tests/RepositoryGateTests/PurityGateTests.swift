@@ -7,20 +7,15 @@ import Testing
 
 /// Keeps the pure modules pure.
 ///
-/// A module that cannot open a file, start a process, or read a clock is a module whose
-/// golden identity vectors and property tests mean something: run it twice with the same
-/// inputs and it must produce the same answer, on any machine, in any order. Every
-/// impurity in the engine is therefore pushed out to a named boundary - `Runner` for
-/// processes, `Snapshot` for the filesystem, an injected clock for time - and this gate
-/// is what keeps it there.
+/// A module that cannot open a file, start a process, or read a clock is a module whose golden identity vectors and property tests mean something: run it twice with the same inputs and it must produce the same answer, on any machine, in any order.
+/// Every impurity in the engine is therefore pushed out to a named boundary - `Runner` for processes, `Snapshot` for the filesystem, an injected clock for time - and this gate is what keeps it there.
 @Suite("Purity gate")
 struct PurityGateTests {
 
     /// Modules that may import nothing outside ``permittedImports``.
     ///
-    /// The strictest tier, and the one the golden identity vectors rest on: a module that
-    /// cannot reach a library cannot reach the world through one either.
-    static let selfContainedModules = ["SwiftMutantsCore", "SwiftMutantsConfig"]
+    /// The strictest tier, and the one the golden identity vectors rest on: a module that cannot reach a library cannot reach the world through one either.
+    static let selfContainedModules = ["SwiftMutantsCore"]
 
     /// Imports a self-contained module may declare.
     ///
@@ -29,20 +24,15 @@ struct PurityGateTests {
 
     /// Modules that may import a library but must still reach no file, process or clock.
     ///
-    /// `SwiftMutantsTrace` is here rather than in the strict tier because writing a JSON
-    /// line needs Foundation's encoder. That is a deliberate trade: a hand-written encoder
-    /// would own the byte-exact output, but a golden test pins those bytes for a fraction
-    /// of the code and fails just as loudly if Foundation ever changes its mind.
+    /// `SwiftMutantsTrace` is here rather than in the strict tier because writing a JSON line needs Foundation's encoder.
+    /// That is a deliberate trade: a hand-written encoder would own the byte-exact output, but a golden test pins those bytes for a fraction of the code and fails just as loudly if Foundation ever changes its mind.
     static let effectFreeModules = [
-        "SwiftMutantsCore", "SwiftMutantsTrace", "SwiftMutantsConsole", "SwiftMutantsConfig",
+        "SwiftMutantsCore", "SwiftMutantsTrace",
     ]
 
     /// Names that mean "this code reached for the world".
     ///
-    /// Time is on the list alongside the filesystem and processes because a clock is the
-    /// impurity people forget: a duration computed from `Date()` makes a report that
-    /// differs between two runs of the same inputs, which is exactly what a golden test
-    /// exists to catch and exactly what it would then be unable to catch.
+    /// Time is on the list alongside the filesystem and processes because a clock is the impurity people forget: a duration computed from `Date()` makes a report that differs between two runs of the same inputs, which is exactly what a golden test exists to catch and exactly what it would then be unable to catch.
     static let forbiddenSymbols = [
         "FileManager", "Process", "Subprocess", "URLSession",
         "Date()", "Date.now", "DispatchQueue", "ProcessInfo", "getenv",

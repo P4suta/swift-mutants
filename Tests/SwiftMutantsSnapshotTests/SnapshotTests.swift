@@ -9,9 +9,8 @@ import Testing
 
 /// The first invariant: the tree a run was pointed at is never written to.
 ///
-/// Discovery reads it; every build, edit and test happens inside a disposable copy. That is
-/// what makes it safe to point this tool at a repository somebody is in the middle of
-/// working in, and what makes a failed run leave a working tree exactly as it found it.
+/// Discovery reads it; every build, edit and test happens inside a disposable copy.
+/// That is what makes it safe to point this tool at a repository somebody is in the middle of working in, and what makes a failed run leave a working tree exactly as it found it.
 @Suite("Snapshot")
 struct SnapshotTests {
 
@@ -60,8 +59,7 @@ struct SnapshotTests {
         )
     }
 
-    /// Two machines copying the same tree have to agree about what they copied, so the
-    /// digest cannot depend on the order the filesystem handed the entries over.
+    /// Two machines copying the same tree have to agree about what they copied, so the digest cannot depend on the order the filesystem handed the entries over.
     @Test("digests the same tree the same way")
     func digestIsStable() throws {
         let files = ["a.swift": "one", "b/c.swift": "two", "b/d.swift": "three"]
@@ -98,10 +96,9 @@ struct SnapshotTests {
         )
     }
 
-    /// Refused, not skipped. A link that leaves the tree makes the copy a copy of something
-    /// else, and one that stays inside makes two paths one file - so an edit to a mutant
-    /// would silently change a second place. Neither is a thing to discover halfway through
-    /// a run.
+    /// Refused, not skipped.
+    /// A link that leaves the tree makes the copy a copy of something else, and one that stays inside makes two paths one file - so an edit to a mutant would silently change a second place.
+    /// Neither is a thing to discover halfway through a run.
     @Test("refuses a symbolic link rather than following or skipping it")
     func refusesASymbolicLink() throws {
         let source = try Self.sourceTree(["a.swift": "one"])
@@ -132,17 +129,14 @@ struct SnapshotTests {
             try? FileManager.default.removeItem(at: source)
             try? FileManager.default.removeItem(at: target)
         }
-        // mkfifo is a C call, and -strict-memory-safety wants that said rather than
-        // hidden. Making a pipe is the only way to get a file that is not a file.
+        // mkfifo is a C call, and -strict-memory-safety wants that said rather than hidden.
+        // Making a pipe is the only way to get a file that is not a file.
         #expect(unsafe mkfifo(source.appending(path: "pipe").path, 0o644) == 0)
 
         #expect(throws: SnapshotError.self) { try Snapshot.create(of: source, at: target) }
     }
 
-    /// Excluded because copying them is pointless and because the report directory grows
-    /// *while* the run digests the tree, which would make a run report drift it caused
-    /// itself.
-    @Test("leaves out what a copy has no use for, at every level it appears")
+    @Test("excludes build metadata while retaining reports as package inputs")
     func excludesTheUnneeded() throws {
         let source = try Self.sourceTree([
             "a.swift": "one",
@@ -150,7 +144,6 @@ struct SnapshotTests {
             ".build/debug/thing": "built",
             "Plugins/Nested/.build/debug/thing": "a package inside a package",
             "reports/mutation/mutation.json": "report",
-            // Only the root report directory is excluded: a deeper one may be source.
             "Sources/Reporting/reports/Writer.swift": "source",
         ])
         let target = Self.destination()
@@ -163,13 +156,14 @@ struct SnapshotTests {
         #expect(
             snapshot.manifest.entries.map(\.path.rendered) == [
                 "Sources/Reporting/reports/Writer.swift", "a.swift",
+                "reports/mutation/mutation.json",
             ]
         )
         #expect(!FileManager.default.fileExists(atPath: target.appending(path: ".git").path))
     }
 
-    /// A test that writes into the package directory it runs in would make every later
-    /// mutant a measurement of a different program. The gate is a second digest.
+    /// A test that writes into the package directory it runs in would make every later mutant a measurement of a different program.
+    /// The gate is a second digest.
     @Test(
         "notices a file that changed, appeared or vanished after it was copied",
         arguments: ["changed", "appeared", "vanished"]

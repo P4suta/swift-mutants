@@ -3,18 +3,7 @@
 #
 # Real packages, at commits that do not move, for explicit investigation.
 #
-# Every other tier measures this tool against code written to exercise it. This one
-# measures it against code written by people who have never heard of it, which is the only
-# way to find out what a Swift package actually contains: property wrappers, macros,
-# `@main`, result builders, C interop, a test suite that writes to disk.
-#
-# Pinned to a commit rather than a tag or a branch, so that a red run is a change here. A
-# suite that tracked `main` of five packages would go red for reasons that have nothing to
-# do with this repository, and a gate that does that is a gate people stop reading.
-#
-# What it asserts is deliberately narrow: the run finishes, the baseline is green, and the
-# catalogue is not empty. Not a score - a score would move when somebody else's tests
-# change, and it is their repository.
+# Fixed revisions make external package failures reproducible.
 name: Ecosystem
 
 on:
@@ -34,13 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Taken from this repository's own `Package.resolved`, which is the only list of
-        # real packages at real revisions that can be checked without a network. A commit
-        # written from memory is a commit that does not exist, and a run that fails because
-        # of one looks exactly like a run that found something.
-        #
-        # They are also the right subjects: this tool is built on them, so a package it
-        # cannot measure is a package it cannot be trusted about.
+        # Revisions match Package.resolved.
         package:
           - name: swift-argument-parser
             repository: apple/swift-argument-parser
@@ -70,7 +53,7 @@ jobs:
       - name: Measure it
         run: |
           .build-release/release/swift-mutants run \
-            --package-path subject --report json --json > ecosystem.json
+            --package-path subject --json > ecosystem.json
       - name: Say what came back
         if: always()
         run: |
@@ -81,3 +64,4 @@ jobs:
           name: ecosystem-${{ matrix.package.name }}
           path: ecosystem.json
           if-no-files-found: ignore
+          retention-days: 7

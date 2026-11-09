@@ -1,6 +1,6 @@
 # Swift-mutants
 
-Mutation testing for Swift.
+Discover and measure Swift source mutations through a library or CLI.
 
 ## Installation
 
@@ -14,7 +14,7 @@ swift build -c release
 ## Usage
 
 ```sh
-.build/release/swift-mutants list
+.build/release/swift-mutants run
 ```
 
 ## Documentation

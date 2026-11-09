@@ -5,9 +5,8 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Architecture decision records
 
-One record per decision that would otherwise be re-litigated. Each states the decision,
-what forced it, and what it costs — including the decisions inherited from the sibling
-projects and, where swift-mutants departs from them, why.
+One record per decision that would otherwise be re-litigated.
+Each states the decision, what forced it, and what it costs — including the decisions inherited from the sibling projects and, where swift-mutants departs from them, why.
 
 | # | Decision |
 | --- | --- |
@@ -20,3 +19,5 @@ projects and, where swift-mutants departs from them, why.
 | [0007](0007-the-shipped-configuration-gets-its-own-tier.md) | The shipped configuration gets its own tier, built from nothing |
 | [0008](0008-a-guard-wraps-an-expression-and-nothing-else.md) | A guard wraps an expression, and a declaration needs a statement in front of it |
 | [0009](0009-there-is-no-benchmark-gate.md) | There is no benchmark gate: a wall clock is not a property of the program |
+
+[Measure package mutations through a library](expose-source-mutations-through-a-library.md) defines the public measurement API and replaces the helper, validation, caching, and Xcode execution paths described in the historical records.

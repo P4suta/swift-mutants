@@ -5,24 +5,19 @@ public import SwiftMutantsCore
 
 /// Proves that the mutants a run is about to measure are actually there.
 ///
-/// This exists because of a specific failure. Muter kept its mutation sites in a dictionary
-/// keyed on syntax-node identity and then re-parsed each file before splicing them in; the
-/// re-parsed nodes carried new identities, not one key matched, and **zero** mutants were
-/// inserted. Nothing crashed. The build was clean, the run completed, and roughly four
-/// hundred previously-killed mutants were reported as newly surviving
-/// (muter-mutation-testing/muter#307).
+/// This exists because of a specific failure.
+/// Muter kept its mutation sites in a dictionary keyed on syntax-node identity and then re-parsed each file before splicing them in; the re-parsed nodes carried new identities, not one key matched, and **zero** mutants were inserted.
+/// Nothing crashed.
+/// The build was clean, the run completed, and roughly four hundred previously-killed mutants were reported as newly surviving (muter-mutation-testing/muter#307).
 ///
-/// The lesson is not "be careful with identities". It is that a tool must not infer that
-/// its own instrumentation happened. So this asks, in two places:
+/// The lesson is not "be careful with identities".
+/// It is that a tool must not infer that its own instrumentation happened.
+/// So this asks, in two places:
 ///
-/// - ``inSource(_:)`` asks the instrumented text whether every mutant's marker is in it,
-///   exactly once. That is free, and it is precisely the check that would have caught #307.
-/// - ``missingTokens(_:inSymbols:)`` asks the built product whether each instrumented
-///   file's runtime reached it. A file that was spliced and then never compiled in is the
-///   other way to end up measuring a program with no mutants in it.
+/// ``inSource(_:)`` checks that every mutant's marker occurs exactly once in the instrumented text.
+/// ``missingTokens(_:inSymbols:)`` checks that each instrumented file's runtime reached the built product.
+/// Both checks prevent measuring unchanged code as though a mutation were active.
 ///
-/// A third layer - waking a sample of mutants and watching a probe record them - arrives
-/// with the probe runtime.
 public enum ActivationProof {
 
     /// A mutant that could not be found where it was supposed to be.
@@ -50,9 +45,7 @@ public enum ActivationProof {
 
     /// Proves every mutant is in the text it was spliced into, exactly once.
     ///
-    /// Exactly once rather than at least once: a marker that appears twice means two guards
-    /// share an index, so activating one would wake both and the run would attribute a kill
-    /// to whichever mutant it happened to be asking about.
+    /// Exactly once rather than at least once: a marker that appears twice means two guards share an index, so activating one would wake both and the run would attribute a kill to whichever mutant it happened to be asking about.
     public static func inSource(_ file: InstrumentedFile) -> Result {
         var absences: [Absence] = []
         for mutant in file.mutants {
@@ -71,11 +64,8 @@ public enum ActivationProof {
 
     /// Which instrumented files' runtimes did not reach the built product.
     ///
-    /// The per-file token survives compilation into the symbol table, so a `nm` of the
-    /// built binary answers "was this file compiled into what is about to be run". A file
-    /// that was spliced and then left out - excluded by a manifest, filtered by a build
-    /// setting, in a target the product does not contain - would otherwise produce mutants
-    /// that can never be woken and can therefore never be killed.
+    /// The per-file token survives compilation into the symbol table, so a `nm` of the built binary answers "was this file compiled into what is about to be run".
+    /// A file that was spliced and then left out - excluded by a manifest, filtered by a build setting, in a target the product does not contain - would otherwise produce mutants that can never be woken and can therefore never be killed.
     public static func missingTokens(
         _ tokens: some Sequence<String>,
         inSymbols symbols: String

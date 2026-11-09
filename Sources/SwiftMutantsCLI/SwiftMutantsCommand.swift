@@ -4,37 +4,30 @@
 public import ArgumentParser
 import SwiftMutantsCore
 
-/// The command tree.
-///
-/// With no arguments, help is printed. Mutation starts only with `run`, because a tool that
-/// began an hour of work because somebody typed its name would be a tool people type
-/// carefully.
+/// The list and run command tree.
 public struct SwiftMutantsCommand: AsyncParsableCommand {
-
-    /// The command tree, and the words that introduce it.
+    /// Command names, help, and version information.
     public static let configuration = CommandConfiguration(
         commandName: "swift-mutants",
-        abstract: "Mutation testing for Swift that is fast enough to leave switched on.",
-        discussion: """
-            swift-mutants instruments every compilable mutant once into a disposable copy of \
-            your package, then wakes one per test process through an environment variable. \
-            Your working tree is never written to.
-
-            `list` is the fast path: it reads your sources and says what it would do, \
-            without building anything. `explain` says everything known about one mutant \
-            from the last run, without running anything.
-            """,
+        abstract: "Measure how existing Swift package tests detect source mutations.",
         version: Version.current,
-        subcommands: [
-            RunCommand.self, ListCommand.self, ExplainCommand.self, BrowseCommand.self,
-            ApplyCommand.self, WhySkippedCommand.self, ReportCommand.self, DoctorCommand.self,
-            CacheCommand.self,
-            InitCommand.self,
-            TraceCommand.self,
-        ],
-        defaultSubcommand: nil
+        subcommands: [ListCommand.self, RunCommand.self]
     )
 
-    /// Creates the top-level command. `ArgumentParser` calls this.
+    /// Creates the command for ArgumentParser.
     public init() {}
+}
+
+struct PackageArguments: ParsableArguments {
+    @Option(name: .customLong("package-path"), help: "Path to the SwiftPM package.")
+    var packagePath = "."
+
+    @Option(help: "Include a package-relative source glob; repeat to include more patterns.")
+    var include: [String] = []
+
+    @Option(help: "Exclude a package-relative source glob; repeat to exclude more patterns.")
+    var exclude: [String] = []
+
+    @Flag(help: "Write versioned JSON to stdout.")
+    var json = false
 }
