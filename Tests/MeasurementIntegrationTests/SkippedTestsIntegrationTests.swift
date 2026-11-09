@@ -24,6 +24,25 @@ struct SkippedTestsIntegrationTests {
         #expect(report.score != nil)
     }
 
+    @Test("a mixed suite keeps completion evidence for entirely skipped XCTest cases")
+    func skippedXCTest() async throws {
+        let tests =
+            PackageFixture.testing + """
+
+                import XCTest
+                final class SkippedTests: XCTestCase {
+                    func testSkipped() throws { throw XCTSkip("fixture") }
+                }
+                """
+        let package = try PackageFixture(tests: tests)
+        defer { try? package.remove() }
+        let report = try await MutationTesting.run(packageAt: package.root)
+        #expect(report.summary.killed > 0)
+        #expect(report.summary.survived > 0)
+        #expect(report.summary.errored == 0)
+        #expect(report.score != nil)
+    }
+
     @Test("changed test inventory explains an inconclusive assertion failure")
     func changedInventory() async throws {
         let tests = """

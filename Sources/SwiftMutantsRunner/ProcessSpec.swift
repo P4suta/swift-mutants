@@ -60,6 +60,9 @@ package struct ProcessOutcome: Sendable {
     package let startFailure: String?
     package let traceSequence: Int
     package var matchedOutput: Set<String> = []
+    package var standardErrorBytes = 0
+    package var matchedLines: Set<OutputLinePattern> = []
+    package var standardErrorWasCut: Bool { standardErrorBytes > standardError.count }
     package var standardOutputText: String { String(decoding: standardOutput, as: UTF8.self) }
     package var standardErrorText: String { String(decoding: standardError, as: UTF8.self) }
 }

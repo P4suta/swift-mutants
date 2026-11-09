@@ -22,7 +22,11 @@ package struct Runner: Sendable {
         self.outputLimit = outputLimit
     }
 
-    package func run(_ spec: ProcessSpec, matchingOutput: [String] = []) async -> ProcessOutcome {
+    package func run(
+        _ spec: ProcessSpec,
+        matchingOutput: [String] = [],
+        matchingLines: [OutputLinePattern] = []
+    ) async -> ProcessOutcome {
         let start = ContinuousClock.now
         let deadline = Deadline()
         let monitor = ProcessMonitor(timeout: spec.timeout) { deadline.markExceeded() }
@@ -40,7 +44,7 @@ package struct Runner: Sendable {
         )
         do {
             let collected = try await invoke(
-                configuration, monitor: monitor, matching: matchingOutput)
+                configuration, monitor: monitor, matching: matchingOutput, lines: matchingLines)
             let code: Int
             switch collected.terminationStatus {
             case .exited(let status): code = Int(status)
@@ -71,7 +75,8 @@ package struct Runner: Sendable {
     private func invoke(
         _ configuration: Configuration,
         monitor: ProcessMonitor,
-        matching: [String]
+        matching: [String],
+        lines: [OutputLinePattern]
     ) async throws -> ExecutionResult<Streams, SequenceOutput, SequenceOutput> {
         // Discover descendants before Swift Subprocess can tear down their parent.
         let task = Task {
@@ -82,7 +87,7 @@ package struct Runner: Sendable {
                 error: .sequence
             ) { execution in
                 monitor.start(root: execution.processIdentifier.value)
-                do { return try await collect(execution, matching: matching) } catch {
+                do { return try await collect(execution, matching: matching, lines: lines) } catch {
                     monitor.cancel()
                     throw error
                 }
@@ -97,11 +102,12 @@ package struct Runner: Sendable {
 
     private func collect(
         _ execution: Execution<NoInput, SequenceOutput, SequenceOutput>,
-        matching: [String]
+        matching: [String],
+        lines: [OutputLinePattern]
     ) async throws -> Streams {
         async let output = Self.drain(
-            execution.standardOutput, limit: outputLimit, matching: matching)
-        async let errors = Self.drain(execution.standardError, limit: outputLimit)
+            execution.standardOutput, limit: outputLimit, matching: matching, lines: lines)
+        async let errors = Self.drain(execution.standardError, limit: outputLimit, lines: lines)
         return Streams(output: try await output, errors: try await errors)
     }
 
@@ -145,16 +151,19 @@ package struct Runner: Sendable {
             standardError: streams.errors.retained,
             startFailure: failure,
             traceSequence: event.sequence,
-            matchedOutput: streams.output.matches
+            matchedOutput: streams.output.matches,
+            standardErrorBytes: streams.errors.total,
+            matchedLines: streams.output.lineMatches.union(streams.errors.lineMatches)
         )
     }
 
     private static func drain(
         _ stream: SubprocessOutputSequence,
         limit: Int,
-        matching: [String] = []
+        matching: [String] = [],
+        lines: [OutputLinePattern] = []
     ) async throws -> BoundedBytes {
-        var bytes = BoundedBytes(limit: limit, matching: matching)
+        var bytes = BoundedBytes(limit: limit, matching: matching, lines: lines)
         for try await chunk in stream {
             bytes.append(unsafe chunk.withUnsafeBytes { unsafe Array($0) })
         }
@@ -172,15 +181,19 @@ struct BoundedBytes: Sendable {
     private(set) var total = 0
     let limit: Int
     private var matcher: OutputMatcher
+    private var lineMatcher: OutputLines
     var matches: Set<String> { matcher.found }
+    var lineMatches: Set<OutputLinePattern> { lineMatcher.found }
 
-    init(limit: Int, matching: [String] = []) {
+    init(limit: Int, matching: [String] = [], lines: [OutputLinePattern] = []) {
         self.limit = limit
         matcher = OutputMatcher(matching)
+        lineMatcher = OutputLines(lines)
     }
 
     mutating func append(_ chunk: [UInt8]) {
         matcher.append(chunk)
+        lineMatcher.append(chunk)
         total += chunk.count
         retained.append(contentsOf: chunk.prefix(max(0, limit - retained.count)))
     }

@@ -80,6 +80,16 @@ struct ResultEvidenceTests {
         #expect(try Self.results(first).executed != Self.results(second).executed)
     }
 
+    @Test("XCTest transcript requirements include skipped XCTest records")
+    func frameworkRecords() {
+        let testing = TestIdentity(framework: "Fixture:testing", className: "Suite", name: "test")
+        let xctest = TestIdentity(framework: "Fixture:xctest", className: "Suite", name: "test")
+        #expect(!XUnitResults().hasXCTest)
+        #expect(!XUnitResults(executed: [testing: 1]).hasXCTest)
+        #expect(XUnitResults(executed: [xctest: 1]).hasXCTest)
+        #expect(XUnitResults(executed: [testing: 1], skipped: [xctest: 1]).hasXCTest)
+    }
+
     private static func results(_ cases: String, attributes: String = "") throws -> XUnitResults {
         let document = "<testsuite \(attributes)>\(cases)</testsuite>"
         return try XUnitResults.parse(Data(document.utf8), framework: "fixture")

@@ -5,12 +5,7 @@ import Testing
 
 @testable import SwiftMutantsCore
 
-/// What a mutant is called, and why it keeps that name.
-///
-/// An identity decides which cached outcome applies to a mutant, whether an expectation
-/// somebody wrote down is still about this mutant, and which shard it lands in. So it has
-/// to depend on everything that makes the mutant what it is, and on nothing else —
-/// particularly not on where the tree happened to be sitting when it was computed.
+/// Mutation identities include source bytes, location, declaration, and rule.
 @Suite("Mutant identity")
 struct MutantIdentityTests {
 
@@ -23,15 +18,10 @@ struct MutantIdentityTests {
         source: String = "the whole file as it was read",
         original: String = "a + b",
         replacement: String = "a - b"
-    ) -> MutantIdentity.Inputs {
-        // A malformed fixture is a mistake in this file, not a property of the code
-        // under test, so it traps here rather than failing an assertion elsewhere.
-        guard let path = WorkspaceRelativePath(pathText),
-            let rule = RuleIdentifier(ruleText),
-            let span = SourceSpan(start: start, end: end)
-        else {
-            fatalError("malformed identity fixture")
-        }
+    ) throws -> MutantIdentity.Inputs {
+        let path = try #require(WorkspaceRelativePath(pathText))
+        let rule = try #require(RuleIdentifier(ruleText))
+        let span = try #require(SourceSpan(start: start, end: end))
         return MutantIdentity.Inputs(
             path: path,
             enclosingDeclaration: declaration,
@@ -44,27 +34,24 @@ struct MutantIdentityTests {
     }
 
     @Test("is the same for the same mutant")
-    func isDeterministic() {
-        let first = MutantIdentity(Self.inputs())
-        let second = MutantIdentity(Self.inputs())
+    func isDeterministic() throws {
+        let first = MutantIdentity(try Self.inputs())
+        let second = MutantIdentity(try Self.inputs())
         #expect(first == second)
     }
 
-    /// The one property the whole design turns on: the tree is read in one place and
-    /// mutated in a disposable copy somewhere else, so a mutant has several absolute paths
-    /// during a single run. The type system already refuses to hold one — this asserts the
-    /// consequence.
+    /// The one property the whole design turns on: the tree is read in one place and mutated in a disposable copy somewhere else, so a mutant has several absolute paths during a single run.
+    /// The type system already refuses to hold one — this asserts the consequence.
     @Test("does not depend on where the tree is")
-    func doesNotDependOnLocation() {
+    func doesNotDependOnLocation() throws {
         #expect(
-            MutantIdentity(Self.inputs(path: "./Sources/Codec/Header.swift"))
-                == MutantIdentity(Self.inputs(path: "Sources//Codec/Header.swift"))
+            MutantIdentity(try Self.inputs(path: "./Sources/Codec/Header.swift"))
+                == MutantIdentity(try Self.inputs(path: "Sources//Codec/Header.swift"))
         )
     }
 
-    /// Every input has to reach the digest. A field left out of the builder is the kind of
-    /// omission that produces two mutants sharing an identity, one silently adopting the
-    /// other's verdict.
+    /// Every input has to reach the digest.
+    /// A field left out of the builder is the kind of omission that produces two mutants sharing an identity, one silently adopting the other's verdict.
     @Test(
         "changes when any single input changes",
         arguments: [
@@ -72,29 +59,28 @@ struct MutantIdentityTests {
             "source digest", "original bytes", "replacement bytes",
         ]
     )
-    func everyInputParticipates(field: String) {
-        let baseline = MutantIdentity(Self.inputs())
+    func everyInputParticipates(field: String) throws {
+        let baseline = MutantIdentity(try Self.inputs())
         let altered: MutantIdentity.Inputs =
             switch field {
-            case "path": Self.inputs(path: "Sources/Codec/Other.swift")
-            case "declaration": Self.inputs(declaration: "s:4Demo6HeaderV6formatyACSSKFZ")
-            case "rule name": Self.inputs(rule: "sub-to-add@1")
-            case "rule version": Self.inputs(rule: "add-to-sub@2")
-            case "span start": Self.inputs(start: 513)
-            case "span end": Self.inputs(end: 518)
-            case "source digest": Self.inputs(source: "the file after an unrelated edit")
-            case "original bytes": Self.inputs(original: "a * b")
-            default: Self.inputs(replacement: "a / b")
+            case "path": try Self.inputs(path: "Sources/Codec/Other.swift")
+            case "declaration": try Self.inputs(declaration: "s:4Demo6HeaderV6formatyACSSKFZ")
+            case "rule name": try Self.inputs(rule: "sub-to-add@1")
+            case "rule version": try Self.inputs(rule: "add-to-sub@2")
+            case "span start": try Self.inputs(start: 513)
+            case "span end": try Self.inputs(end: 518)
+            case "source digest": try Self.inputs(source: "the file after an unrelated edit")
+            case "original bytes": try Self.inputs(original: "a * b")
+            default: try Self.inputs(replacement: "a / b")
             }
         #expect(MutantIdentity(altered) != baseline, "\(field) did not reach the digest")
     }
 
-    /// The field sequence is the identity scheme. It is recomputed here from the documented
-    /// order rather than compared against a constant, so that a change to the order fails
-    /// with a diff a reader can act on.
+    /// The field sequence is the identity scheme.
+    /// It is recomputed here from the documented order rather than compared against a constant, so that a change to the order fails with a diff a reader can act on.
     @Test("hashes the documented field sequence")
-    func matchesTheDocumentedFieldSequence() {
-        let inputs = Self.inputs()
+    func matchesTheDocumentedFieldSequence() throws {
+        let inputs = try Self.inputs()
         let expected =
             DigestBuilder()
             .adding(SwiftMutantsCore.identitySchemeVersion)
@@ -110,28 +96,25 @@ struct MutantIdentityTests {
         #expect(MutantIdentity(inputs).digest == expected)
     }
 
-    /// A regression vector. It has no meaning beyond "this build computes what the build
-    /// that recorded it computed" - which is exactly the thing that must not change by
-    /// accident, because every cached outcome and every recorded expectation in every
-    /// project depends on it.
+    /// The stored digest detects accidental changes to the identity scheme.
     @Test("matches its recorded vector")
-    func matchesRecordedVector() {
+    func matchesRecordedVector() throws {
         #expect(
-            MutantIdentity(Self.inputs()).rendered
+            MutantIdentity(try Self.inputs()).rendered
                 == "bb86a00138e3c63b7fe570c408202aa231cec5e07d8b66d62184ab6396bf741b"
         )
     }
 
     @Test("shows a short form that is a prefix of the full identity")
-    func shortForm() {
-        let identity = MutantIdentity(Self.inputs())
+    func shortForm() throws {
+        let identity = MutantIdentity(try Self.inputs())
         #expect(identity.rendered.hasPrefix(identity.shortForm))
         #expect(identity.shortForm.count == 20)
     }
 
     @Test("encodes as the full hexadecimal identity, never the short form")
     func codableRoundTrip() throws {
-        let identity = MutantIdentity(Self.inputs())
+        let identity = MutantIdentity(try Self.inputs())
         let json = try JSONTestSupport.canonicalJSON(of: ["id": identity])
         #expect(json == #"{"id":"\#(identity.rendered)"}"#)
         #expect(

@@ -23,3 +23,7 @@ Historical records describe the [SwiftPM testing helper](0003-tests-are-launched
 [Keep compatible instrumentation after a guard failure](retain-compatible-instrumentation.md) limits individual builds to candidates without usable guards.
 
 [Match activation tokens while draining symbols](match-activation-tokens-while-draining-symbols.md) checks large symbol tables with bounded diagnostic memory.
+
+[Check completion beyond retained diagnostics](check-completion-beyond-retained-diagnostics.md) keeps complete Swift Testing failures measurable while detecting late abnormal exits.
+
+[Validate shifts through span invariants](validate-shifts-through-span-invariants.md) rejects overflow through range validation and delegates strict ordering to tuple comparison.

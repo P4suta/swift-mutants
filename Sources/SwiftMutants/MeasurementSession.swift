@@ -93,7 +93,8 @@ struct MeasurementSession: Sendable {
         _ arguments: [String],
         kind: ProcessSpec.Kind,
         timeout: Duration,
-        activation: UInt32? = nil
+        activation: UInt32? = nil,
+        matchingLines: [OutputLinePattern] = []
     ) async throws -> ProcessOutcome {
         try Task.checkCancellation()
         var variables = environment
@@ -106,7 +107,8 @@ struct MeasurementSession: Sendable {
                 directory: snapshot.root.path,
                 environment: variables,
                 timeout: timeout
-            )
+            ),
+            matchingLines: matchingLines
         )
         try Task.checkCancellation()
         return result

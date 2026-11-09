@@ -18,6 +18,11 @@ struct XUnitResults: Sendable, Equatable {
     var failures = 0
     var errors = 0
 
+    var hasXCTest: Bool {
+        executed.keys.contains { $0.framework.hasSuffix(":xctest") }
+            || skipped.keys.contains { $0.framework.hasSuffix(":xctest") }
+    }
+
     static func parse(_ data: Data, framework: String) throws -> Self {
         guard let text = String(data: data, encoding: .utf8),
             !text.contains("<!DOCTYPE"), !text.contains("<!ENTITY")

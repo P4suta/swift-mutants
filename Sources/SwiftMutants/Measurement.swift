@@ -20,7 +20,8 @@ extension MeasurementSession {
             compileBudget: original.compileBudget,
             testBudget: options.timeout ?? max(.seconds(30), .milliseconds(maximum) * 5),
             suite: suite,
-            state: original.state
+            state: original.state,
+            verbose: original.observation.results.hasXCTest
         )
         let selected = Array(plan.selected.enumerated())
         let order =
@@ -165,7 +166,8 @@ extension MeasurementSession {
             progress(.stage(.baseline))
             let inactive = try await test(
                 products: suite.products,
-                budget: options.timeout ?? .seconds(300)
+                budget: options.timeout ?? .seconds(300),
+                verbose: original.observation.results.hasXCTest
             )
             try requireBaseline(inactive, matching: original.observation.results)
             try verifySnapshot(
@@ -187,7 +189,8 @@ extension MeasurementSession {
             let observation = try await test(
                 products: context.suite.products,
                 budget: context.testBudget,
-                activation: index
+                activation: index,
+                verbose: context.verbose
             )
             try verifySnapshot(expectedSources: context.suite.sources, state: context.state)
             return result(mutation, observation: observation, baseline: context.baseline)
@@ -226,7 +229,8 @@ extension MeasurementSession {
                 diagnostic: diagnostic(compiled)
             )
         }
-        let observation = try await test(products: products(), budget: context.testBudget)
+        let observation = try await test(
+            products: products(), budget: context.testBudget, verbose: context.verbose)
         try verifySnapshot(expectedSources: expected, state: context.state)
         return result(mutation, observation: observation, baseline: context.baseline)
     }
@@ -342,6 +346,7 @@ private struct MeasurementContext {
     let testBudget: Duration
     let suite: PreparedSuite
     let state: Snapshot
+    let verbose: Bool
 }
 
 private struct Instrumentation {

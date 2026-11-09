@@ -33,21 +33,31 @@ Run the proof command with the toolchain pinned in `Proofs/lean-toolchain`:
 mise run test:proof
 ```
 
-The command builds with warnings as errors and checks the eight theorems' axiom dependencies.
-It replays the model with `leanchecker --fresh` and compares committed CSV fixtures with model-generated values.
-The project theorems require no axioms.
+The command builds with warnings as errors and checks eleven theorems' axiom dependencies.
+It replays each model with `leanchecker --fresh` and compares committed CSV fixtures with model-generated values.
+The eight measurement theorems require no axioms.
+The three range theorems depend on Lean's standard `propext` axiom.
 Swift tests pass all 24 verdict input classes through the production observation adapter and compare every reason and public outcome with the shared fixture.
 All 32 score presence classes and 1,024 count vectors check the public report.
+The range model proves that valid nonnegative offsets can't underflow when adding a signed distance.
+It proves that overflow addition followed by span validation agrees with the mathematical shift specification.
+Swift checks 189 signed-boundary shifts with the shared fixture and an independent `Int128` oracle.
+Independent byte and boundary sets check interval operations and strict-order laws over 45 spans.
 The tests require complete class coverage and reject duplicate fixture rows.
 CI requires both the Swift checks and the proof job.
 
-The model doesn't prove the Swift compiler, Foundation XML parsing, process supervision, or floating-point division.
+The range model uses Swift's signed overflow addition semantics.
+The models don't prove the Swift compiler, Foundation XML parsing, process supervision, or floating-point division.
 Correspondence tests check the finite policy boundary.
 Generated XML tests cover 1,024 documents with independent expected identities and counts.
 Real package tests cover the framework output dialects and operating system behavior.
 A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.
 Streaming matcher tests cover every token split, overlapping tokens, invalid UTF-8, and output beyond the diagnostic limit.
 Activation checks still require successful symbol-tool completion.
+Complete Swift Testing XML can remain trustworthy after diagnostic truncation.
+Streaming line checks detect abnormal exits beyond retained output.
+XCTest still requires complete completion records, including skipped tests.
+Real packages check 2MiB diagnostic output and a crash after test completion.
 A malformed fixture must fail the proof command even when Lake reuses build artifacts.
 
 ## Focused self-mutation
@@ -72,3 +82,5 @@ Inspect survivors, execution errors, and timeouts as distinct outcomes.
 Add behavior tests for missing invariants, then rerun affected identities with `--mutant`.
 Changes to production source require rediscovery because identities include the source digest.
 Build events check normal two-build reuse and individual fallback without timing thresholds.
+Test fixture constructors use `#require` so a broken production invariant records a failure without trapping the test process.
+Production crashes remain execution errors and leave the score absent.

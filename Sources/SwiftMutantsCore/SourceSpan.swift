@@ -69,7 +69,7 @@ public struct SourceSpan: Sendable, Hashable, Comparable, Codable {
     /// The interval forest wants enclosing spans before the spans they contain and sorts with its own comparator.
     /// This ordering is the unsurprising one, so that `sorted()` anywhere else means what a reader expects.
     public static func < (lhs: Self, rhs: Self) -> Bool {
-        lhs.start == rhs.start ? lhs.end < rhs.end : lhs.start < rhs.start
+        (lhs.start, lhs.end) < (rhs.start, rhs.end)
     }
 }
 
@@ -102,16 +102,8 @@ extension SourceSpan {
 
 extension SourceSpan {
 
-    /// The same span, moved along by `distance` bytes, or `nil` if that leaves the file.
-    ///
-    /// Instrumentation builds its output by concatenation, so a span recorded relative to one piece has to be rebased as that piece is wrapped in the next.
-    /// Doing the arithmetic here rather than at each call site is what keeps the wrapping readable.
-    ///
-    /// Negative or overflowing offsets return `nil`.
+    /// Moves both offsets, rejecting negative or overflowing results.
     public func shifted(by distance: Int) -> SourceSpan? {
-        let (shiftedStart, startOverflow) = start.addingReportingOverflow(distance)
-        let (shiftedEnd, endOverflow) = end.addingReportingOverflow(distance)
-        guard !startOverflow, !endOverflow else { return nil }
-        return SourceSpan(start: shiftedStart, end: shiftedEnd)
+        SourceSpan(start: start &+ distance, end: end &+ distance)
     }
 }

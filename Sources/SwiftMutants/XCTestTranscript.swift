@@ -11,7 +11,8 @@ enum XCTestTranscript {
     static func reconcile(_ results: inout XUnitResults, output: String, framework: String) throws {
         var completions: [TestIdentity: [Completion]] = [:]
         for line in output.split(separator: "\n") {
-            guard let start = line.range(of: "Test Case '-["),
+            guard line.hasPrefix("Test Case '-["),
+                let start = line.range(of: "Test Case '-["),
                 let end = line[start.upperBound...].range(of: "]' ")
             else { continue }
             let title = line[start.upperBound..<end.lowerBound]

@@ -29,10 +29,19 @@ struct TestObservation: Sendable {
 }
 
 extension MeasurementSession {
+    private static let abnormalLines = [
+        OutputLinePattern(
+            prefix: "error: Process '", containing: "exited with unexpected signal code"),
+        OutputLinePattern(prefix: "error: Exited with signal"),
+        OutputLinePattern(prefix: "error: Test process exited with signal"),
+    ]
+    private static let xctestLine = OutputLinePattern(prefix: "Test Case '-[")
+
     func test(
         products: [TestProduct],
         budget: Duration,
-        activation: UInt32? = nil
+        activation: UInt32? = nil,
+        verbose: Bool = true
     ) async throws -> TestObservation {
         let started = ContinuousClock.now
         let deadline = started + budget
@@ -40,7 +49,8 @@ extension MeasurementSession {
         for product in products {
             let remaining = deadline - ContinuousClock.now
             guard remaining > .zero else { observation.timedOut = true; break }
-            let trial = try await execute(product, timeout: remaining, activation: activation)
+            let trial = try await execute(
+                product, timeout: remaining, activation: activation, verbose: verbose)
             observation.results.merge(trial.results)
             if trial.timedOut || trial.diagnostic != nil {
                 observation.timedOut = trial.timedOut
@@ -58,26 +68,28 @@ extension MeasurementSession {
     private func execute(
         _ product: TestProduct,
         timeout: Duration,
-        activation: UInt32?
+        activation: UInt32?,
+        verbose: Bool
     ) async throws -> TestObservation {
         let file = temporary.appending(path: "results-\(UUID().uuidString).xml")
         let arguments =
             [
-                "test", "--skip-build", "--verbose", "--parallel", "--num-workers", "1",
+                "test", "--skip-build", "--parallel", "--num-workers", "1",
                 "--test-product", product.name, "--xunit-output", file.path,
-            ] + options.filter.flatMap { ["--filter", $0] }
+            ] + (verbose ? ["--verbose"] : []) + options.filter.flatMap { ["--filter", $0] }
             + options.skip.flatMap { ["--skip", $0] }
         let result = try await command(
             arguments,
             kind: activation == nil ? .baseline : .mutant,
             timeout: timeout,
-            activation: activation
+            activation: activation,
+            matchingLines: Self.abnormalLines + [Self.xctestLine]
         )
         if result.timedOut {
             return TestObservation(timedOut: true, diagnostic: diagnostic(result))
         }
         guard result.startFailure == nil, result.exitCode == 0 || result.exitCode == 1,
-            !Self.abnormalTestExit(result)
+            !Self.abnormalLines.contains(where: result.matchedLines.contains)
         else { return TestObservation(diagnostic: diagnostic(result)) }
         do {
             return TestObservation(
@@ -103,6 +115,12 @@ extension MeasurementSession {
             Data(contentsOf: file),
             framework: "\(product.name):xctest"
         )
+        let hasXCTest =
+            !parsed.executed.isEmpty || !parsed.skipped.isEmpty
+            || process.matchedLines.contains(Self.xctestLine)
+        let truncatedTranscript =
+            hasXCTest
+            && (process.standardOutputWasCut || process.standardErrorWasCut)
         try XCTestTranscript.reconcile(
             &parsed,
             output: process.standardOutputText + "\n" + process.standardErrorText,
@@ -114,24 +132,11 @@ extension MeasurementSession {
                 framework: "\(product.name):testing"
             )
         )
-        guard parsed.errors == 0,
+        guard !truncatedTranscript, parsed.errors == 0,
             (process.exitCode == 0 && parsed.failures == 0)
-                || (process.exitCode == 1 && parsed.failures > 0 && !process.standardOutputWasCut
-                    && process.standardError.count < runner.outputLimit)
+                || (process.exitCode == 1 && parsed.failures > 0)
         else { throw XUnitError.invalidDocument }
         return parsed
-    }
-
-    private static func abnormalTestExit(_ result: ProcessOutcome) -> Bool {
-        let output = result.standardOutputText + "\n" + result.standardErrorText
-        return output.split(whereSeparator: \.isNewline).contains { raw in
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            return
-                (line.hasPrefix("error: Process '")
-                && line.contains("exited with unexpected signal code"))
-                || line.hasPrefix("error: Exited with signal")
-                || line.hasPrefix("error: Test process exited with signal")
-        }
     }
 
     func requireBaseline(
