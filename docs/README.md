@@ -175,6 +175,16 @@ Move source patterns from TOML to `--include` and `--exclude`, test selection to
 Remove the configuration file after migration.
 Measurement preserves existing report files.
 
+### CLI command migration
+
+The previous CLI exposed configuration, cache, and history commands.
+
+![CLI help with configuration, cache, history, and measurement commands.](assets/cli-configuration-and-history-help.png)
+
+The library CLI exposes listing and measurement through the public API.
+
+![CLI help with the list and run commands.](assets/cli-list-and-run-help.png)
+
 ## Development
 
 Run `mise run check` for static checks and unit tests.
