@@ -33,6 +33,7 @@ Run the proof command with the toolchain pinned in `Proofs/lean-toolchain`:
 mise run test:proof
 ```
 
+The committed Lake manifest lets CI configure the proof package with its recorded dependency state.
 The command builds with warnings as errors and checks eleven theorems' axiom dependencies.
 It replays each model with `leanchecker --fresh` and compares committed CSV fixtures with model-generated values.
 The eight measurement theorems require no axioms.
