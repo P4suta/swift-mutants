@@ -123,7 +123,10 @@ struct TestInvocationContractTests {
         defer { try? fixture.clean() }
         let observation = try await fixture.session.test(
             products: [fixture.product()], budget: .seconds(5))
-        #expect(observation.diagnostic != nil)
+        let explainsExit =
+            observation.diagnostic?.hasPrefix(
+                "SwiftPM reported an abnormal test process exit.") == true
+        #expect(explainsExit)
         #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
     }
 

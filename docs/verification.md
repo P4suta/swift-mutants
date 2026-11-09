@@ -56,6 +56,7 @@ Streaming matcher tests cover every token split, overlapping tokens, invalid UTF
 Activation checks still require successful symbol-tool completion.
 Complete Swift Testing XML can remain trustworthy after diagnostic truncation.
 Streaming line checks detect abnormal exits beyond retained output.
+Diagnostics identify abnormal test exits even when the original message follows the retained prefix.
 XCTest still requires complete completion records, including skipped tests.
 Real packages check 2MiB diagnostic output and a crash after test completion.
 A malformed fixture must fail the proof command even when Lake reuses build artifacts.

@@ -88,9 +88,13 @@ extension MeasurementSession {
         if result.timedOut {
             return TestObservation(timedOut: true, diagnostic: diagnostic(result))
         }
-        guard result.startFailure == nil, result.exitCode == 0 || result.exitCode == 1,
-            !Self.abnormalLines.contains(where: result.matchedLines.contains)
+        guard result.startFailure == nil, result.exitCode == 0 || result.exitCode == 1
         else { return TestObservation(diagnostic: diagnostic(result)) }
+        guard !Self.abnormalLines.contains(where: result.matchedLines.contains) else {
+            return TestObservation(
+                diagnostic:
+                    "SwiftPM reported an abnormal test process exit.\n\(diagnostic(result))")
+        }
         do {
             return TestObservation(
                 results: try readResults(file: file, product: product, process: result)

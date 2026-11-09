@@ -16,6 +16,7 @@ Return `nil` for source-range shifts that overflow integer offsets.
 Find activation tokens beyond retained symbol diagnostics while keeping output memory bounded.
 Distinguish SwiftPM abnormal-exit diagnostics from quoted text in verbose test arguments.
 Keep complete Swift Testing failures measurable beyond diagnostic retention while detecting late crashes.
+Identify abnormal test exits before retained diagnostic text.
 Ignore quoted XCTest completion text and preserve completion evidence for skipped XCTest cases.
 
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.

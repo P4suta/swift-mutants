@@ -35,6 +35,10 @@ struct LargeOutputIntegrationTests {
         let report = try await MutationTesting.run(packageAt: package.root)
         #expect(report.results.map(\.outcome) == [.errored])
         #expect(report.score == nil)
+        let explainsExit =
+            report.results.first?.diagnostic?.hasPrefix(
+                "SwiftPM reported an abnormal test process exit.") == true
+        #expect(explainsExit)
         #expect(FileManager.default.fileExists(atPath: marker.path))
     }
 
