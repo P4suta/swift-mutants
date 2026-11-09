@@ -5,17 +5,7 @@ import Foundation
 import SwiftMutantsTestKit
 import Testing
 
-/// What this repository offers to a package that depends on it.
-///
-/// A tool nobody outside this repository can start is not a tool. `swift-mutants` was an
-/// `executableTarget` and not a product for long enough that somebody trying to wire it
-/// into their own gate could not: `swift run --package-path ../swift-mutants swift-mutants`
-/// finds no such product, a dependency cannot reach it, and `swift build --product` has no
-/// name to accept. They left the gate out of their repository rather than write a task that
-/// quietly does nothing, which is the right call and a bad outcome.
-///
-/// Read out of the manifest rather than by building, because this tier runs in seconds and
-/// the question is what the manifest declares. The release gate builds it for real.
+/// Keeps executable products available to dependent packages.
 @Suite("What this package offers")
 struct ProductGateTests {
 
@@ -33,26 +23,19 @@ struct ProductGateTests {
         )
     }
 
-    /// Every executable target is either a product or deliberately not one. The scripted
-    /// toolchain is the second: it exists to be put on a test's `PATH` under the names
-    /// `swift` and `xcodebuild`, and nobody should be depending on it.
-    @Test("declares every executable target as a product, or means not to")
+    @Test("declares every executable target as a product")
     func everyExecutableIsAccountedFor() throws {
         let manifest = try Self.manifest()
         let declared = manifest.matches(of: /\.executableTarget\(\s*\n\s*name: "([^"]+)"/)
             .map { String($0.1) }
         let offered = manifest.matches(of: /\.executable\(name: "([^"]+)"/).map { String($0.1) }
-        let deliberatelyInternal = ["swift-mutants-fake-toolchain"]
-
         let unaccounted = Set(declared)
             .subtracting(offered)
-            .subtracting(deliberatelyInternal)
             .sorted()
         #expect(
             unaccounted.isEmpty,
             """
-            These executable targets are neither products nor written down as internal, so \
-            nobody outside this repository can run them and nobody here decided that: \
+            These executable targets have no product that another package can run: \
             \(unaccounted.joined(separator: ", "))
             """
         )

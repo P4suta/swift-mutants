@@ -11,10 +11,8 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## User and compatibility impact
 
-<!-- Note CLI, configuration, report-schema, stable-ID or migration implications.
-     A rule's name and version participate in mutant identity: changing what a
-     rule emits changes every ID it mints, and invalidates cached answers rather
-     than inheriting verdicts about different bytes. -->
+<!-- Note API, CLI, report-schema, mutation-ID, or migration implications.
+Mutation identities bind the rule version to the edit and source bytes. -->
 
 ## Validation
 

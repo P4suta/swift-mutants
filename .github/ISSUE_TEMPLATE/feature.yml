@@ -12,11 +12,10 @@ body:
   - type: markdown
     attributes:
       value: >-
-        Describe the user problem first. Deliberately outside the current scope:
-        mutating code a macro expanded, `#if` configurations other than the host's,
-        higher-order mutants, and measuring a swift-mutants run from inside one.
-        The Xcode path has its parts and not its wiring - see ADR 0006 for what is
-        measured and what remains.
+        Describe the user problem first.
+        Measurement supports macOS SwiftPM packages.
+        Xcode projects, Simulator, UI tests, and external local dependencies
+        or fixtures are outside the current scope.
   - type: textarea
     id: problem
     attributes:
@@ -45,8 +44,8 @@ body:
     attributes:
       label: Compatibility considerations
       description: >-
-        Effects on the CLI, configuration, the report schema, or stable mutant
-        IDs. A rule's name and version participate in mutant identity.
+        Effects on the public API, CLI options, report schema, or mutation IDs.
+        A rule's name and version participate in mutation identity.
   - type: textarea
     id: alternatives
     attributes:

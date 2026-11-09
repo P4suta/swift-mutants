@@ -36,7 +36,6 @@ body:
       label: Environment
       description: >-
         Include macOS version, architecture, and what `swift --version` says.
-        `swift-mutants doctor --json` answers all of this at once.
       placeholder: macOS 26.6 arm64; Swift 6.4
     validations:
       required: true
@@ -63,18 +62,16 @@ body:
   - type: textarea
     id: wallclock
     attributes:
-      label: If something hung or timed out, what processor time did it use?
+      label: If something hung or timed out, what deadline was used?
       description: >-
-        `ps -o time` on the stuck process, or the `cpuMilliseconds` of the
-        mutant in the report. A process that waited and a process that would not
-        terminate look identical on the clock and differ entirely here, and it
-        is the first thing this project will ask.
-      placeholder: "real 513s, user 0.24s, sys 0.20s"
+        Include the CLI `--timeout` value or library `RunOptions.timeout`,
+        elapsed wall time, and whether the operation was a build, baseline, or mutant.
+      placeholder: "Default timeout; mutant; elapsed 30 seconds"
   - type: textarea
     id: diagnostics
     attributes:
       label: Sanitized diagnostics
       description: >-
-        `SWM` codes, the run's `error.txt`, or `swift-mutants trace summary` -
-        after removing private data.
+        Include stderr or the library error's stage and diagnostic.
+        Remove private data before submitting.
       render: text

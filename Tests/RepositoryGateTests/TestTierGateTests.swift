@@ -5,19 +5,7 @@ import Foundation
 import SwiftMutantsTestKit
 import Testing
 
-/// Keeps the test tiers from blurring into each other.
-///
-/// The inner loop is only an inner loop while it stays in seconds, and it stays in seconds
-/// only while nothing in it starts `swift` or `xcodebuild`. A tier that a task selects by
-/// listing target names goes stale the moment somebody adds a target, and it goes stale
-/// silently - in the direction that either skips a suite or slows the loop to a crawl.
-/// So the tier is carried by the target's own name and asserted here.
-///
-/// | Suffix               | Tier        | Needs                                  |
-/// | -------------------- | ----------- | -------------------------------------- |
-/// | `Tests`              | unit        | nothing: pure code and fake toolchains |
-/// | `IntegrationTests`   | integration | a real Swift toolchain                 |
-/// | `ToolchainTests`     | toolchain   | Xcode, a simulator                     |
+/// Keeps target names and toolchain use aligned with the test tiers.
 @Suite("Test tier gate")
 struct TestTierGateTests {
 
@@ -39,21 +27,9 @@ struct TestTierGateTests {
         )
     }
 
-    /// The one way a test is allowed to reach a real toolchain.
-    ///
-    /// What makes the inner loop slow is `swift` and `xcodebuild`, not processes: a unit
-    /// test that runs `/bin/sh` costs a millisecond, and the process runner needs to start
-    /// something in order to be tested at all. So the capability is centralised in
-    /// `ToolchainGate`, and the rule is that the unit tier may not name it.
-    ///
-    /// Two earlier versions of this rule were worse. Looking for `"swift build"` as text
-    /// reported a console test whose *fixture* was a recorded argument vector - mentioning
-    /// a command is not running one. Looking for every execution primitive would have
-    /// banned the runner's own tests from the tier they belong in.
+    /// Unit tests may use processes but must not launch the Swift toolchain.
     static let toolchainReaches = ["ToolchainGate"]
 
-    /// A unit-tier target that shells out to the toolchain would pass this gate's name
-    /// check and then quietly cost the inner loop a build. The source is checked too.
     @Test("no unit-tier target reaches for a toolchain")
     func unitTierIsToolchainFree() throws {
         let unitTargets = try Self.testTargetNames()
@@ -76,22 +52,16 @@ struct TestTierGateTests {
             offences.isEmpty,
             """
             The unit tier must not start a toolchain. Move the test into a target whose \
-            name ends in `IntegrationTests`, or drive a fake toolchain instead.
+            name ends in `IntegrationTests`, or use process fixtures instead.
             \(offences.sorted().joined(separator: "\n"))
             """
         )
     }
 
-    /// The targets that are test support despite living under `Sources/`.
-    ///
-    /// `SwiftMutantsTestKit` is there because a `.testTarget` cannot be the dependency of
-    /// another one. `swift-mutants-fake-toolchain` is there because the only honest way to
-    /// script a toolchain is to *be* one, which means being a process, which means being a
-    /// product. Neither ships.
-    static let testSupportTargets = ["SwiftMutantsTestKit", "swift-mutants-fake-toolchain"]
+    /// A `.testTarget` cannot depend on another test target.
+    static let testSupportTargets = ["SwiftMutantsTestKit"]
 
-    /// Whether a file belongs to a target that is test support despite living under
-    /// `Sources/`.
+    /// Whether a file belongs to a target that is test support despite living under `Sources/`.
     static func isTestSupport(_ file: URL) -> Bool {
         let path = RepositoryGate.repositoryRelativePath(file)
         return testSupportTargets.contains { path.hasPrefix("Sources/\($0)/") }
