@@ -106,7 +106,7 @@ let package = Package(
             name: "SwiftMutantsTests",
             dependencies: [
                 "SwiftMutants", "SwiftMutantsCore", "SwiftMutantsDiscover",
-                "SwiftMutantsInstrument", "SwiftMutantsSnapshot",
+                "SwiftMutantsInstrument", "SwiftMutantsSnapshot", "SwiftMutantsTrace",
             ],
             swiftSettings: strict
         ),

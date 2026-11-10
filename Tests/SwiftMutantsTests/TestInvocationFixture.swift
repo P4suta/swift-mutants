@@ -2,12 +2,21 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsTrace
 
 @testable import SwiftMutants
 
 struct TestInvocationFixture {
     let root: URL
     let session: MeasurementSession
+    let recorder = TraceRecorder()
+
+    var executionLabels: [String] {
+        recorder.retainedEvents().compactMap { event in
+            guard case .exec(let execution) = event.kind else { return nil }
+            return execution.label
+        }
+    }
 
     static let empty = "<testsuites tests='0'/>"
     static let outputLimit = 4_096
@@ -56,7 +65,8 @@ struct TestInvocationFixture {
             options: options,
             progress: { _ in },
             executable: executable.path,
-            outputLimit: Self.outputLimit)
+            outputLimit: Self.outputLimit,
+            recorder: recorder)
     }
 
     func product(_ name: String = "Fixture") -> TestProduct {

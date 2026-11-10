@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
+import SwiftMutantsTrace
 import Testing
 
 @testable import SwiftMutants
@@ -21,6 +22,7 @@ struct TestInvocationContractTests {
         #expect(!observation.timedOut)
         #expect(observation.results.executed.count == 1)
         #expect(observation.results.failures == (failed ? 1 : 0))
+        #expect(fixture.executionLabels == ["baseline"])
         #expect(
             observation.verdict(comparedTo: observation.results) == (failed ? .killed : .survived))
     }
@@ -122,6 +124,7 @@ struct TestInvocationContractTests {
             products: [fixture.product()], budget: .zero)
         #expect(observation.timedOut)
         #expect(observation.results.executed.isEmpty)
+        #expect(fixture.recorder.totalRecorded() == 0)
         #expect(
             !FileManager.default.fileExists(atPath: fixture.root.appending(path: "arguments").path))
     }
@@ -156,6 +159,7 @@ struct TestInvocationContractTests {
         #expect(arguments.contains("swift\ntest\n--skip-build\n"))
         #expect(arguments.contains("--test-product\nFixture\n"))
         #expect(arguments.contains("--filter\nselected test\n--skip\nomitted test\n"))
+        #expect(fixture.executionLabels == ["mutant"])
     }
 
     @Test(

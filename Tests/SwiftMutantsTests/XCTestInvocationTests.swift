@@ -34,17 +34,25 @@ struct XCTestInvocationTests {
         #expect(arguments.split(separator: "\n").contains("--verbose"))
     }
 
-    @Test("completion records remain separate across unterminated output streams")
-    func outputStreams() async throws {
+    @Test(
+        "completion records remain separate across unterminated output streams",
+        arguments: [false, true])
+    func outputStreams(secondCompletion: Bool) async throws {
+        let names = secondCompletion ? ["test", "other"] : ["test"]
+        let cases = names.map { "<testcase classname='Suite' name='\($0)'/>" }.joined()
         let fixture = try TestInvocationFixture(
-            xctest: TestInvocationFixture.passing,
+            xctest: "<testsuite>\(cases)</testsuite>",
             output: "Test Case '-[Suite test]' passed (0.001 seconds).",
-            errors: "diagnostic without a line ending")
+            errors: secondCompletion
+                ? "Test Case '-[Suite other]' passed (0.001 seconds)."
+                : "diagnostic without a line ending")
         defer { try? fixture.clean() }
         let observation = try await fixture.session.test(
             products: [fixture.product()], budget: .seconds(5))
         #expect(observation.diagnostic == nil)
-        #expect(observation.results.executed.count == 2)
+        #expect(observation.results.executed.count == names.count + 1)
+        let actual = observation.results.executed.keys.filter { $0.framework == "Fixture:xctest" }
+        #expect(Set(actual.map(\.name)) == Set(names))
     }
 
     @Test("framework errors invalidate assertion failures", arguments: [0, 1])

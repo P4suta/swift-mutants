@@ -59,6 +59,8 @@ Fast decoding tests check byte preservation and reject malformed UTF-8 without i
 The shared line-break type follows [Swift's LF, CR, and CRLF grammar](https://github.com/swiftlang/swift-book/blob/main/TSPL.docc/ReferenceManual/LexicalStructure.md#whitespace-and-comments).
 Line indexing and instrumentation use the same type and preserve other Unicode separators in literals.
 A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.
+Recorded executions distinguish baseline from mutant commands and require no execution request after a suite budget expires.
+XCTest completion records remain separate across unterminated standard output and standard error.
 Streaming matcher tests cover every token split, overlapping tokens, invalid UTF-8, and output beyond the diagnostic limit.
 Streaming line matches agree with complete-line predicates across every split in the correspondence fixtures.
 An exhaustive bounded check compares 121 byte streams and 49 pattern combinations at every split.
