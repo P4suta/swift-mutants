@@ -195,6 +195,9 @@ struct TestInvocationContractTests {
         let valid = TestObservation(results: results)
         try fixture.session.requireBaseline(valid)
         try fixture.session.requireBaseline(valid, matching: results)
+        #expect(throws: MutationTestingError.self) {
+            try fixture.session.requireBaseline(TestObservation())
+        }
         let invalid = [
             TestObservation(results: XUnitResults(executed: [identity: 1], failures: 1)),
             TestObservation(results: XUnitResults(executed: [identity: 1], errors: 1)),

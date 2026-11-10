@@ -19,6 +19,7 @@ Keep complete Swift Testing failures measurable beyond diagnostic retention whil
 Identify abnormal test exits before retained diagnostic text.
 Pass subprocess environments through typed strings so extra bytes can't corrupt mutation activation.
 Ignore quoted XCTest completion text and preserve completion evidence for skipped XCTest cases.
+Reconcile explicit skipped XML cases with XCTest completion records and duplicate test identities.
 
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.
 The CLI uses the public library and offers `list` and `run`.

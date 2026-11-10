@@ -44,6 +44,14 @@ struct ResultEvidenceTests {
             TestObservation(results: baseline).verdict(comparedTo: baseline).outcome == .survived)
     }
 
+    @Test("changes confined to skipped records invalidate a verdict")
+    func skippedInventory() throws {
+        let baseline = try Self.results(Self.one + Self.skipped)
+        let changed = try Self.results(Self.one)
+        #expect(
+            TestObservation(results: changed).verdict(comparedTo: baseline) == .changedTests)
+    }
+
     @Test("supports both total and started test counts", arguments: [1, 2])
     func skippedCounts(tests: Int) throws {
         let parsed = try Self.results(
@@ -63,6 +71,24 @@ struct ResultEvidenceTests {
             "<testsuite><testcase name=\"one\"><wrapper><failure/></wrapper></testcase></testsuite>",
             "<testsuite><testcase name=\"one\"><failure><error/></failure></testcase></testsuite>",
             "<testsuite><testcase name=\"one\"><skipped/><skipped/></testcase></testsuite>",
+            "<testsuite tests='-1'/>",
+            "<testsuite failures='invalid'/>",
+            "<testsuite><testcase name=''/></testsuite>",
+            "<testsuite><testcase name='one'><skipped/><failure/></testcase></testsuite>",
+            "<testsuite><testcase name='one'><skipped/><error/></testcase></testsuite>",
+            "<testsuites><testsuites/></testsuites>",
+            "<properties><property name='root'/></properties>",
+            "<testsuite><testcase name='one'><testsuite/></testcase></testsuite>",
+            "<!DOCTYPE testsuite><testsuite/>",
+            """
+            <testsuite failures='2'><testcase name='failed'><failure/><failure/><failure/></testcase>
+            <testcase name='skipped'><skipped/></testcase></testsuite>
+            """,
+            """
+            <testsuite tests='1'><testcase name='failed'><failure/></testcase>
+            <testcase name='passed'/></testsuite>
+            """,
+            "<testsuite failures='1'><testcase name='error'><error/></testcase></testsuite>",
         ]
     )
     func malformedStructure(document: String) {
@@ -88,6 +114,13 @@ struct ResultEvidenceTests {
         #expect(!XUnitResults(executed: [testing: 1]).hasXCTest)
         #expect(XUnitResults(executed: [xctest: 1]).hasXCTest)
         #expect(XUnitResults(executed: [testing: 1], skipped: [xctest: 1]).hasXCTest)
+    }
+
+    @Test("metadata is permitted in suite and testcase records")
+    func metadata() throws {
+        let metadata = "<properties><property name='mode' value='fixture'/></properties>"
+        let result = try Self.results("<testcase name='one'>\(metadata)</testcase>" + metadata)
+        #expect(result.executed.values.reduce(0, +) == 1)
     }
 
     private static func results(_ cases: String, attributes: String = "") throws -> XUnitResults {

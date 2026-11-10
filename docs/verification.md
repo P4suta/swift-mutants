@@ -61,6 +61,8 @@ Complete Swift Testing XML can remain trustworthy after diagnostic truncation.
 Streaming line checks detect abnormal exits beyond retained output.
 Diagnostics identify abnormal test exits even when the original message follows the retained prefix.
 XCTest still requires complete completion records, including skipped tests.
+Generated completion tests cover 27 outcome sequences with repeated identities under both XML skip representations.
+Completion reconciliation rejects missing, extra, repeated, and contradictory records.
 Real packages check 2MiB diagnostic output and a crash after test completion.
 A malformed fixture must fail the proof command even when Lake reuses build artifacts.
 
@@ -75,7 +77,10 @@ swift build --product swift-mutants
   --include Sources/SwiftMutants/TestInvocation.swift \
   --include Sources/SwiftMutants/TestVerdict.swift \
   --include Sources/SwiftMutants/XUnitResults.swift \
+  --include Sources/SwiftMutants/XCTestTranscript.swift \
   --include Sources/SwiftMutantsCore/SourceSpan.swift \
+  --include Sources/SwiftMutantsRunner/OutputMatcher.swift \
+  --include Sources/SwiftMutantsRunner/OutputLines.swift \
   --skip RepositoryGateTests --skip IntegrationTests --json
 ```
 

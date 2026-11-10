@@ -35,18 +35,20 @@ enum XCTestTranscript {
             }
             completions[identity, default: []].append(completion)
         }
-        guard Set(completions.keys) == Set(results.executed.keys),
+        let counts = results.executed.merging(results.skipped, uniquingKeysWith: +)
+        guard Set(completions.keys) == Set(counts.keys),
             completions.values.flatMap({ $0 }).filter({ $0 == .failed }).count == results.failures
         else { throw XUnitError.invalidDocument }
-        for (identity, count) in results.executed {
+        for (identity, count) in counts {
             guard let finished = completions[identity], finished.count == count else {
                 throw XUnitError.invalidDocument
             }
             let skipped = finished.filter { $0 == .skipped }.count
-            if skipped > 0 {
-                results.skipped[identity, default: 0] += skipped
-                results.executed[identity] = count == skipped ? nil : count - skipped
+            guard skipped >= results.skipped[identity, default: 0] else {
+                throw XUnitError.invalidDocument
             }
+            results.skipped[identity] = skipped == 0 ? nil : skipped
+            results.executed[identity] = count == skipped ? nil : count - skipped
         }
     }
 }

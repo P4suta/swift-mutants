@@ -8,6 +8,23 @@ import Testing
 
 @Suite("XML result properties")
 struct XUnitPropertyTests {
+    @Test("merging parsed results preserves duplicate identities and every outcome")
+    func mergedSuites() throws {
+        let cases = (0..<4).map {
+            Case(
+                identity: TestIdentity(framework: "property", className: "Suite", name: "test"),
+                status: $0,
+                issues: 2)
+        }
+        var merged = XUnitResults()
+        for item in cases + cases {
+            let document = Self.document([item], startedCount: false, issueCount: false)
+            merged.merge(try XUnitResults.parse(Data(document.utf8), framework: "property"))
+        }
+        let document = Self.document(cases + cases, startedCount: false, issueCount: false)
+        #expect(merged == (try XUnitResults.parse(Data(document.utf8), framework: "property")))
+    }
+
     @Test("nested suite counts preserve every case and outcome")
     func generatedSuites() throws {
         for seed in 0..<256 {
@@ -77,8 +94,8 @@ struct XUnitPropertyTests {
         startedCount: Bool,
         issueCount: Bool
     ) -> String {
-        let left = Array(cases.prefix(2))
-        let right = Array(cases.suffix(2))
+        let left = Array(cases.prefix(cases.count / 2))
+        let right = Array(cases.dropFirst(cases.count / 2))
         let metadata = """
             <properties><property name="fixture" value="counts"/></properties>
             <system-out><![CDATA[<testcase name="not-a-test"><failure/></testcase>]]></system-out>
