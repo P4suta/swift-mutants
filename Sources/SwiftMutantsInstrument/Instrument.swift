@@ -4,40 +4,14 @@
 import SwiftMutantsCore
 public import SwiftMutantsDiscover
 
-/// Puts every mutant of a file into that file at once, each behind a runtime guard.
-///
-/// This is the reason the tool is usable. Swift builds are slow, and a run that rebuilt
-/// once per mutant would be an overnight job on a package of any size - Muter's open issues
-/// about memory exhaustion and hour-long runs are what that looks like in practice. Here
-/// the toolchain builds once and one environment variable decides which mutant is awake.
-///
-/// Three properties are load-bearing and each is held by a test.
-///
-/// **The line count does not change.** Every guard is an expression, the original side of
-/// it keeps its bytes verbatim, and the mutated side is flattened onto one line. A coverage
-/// profile taken from the instrumented build can therefore be read against the file the
-/// user wrote, line for line.
-///
-/// **Only one mutant is ever awake**, so the mutated side of an outer guard carries the
-/// pristine inner expression rather than a copy of the inner guard. That keeps the file
-/// growing with the size of the rewritten expressions rather than with the number of
-/// mutants times the size of the file.
-///
-/// **Every mutant leaves a marker.** A mutant whose marker cannot be found in the built
-/// binary was never spliced in, and a run that assumed otherwise is what produced four
-/// hundred false regressions in Muter.
+/// Instruments source mutations behind runtime activation indices.
+/// Preserves original source line breaks and keeps mutated alternatives on one line.
+/// Nested mutated alternatives contain pristine inner expressions.
 public enum Instrument {
 
-    /// Instruments one file from what discovery found in it.
-    /// `base` is the number this file's first mutant takes, and
-    /// ``InstrumentedFile/nextIndex`` is where the file after it starts.
-    ///
-    /// Numbering runs through a whole run rather than restarting per file, because every
-    /// instrumented file reads the same `SWIFT_MUTANTS_ACTIVE`. Numbering each from zero
-    /// meant one value woke the same index in all of them: measured on this repository,
-    /// fifty-nine files, so asking for mutant 3 woke up to fifty-nine at once - and what a
-    /// run learned from wrecking a program fifty-nine ways it reported as a fact about
-    /// one of them.
+    /// Instruments a file using discovery computed from the same source.
+    /// Continue `startingAt` from the previous file's ``InstrumentedFile/nextIndex``.
+    /// Throws `InstrumentError` for overlapping sites or missing rendered placements.
     public static func file(
         _ source: String,
         discovery: FileDiscovery,
@@ -51,8 +25,6 @@ public enum Instrument {
         let bytes = Array(source.utf8)
         let token = Runtime.token(for: discovery.path, digest: discovery.sourceDigest)
 
-        // Grouped by the expression a guard would wrap: several rules at one expression are
-        // alternatives at one site, not sites of their own.
         var sites: [SourceSpan: [Candidate]] = [:]
         for candidate in discovery.candidates {
             sites[candidate.guardSpan, default: []].append(candidate)
@@ -60,10 +32,6 @@ public enum Instrument {
 
         let arranged = sites.keys.sorted().map { (span: $0, value: sites[$0] ?? []) }
         guard let forest = IntervalForest(arranged) else {
-            // Named, both of them. "Somewhere in this file" leaves a reader grepping a
-            // catalogue for a filename - which is what somebody did, and it worked only
-            // because they already suspected their own rows. Two spans is two lines to go
-            // and look at.
             let conflict = IntervalForest<[Candidate]>.conflict(in: arranged)
             throw InstrumentError(
                 """
@@ -138,14 +106,8 @@ public enum Instrument {
         return Rendered(text: rewritten, placements: placements, sites: guards)
     }
 
-    /// Tells every numbered mutant where it landed.
-    ///
-    /// A mutant that was numbered but never rendered is an instrumenter defect, and the
-    /// one thing it must not do is travel onward: attribution would then have a mutant
-    /// with no place in the file, and the compiler diagnostic that belongs to it would be
-    /// reported as an error in the original program instead. Muter's four hundred false
-    /// regressions began as exactly this - a mutant in the catalogue that was not in the
-    /// file - so it is raised here rather than carried.
+    /// Binds every numbered mutation to its rendered span and guard site.
+    /// Rejects missing placements before returning an instrumented file.
     private static func place(
         _ mutants: [Numbered],
         at placements: [UInt32: SourceSpan],
@@ -186,20 +148,11 @@ public enum Instrument {
     private struct Numbering {
         var mutants: [Numbered] = []
 
-        /// The indices one site's candidates were given, in the order the site lists them.
-        ///
-        /// Keyed by site rather than by edit, and a list rather than a single index,
-        /// because two candidates at one site can edit the same bytes: `a && b` becoming
-        /// `a` and becoming `b` both replace the whole expression. Keying by the edit
-        /// collapsed them onto one number, and the second was numbered but never rendered.
+        /// Multiple replacements at one site receive distinct activation indices.
         var indices: [SourceSpan: [UInt32]] = [:]
     }
 
-    /// A mutant that has an index but does not yet know where it landed.
-    ///
-    /// It exists so that ``InstrumentedMutant`` cannot: a mutant in an instrumented file
-    /// always knows its place in that file, which is what attribution rests on. Numbering
-    /// runs before rendering, so this is the shape of the thing in between.
+    /// A mutation with an activation index but no rendered location.
     private struct Numbered {
         let identity: MutantIdentity
         let index: UInt32
@@ -210,11 +163,7 @@ public enum Instrument {
         let replacement: String
     }
 
-    /// Gives every mutant a number, innermost site first.
-    ///
-    /// Contiguous because a guard is an equality test against one integer, and continued
-    /// across files because the environment variable the runtime reads is one value for
-    /// the whole process.
+    /// Assigns consecutive indices, innermost site first.
     private static func number(
         _ forest: IntervalForest<[Candidate]>,
         token: String,
@@ -245,25 +194,7 @@ public enum Instrument {
         return numbering
     }
 
-    /// The site's bytes with one candidate's edit applied, flattened onto one line.
-    ///
-    /// Flattened because the original side of the guard keeps every newline the file had,
-    /// so a mutated copy that kept its own would add them - and every line number in an
-    /// instrumented file has to equal the original's, or the coverage a run reads back
-    /// afterwards is about different lines than the ones it measured.
-    ///
-    /// Line comments come out on the way. A comment runs to the end of its line, so joining
-    /// the lines would put the rest of the guard - the closing parenthesis included - inside
-    /// it. Taking it out costs nothing: a comment has no meaning to a compiler, and the
-    /// original copy beside it keeps every byte the file had, so a person reading the tree
-    /// or running `apply` still sees their own comment.
-    ///
-    /// This was a refusal, and the refusal stopped the run: one site, one file, after the
-    /// whole instrument-and-validate pass had already been paid for. Measured on a package
-    /// with 87 commented expressions across 32 files - four runs, four stops, one site each.
-    /// It could not be done here because it cannot be done on bytes: `//` inside a string
-    /// literal is not a comment, and the refusal matched two characters. Discovery has the
-    /// tree and says which bytes are comments; this takes exactly those.
+    /// Applies one candidate within its guard site and flattens Swift line breaks.
     static func apply(
         _ candidate: Candidate,
         to bytes: [UInt8],
@@ -295,8 +226,9 @@ public enum Instrument {
 }
 
 extension String {
-    /// Every newline replaced, without reaching for Foundation.
+    /// Replaces Swift line breaks while preserving other Unicode separators.
     func replacingNewlines(with replacement: String) -> String {
-        split(separator: "\n", omittingEmptySubsequences: false).joined(separator: replacement)
+        split(omittingEmptySubsequences: false) { SourceLineBreak(rawValue: $0) != nil }
+            .joined(separator: replacement)
     }
 }

@@ -8,6 +8,34 @@ import Testing
 
 @Suite("Source byte preservation", .serialized)
 struct SourceBytesIntegrationTests {
+    @Test(
+        "multiline guards agree with individual edits for every Swift line break",
+        arguments: ["\n", "\r", "\r\n"])
+    func multilineGuards(ending: String) async throws {
+        let source = [
+            "public func enabled() -> Bool {", "    false &&", "        true", "}", "",
+        ].joined(separator: ending)
+        let package = try PackageFixture(
+            tests: """
+                import Testing
+                import Subject
+                @Test func disabled() { #expect(!enabled()) }
+                """,
+            source: source)
+        defer { try? package.remove() }
+        let guarded = try await MutationTesting.run(packageAt: package.root)
+        let session = try MeasurementSession(
+            package: package.root, options: RunOptions(), progress: { _ in })
+        defer { try? session.clean() }
+        let individual = try await session.measure(instrumenting: false)
+        #expect(guarded.results.map(\.outcome) == individual.results.map(\.outcome))
+        #expect(guarded.summary.killed == 3)
+        #expect(guarded.summary.survived == 2)
+        let bytes = try Data(
+            contentsOf: package.root.appending(path: "Sources/Subject/Subject.swift"))
+        #expect(bytes.elementsEqual(source.utf8))
+    }
+
     @Test("invalid UTF-8 source fails discovery without changing its bytes")
     func invalidEncoding() async throws {
         let package = try PackageFixture(tests: PackageFixture.testing)

@@ -22,6 +22,7 @@ Ignore quoted XCTest completion text and preserve completion evidence for skippe
 Reconcile explicit skipped XML cases with XCTest completion records and duplicate test identities.
 Treat an empty diagnostic substring as a prefix-only pattern.
 Preserve UTF-8 byte order marks during source discovery and measurement.
+Index and flatten LF, CR, and CRLF consistently without changing Unicode separators in literals.
 
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.
 The CLI uses the public library and offers `list` and `run`.
