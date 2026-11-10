@@ -53,6 +53,7 @@ Correspondence tests check the finite policy boundary.
 Generated XML tests cover 1,024 documents with independent expected identities and counts.
 Real package tests cover the framework output dialects and operating system behavior.
 Source fixtures preserve UTF-8 byte order marks and CRLF endings through discovery, guarded measurement, and individual edits.
+Fast decoding tests check byte preservation and reject malformed UTF-8 without invoking SwiftPM.
 The shared line-break type follows [Swift's LF, CR, and CRLF grammar](https://github.com/swiftlang/swift-book/blob/main/TSPL.docc/ReferenceManual/LexicalStructure.md#whitespace-and-comments).
 Line indexing and instrumentation use the same type and preserve other Unicode separators in literals.
 A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.

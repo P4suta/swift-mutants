@@ -76,7 +76,7 @@ extension MeasurementSession {
         )
     }
 
-    private func readSourceText(_ path: WorkspaceRelativePath) throws -> String {
+    func readSourceText(_ path: WorkspaceRelativePath) throws -> String {
         let bytes = try Data(contentsOf: snapshot.root.appending(path: path.rendered))
         guard let source = String(validating: bytes, as: UTF8.self) else {
             throw MutationTestingError(
