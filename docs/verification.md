@@ -72,6 +72,7 @@ Complete Swift Testing XML can remain trustworthy after diagnostic truncation.
 Streaming line checks detect abnormal exits beyond retained output.
 Diagnostics identify abnormal test exits even when the original message follows the retained prefix.
 XCTest still requires complete completion records, including skipped tests.
+Truncated XCTest output produces a diagnostic that names the retention limit before completion reconciliation.
 Generated completion tests cover 27 outcome sequences with repeated identities under both XML skip representations.
 Completion reconciliation rejects missing, extra, repeated, and contradictory records.
 Real packages check 2MiB diagnostic output and a crash after test completion.

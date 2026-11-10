@@ -99,6 +99,11 @@ extension MeasurementSession {
             return TestObservation(
                 results: try readResults(file: file, product: product, process: result)
             )
+        } catch XUnitError.truncatedTranscript {
+            return TestObservation(
+                diagnostic:
+                    "XCTest output exceeded the diagnostic retention limit of \(runner.outputLimit) bytes for \(product.name).\n\(diagnostic(result))"
+            )
         } catch {
             return TestObservation(
                 diagnostic:
@@ -125,6 +130,7 @@ extension MeasurementSession {
         let truncatedTranscript =
             hasXCTest
             && (process.standardOutputWasCut || process.standardErrorWasCut)
+        guard !truncatedTranscript else { throw XUnitError.truncatedTranscript }
         try XCTestTranscript.reconcile(
             &parsed,
             output: process.standardOutputText + "\n" + process.standardErrorText,
@@ -136,7 +142,7 @@ extension MeasurementSession {
                 framework: "\(product.name):testing"
             )
         )
-        guard !truncatedTranscript, parsed.errors == 0,
+        guard parsed.errors == 0,
             (process.exitCode == 0 && parsed.failures == 0)
                 || (process.exitCode == 1 && parsed.failures > 0)
         else { throw XUnitError.invalidDocument }

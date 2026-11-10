@@ -54,6 +54,7 @@ struct XUnitResults: Sendable, Equatable {
 
 enum XUnitError: Error {
     case invalidDocument
+    case truncatedTranscript
 }
 
 private final class XUnitReader: NSObject, XMLParserDelegate {

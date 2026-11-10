@@ -16,6 +16,7 @@ Return `nil` for source-range shifts that overflow integer offsets.
 Find activation tokens beyond retained symbol diagnostics while keeping output memory bounded.
 Distinguish SwiftPM abnormal-exit diagnostics from quoted text in verbose test arguments.
 Keep complete Swift Testing failures measurable beyond diagnostic retention while detecting late crashes.
+Report the diagnostic retention limit when XCTest completion output exceeds it.
 Identify abnormal test exits before retained diagnostic text.
 Pass subprocess environments through typed strings so extra bytes can't corrupt mutation activation.
 Ignore quoted XCTest completion text and preserve completion evidence for skipped XCTest cases.

@@ -7,6 +7,9 @@ import Testing
 
 @Suite("Diagnostic retention")
 struct DiagnosticRetentionTests {
+    private static let truncationPrefix =
+        "XCTest output exceeded the diagnostic retention limit of \(TestInvocationFixture.outputLimit) bytes for Fixture."
+
     @Test(
         "XCTest records beyond retention can't disappear behind an empty XML inventory",
         arguments: [false, true])
@@ -21,7 +24,7 @@ struct DiagnosticRetentionTests {
         let observation = try await fixture.session.test(
             products: [fixture.product()], budget: .seconds(5))
         #expect(!observation.timedOut)
-        #expect(observation.diagnostic != nil)
+        #expect(observation.diagnostic?.hasPrefix(Self.truncationPrefix) == true)
         #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
     }
 
@@ -72,24 +75,26 @@ struct DiagnosticRetentionTests {
     }
 
     @Test(
-        "XCTest completion transcripts remain mandatory after truncation", arguments: [false, true])
-    func truncatedXCTest(stderr: Bool) async throws {
+        "XCTest completion transcripts remain mandatory after truncation",
+        arguments: [false, true], [false, true])
+    func truncatedXCTest(stderr: Bool, completionAfterLimit: Bool) async throws {
         let completion = "Test Case '-[Suite test]' failed (0.01 seconds).\n"
         let noise = String(repeating: "x", count: TestInvocationFixture.outputLimit + 1)
+        let transcript = completionAfterLimit ? noise + "\n" + completion : completion + noise
         let fixture = try TestInvocationFixture(
             testing: TestInvocationFixture.empty,
             xctest:
                 "<testsuite tests='1' failures='1'><testcase classname='Suite' name='test'><failure/></testcase></testsuite>",
             status: 1,
-            output: completion + (stderr ? "" : noise),
-            errors: stderr ? noise : ""
+            output: stderr ? "" : transcript,
+            errors: stderr ? transcript : ""
         )
         defer { try? fixture.clean() }
         let observation = try await fixture.session.test(
             products: [fixture.product()], budget: .seconds(5))
         let timedOut = observation.timedOut
         #expect(!timedOut)
-        #expect(observation.diagnostic != nil)
+        #expect(observation.diagnostic?.hasPrefix(Self.truncationPrefix) == true)
         #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
     }
 }
