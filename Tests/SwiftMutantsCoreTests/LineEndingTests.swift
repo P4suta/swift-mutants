@@ -20,8 +20,9 @@ struct LineEndingTests {
         let index = LineIndex(source)
         let second = 2 + ending.utf8.count
         let lines = [(1, 0, second - 1), (2, second, source.utf8.count)]
+        let columns = [Int.min, Int.max - 1, Int.max] + Array(-1...(source.utf8.count + 2))
         for (line, start, end) in lines {
-            for column in [Int.min, -1, 0, 1, 2, 3, 4, 5, Int.max - 1, Int.max] {
+            for column in columns {
                 let wide = Int128(start) + Int128(column) - 1
                 let expected = column >= 1 && wide <= Int128(end) ? Int(exactly: wide) : nil
                 #expect(index.offset(of: SourcePosition(line: line, column: column)) == expected)
