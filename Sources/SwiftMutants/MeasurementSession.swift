@@ -22,7 +22,8 @@ struct MeasurementSession: Sendable {
         options: RunOptions,
         progress: @escaping @Sendable (RunEvent) -> Void,
         environment: [String: String] = Ambient.environment,
-        executable: String = "/usr/bin/env"
+        executable: String = "/usr/bin/env",
+        outputLimit: Int = 1 << 20
     ) throws {
         #if !os(macOS)
         throw MutationTestingError(
@@ -45,7 +46,7 @@ struct MeasurementSession: Sendable {
         )
         self.options = options
         self.progress = progress
-        self.runner = Runner(recorder: TraceRecorder())
+        self.runner = Runner(recorder: TraceRecorder(), outputLimit: outputLimit)
         self.environment = environment
         self.executable = executable
         progress(.stage(.snapshot))

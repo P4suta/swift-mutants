@@ -10,6 +10,7 @@ struct TestInvocationFixture {
     let session: MeasurementSession
 
     static let empty = "<testsuites tests='0'/>"
+    static let outputLimit = 4_096
     static let passing =
         "<testsuite tests='1'><testcase classname='Suite' name='test'/></testsuite>"
     static let failing =
@@ -51,7 +52,11 @@ struct TestInvocationFixture {
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755], ofItemAtPath: executable.path)
         session = try MeasurementSession(
-            package: root, options: options, progress: { _ in }, executable: executable.path)
+            package: root,
+            options: options,
+            progress: { _ in },
+            executable: executable.path,
+            outputLimit: Self.outputLimit)
     }
 
     func product(_ name: String = "Fixture") -> TestProduct {

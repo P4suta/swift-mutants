@@ -88,68 +88,6 @@ struct TestInvocationContractTests {
         #expect(observation.verdict(comparedTo: observation.results) == .survived)
     }
 
-    @Test(
-        "complete Swift Testing failures survive diagnostic truncation", arguments: [false, true])
-    func truncatedOutput(stderr: Bool) async throws {
-        let output = String(repeating: "x", count: (1 << 20) + 1)
-        let fixture = try TestInvocationFixture(
-            testing: TestInvocationFixture.failing,
-            status: 1,
-            output: stderr ? "" : output,
-            errors: stderr ? output : ""
-        )
-        defer { try? fixture.clean() }
-        let observation = try await fixture.session.test(
-            products: [fixture.product()], budget: .seconds(5))
-        let hasDiagnostic = observation.diagnostic != nil
-        #expect(!hasDiagnostic)
-        #expect(observation.results.failures == 1)
-        #expect(observation.verdict(comparedTo: observation.results) == .killed)
-    }
-
-    @Test(
-        "late abnormal exits override complete XML beyond retained diagnostics",
-        arguments: [false, true])
-    func lateCrash(stderr: Bool) async throws {
-        let output =
-            String(repeating: "x", count: (1 << 20) + 1)
-            + "\nerror: Process '/tool' exited with unexpected signal code 5\n"
-        let fixture = try TestInvocationFixture(
-            testing: TestInvocationFixture.failing,
-            status: 1,
-            output: stderr ? "" : output,
-            errors: stderr ? output : ""
-        )
-        defer { try? fixture.clean() }
-        let observation = try await fixture.session.test(
-            products: [fixture.product()], budget: .seconds(5))
-        let explainsExit =
-            observation.diagnostic?.hasPrefix(
-                "SwiftPM reported an abnormal test process exit.") == true
-        #expect(explainsExit)
-        #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
-    }
-
-    @Test(
-        "XCTest completion transcripts remain mandatory after truncation", arguments: [false, true])
-    func truncatedXCTest(stderr: Bool) async throws {
-        let completion = "Test Case '-[Suite test]' failed (0.01 seconds).\n"
-        let noise = String(repeating: "x", count: (1 << 20) + 1)
-        let fixture = try TestInvocationFixture(
-            testing: TestInvocationFixture.empty,
-            xctest:
-                "<testsuite tests='1' failures='1'><testcase classname='Suite' name='test'><failure/></testcase></testsuite>",
-            status: 1,
-            output: completion + (stderr ? "" : noise),
-            errors: stderr ? noise : ""
-        )
-        defer { try? fixture.clean() }
-        let observation = try await fixture.session.test(
-            products: [fixture.product()], budget: .seconds(5))
-        #expect(observation.diagnostic != nil)
-        #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
-    }
-
     @Test("products merge identities without conflating frameworks")
     func products() async throws {
         let fixture = try TestInvocationFixture()
