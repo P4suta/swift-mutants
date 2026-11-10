@@ -8,6 +8,24 @@ import Testing
 @Suite("Diagnostic retention")
 struct DiagnosticRetentionTests {
     @Test(
+        "XCTest records beyond retention can't disappear behind an empty XML inventory",
+        arguments: [false, true])
+    func unrecordedXCTest(stderr: Bool) async throws {
+        let output =
+            String(repeating: "x", count: TestInvocationFixture.outputLimit + 1)
+            + "\nTest Case '-[Suite missing]' passed (0.01 seconds).\n"
+        let fixture = try TestInvocationFixture(
+            output: stderr ? "" : output,
+            errors: stderr ? output : "")
+        defer { try? fixture.clean() }
+        let observation = try await fixture.session.test(
+            products: [fixture.product()], budget: .seconds(5))
+        #expect(!observation.timedOut)
+        #expect(observation.diagnostic != nil)
+        #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
+    }
+
+    @Test(
         "complete Swift Testing failures survive diagnostic truncation", arguments: [false, true])
     func truncatedOutput(stderr: Bool) async throws {
         let output = String(repeating: "x", count: TestInvocationFixture.outputLimit + 1)
