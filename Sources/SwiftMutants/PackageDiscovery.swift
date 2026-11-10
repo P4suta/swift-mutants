@@ -53,10 +53,7 @@ extension MeasurementSession {
     private func rejectUITests(_ description: WorkspaceDescription) throws {
         for target in description.targets where target.kind == .test {
             for path in target.sources where path.isSwift {
-                let source = try String(
-                    contentsOf: snapshot.root.appending(path: path.rendered),
-                    encoding: .utf8
-                )
+                let source = try readSourceText(path)
                 if source.contains("XCUIApplication(") || source.contains("import XCUIAutomation") {
                     throw MutationTestingError(
                         stage: .input,
@@ -68,10 +65,7 @@ extension MeasurementSession {
     }
 
     private func readSource(_ path: WorkspaceRelativePath) throws -> MutationSource {
-        let source = try String(
-            contentsOf: snapshot.root.appending(path: path.rendered),
-            encoding: .utf8
-        )
+        let source = try readSourceText(path)
         let discovery = Discover.candidates(in: source, at: path)
         let mutations = try Mutation.discover(in: source, at: path.rendered)
         return MutationSource(
@@ -80,5 +74,14 @@ extension MeasurementSession {
             discovery: discovery,
             mutations: mutations
         )
+    }
+
+    private func readSourceText(_ path: WorkspaceRelativePath) throws -> String {
+        let bytes = try Data(contentsOf: snapshot.root.appending(path: path.rendered))
+        guard let source = String(validating: bytes, as: UTF8.self) else {
+            throw MutationTestingError(
+                stage: .discovery, diagnostic: "Source isn't valid UTF-8: \(path.rendered)")
+        }
+        return source
     }
 }

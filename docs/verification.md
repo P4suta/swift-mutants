@@ -52,6 +52,7 @@ The models don't prove the Swift compiler, Foundation XML parsing, process super
 Correspondence tests check the finite policy boundary.
 Generated XML tests cover 1,024 documents with independent expected identities and counts.
 Real package tests cover the framework output dialects and operating system behavior.
+Source fixtures preserve UTF-8 byte order marks and CRLF endings through discovery, guarded measurement, and individual edits.
 A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.
 Streaming matcher tests cover every token split, overlapping tokens, invalid UTF-8, and output beyond the diagnostic limit.
 Streaming line matches agree with complete-line predicates across every split in the correspondence fixtures.

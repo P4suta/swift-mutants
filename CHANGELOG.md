@@ -21,6 +21,7 @@ Pass subprocess environments through typed strings so extra bytes can't corrupt 
 Ignore quoted XCTest completion text and preserve completion evidence for skipped XCTest cases.
 Reconcile explicit skipped XML cases with XCTest completion records and duplicate test identities.
 Treat an empty diagnostic substring as a prefix-only pattern.
+Preserve UTF-8 byte order marks during source discovery and measurement.
 
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.
 The CLI uses the public library and offers `list` and `run`.
