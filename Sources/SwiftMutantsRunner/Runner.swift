@@ -33,8 +33,10 @@ package struct Runner: Sendable {
         defer { monitor.finish() }
         var options = PlatformOptions()
         options.processGroupID = 0
-        let environment = spec.environment.sorted { $0.key < $1.key }
-            .map { Array("\($0.key)=\($0.value)".utf8) }
+        let environment = Dictionary(
+            uniqueKeysWithValues: spec.environment.map {
+                (Environment.Key(stringLiteral: $0.key), $0.value)
+            })
         let configuration = Configuration(
             executable: .path(FilePath(spec.executable)),
             arguments: Arguments(spec.arguments),

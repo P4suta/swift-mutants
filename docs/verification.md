@@ -55,6 +55,8 @@ Real package tests cover the framework output dialects and operating system beha
 A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.
 Streaming matcher tests cover every token split, overlapping tokens, invalid UTF-8, and output beyond the diagnostic limit.
 Activation checks still require successful symbol-tool completion.
+Environment round-trip tests cover descending allocation sizes, Unicode, equals signs, and activation integer boundaries.
+The process adapter uses Swift Subprocess's [string environment configuration](https://github.com/swiftlang/swift-subprocess/blob/dbe21bd7dfd4ffef8c32588918542a8abfa1b54c/Sources/Subprocess/Configuration.swift#L584) to preserve values and delegate C string construction.
 Complete Swift Testing XML can remain trustworthy after diagnostic truncation.
 Streaming line checks detect abnormal exits beyond retained output.
 Diagnostics identify abnormal test exits even when the original message follows the retained prefix.
