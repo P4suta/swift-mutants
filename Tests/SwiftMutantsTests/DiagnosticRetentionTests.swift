@@ -11,6 +11,27 @@ struct DiagnosticRetentionTests {
         "XCTest output exceeded the diagnostic retention limit of \(TestInvocationFixture.outputLimit) bytes for Fixture."
 
     @Test(
+        "XCTest XML identifies truncated output even without visible completion records",
+        arguments: [false, true], [false, true])
+    func knownXCTestWithoutCompletion(stderr: Bool, skipped: Bool) async throws {
+        let noise = String(repeating: "x", count: TestInvocationFixture.outputLimit + 1)
+        let xml =
+            skipped
+            ? "<testsuite tests='1' skipped='1'><testcase classname='Suite' name='test'><skipped/></testcase></testsuite>"
+            : TestInvocationFixture.passing
+        let fixture = try TestInvocationFixture(
+            xctest: xml,
+            output: stderr ? "" : noise,
+            errors: stderr ? noise : "")
+        defer { try? fixture.clean() }
+        let observation = try await fixture.session.test(
+            products: [fixture.product()], budget: .seconds(5))
+        #expect(!observation.timedOut)
+        #expect(observation.diagnostic?.hasPrefix(Self.truncationPrefix) == true)
+        #expect(observation.verdict(comparedTo: observation.results) == .invalidEvidence)
+    }
+
+    @Test(
         "XCTest records beyond retention can't disappear behind an empty XML inventory",
         arguments: [false, true])
     func unrecordedXCTest(stderr: Bool) async throws {
