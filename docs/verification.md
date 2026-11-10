@@ -54,6 +54,7 @@ Generated XML tests cover 1,024 documents with independent expected identities a
 Real package tests cover the framework output dialects and operating system behavior.
 A lightweight SwiftPM fixture checks process status, XML consistency, truncation, product identities, test selection, activation, and deadlines without invoking a compiler.
 Streaming matcher tests cover every token split, overlapping tokens, invalid UTF-8, and output beyond the diagnostic limit.
+Streaming line matches agree with complete-line predicates across every split in the correspondence fixtures.
 Activation checks still require successful symbol-tool completion.
 Environment round-trip tests cover descending allocation sizes, Unicode, equals signs, and activation integer boundaries.
 The process adapter uses Swift Subprocess's [string environment configuration](https://github.com/swiftlang/swift-subprocess/blob/dbe21bd7dfd4ffef8c32588918542a8abfa1b54c/Sources/Subprocess/Configuration.swift#L584) to preserve values and delegate C string construction.

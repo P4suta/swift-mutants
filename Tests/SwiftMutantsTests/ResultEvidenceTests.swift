@@ -80,6 +80,8 @@ struct ResultEvidenceTests {
             "<properties><property name='root'/></properties>",
             "<testsuite><testcase name='one'><testsuite/></testcase></testsuite>",
             "<!DOCTYPE testsuite><testsuite/>",
+            "<testsuite/> trailing junk",
+            "<testsuite/><testsuite/>",
             """
             <testsuite failures='2'><testcase name='failed'><failure/><failure/><failure/></testcase>
             <testcase name='skipped'><skipped/></testcase></testsuite>
@@ -89,6 +91,10 @@ struct ResultEvidenceTests {
             <testcase name='passed'/></testsuite>
             """,
             "<testsuite failures='1'><testcase name='error'><error/></testcase></testsuite>",
+            """
+            <testsuite tests='1'><testcase name='error'><error/></testcase>
+            <testcase name='passed'/></testsuite>
+            """,
         ]
     )
     func malformedStructure(document: String) {
@@ -121,6 +127,9 @@ struct ResultEvidenceTests {
         let metadata = "<properties><property name='mode' value='fixture'/></properties>"
         let result = try Self.results("<testcase name='one'>\(metadata)</testcase>" + metadata)
         #expect(result.executed.values.reduce(0, +) == 1)
+        let document =
+            "<testsuites>\(metadata)<testsuite><testcase name='one'/></testsuite></testsuites>"
+        #expect(try XUnitResults.parse(Data(document.utf8), framework: "fixture") == result)
     }
 
     private static func results(_ cases: String, attributes: String = "") throws -> XUnitResults {

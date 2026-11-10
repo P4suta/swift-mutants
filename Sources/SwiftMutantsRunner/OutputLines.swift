@@ -7,7 +7,7 @@ package struct OutputLinePattern: Sendable, Hashable {
 
     package init(prefix: String = "", containing: String? = nil) {
         self.prefix = prefix
-        self.containing = containing
+        self.containing = containing.flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 
