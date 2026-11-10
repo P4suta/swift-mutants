@@ -44,4 +44,26 @@ public enum TraceSummary {
         }
         return totals.values.sorted { ($0.milliseconds, $1.label) > ($1.milliseconds, $0.label) }
     }
+
+    /// Renders command summaries with counts, duration shares, and failed execution counts.
+    public static func lines(of events: [TraceEvent]) -> [String] {
+        let rows = Self.of(events)
+        guard !rows.isEmpty else { return ["this run started nothing."] }
+        let total = rows.reduce(0) { $0 + $1.milliseconds }
+        return rows.map { row in
+            let share = total > 0 ? row.milliseconds * 100 / total : 0
+            return "  \(Self.padded(row.label))  \(Self.seconds(row.milliseconds))  "
+                + "\(share)%  \(row.count) run\(row.count == 1 ? "" : "s")"
+                + (row.failed > 0 ? ", \(row.failed) of them failed" : "")
+        }
+    }
+
+    private static func padded(_ label: String) -> String {
+        label.count >= 14 ? label : label + String(repeating: " ", count: 14 - label.count)
+    }
+
+    private static func seconds(_ milliseconds: Int) -> String {
+        guard milliseconds >= 60_000 else { return "\(milliseconds / 1000)s" }
+        return "\(milliseconds / 60_000)m\((milliseconds % 60_000) / 1000)s"
+    }
 }
