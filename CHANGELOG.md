@@ -23,6 +23,7 @@ Reconcile explicit skipped XML cases with XCTest completion records and duplicat
 Treat an empty diagnostic substring as a prefix-only pattern.
 Preserve UTF-8 byte order marks during source discovery and measurement.
 Index and flatten LF, CR, and CRLF consistently without changing Unicode separators in literals.
+Validate source-position columns before offset arithmetic to reject overflowing positions without trapping.
 
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.
 The CLI uses the public library and offers `list` and `run`.

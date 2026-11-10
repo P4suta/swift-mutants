@@ -34,21 +34,23 @@ mise run test:proof
 ```
 
 The committed Lake manifest lets CI configure the proof package with its recorded dependency state.
-The command builds with warnings as errors and checks eleven theorems' axiom dependencies.
+The command builds with warnings as errors and checks twelve theorems' axiom dependencies.
 It replays each model with `leanchecker --fresh` and compares committed CSV fixtures with model-generated values.
 The eight measurement theorems require no axioms.
-The three range theorems depend on Lean's standard `propext` axiom.
+The four range theorems depend on Lean's standard `propext` axiom.
 Swift tests pass all 24 verdict input classes through the production observation adapter and compare every reason and public outcome with the shared fixture.
 All 32 score presence classes and 1,024 count vectors check the public report.
 The range model proves that valid nonnegative offsets can't underflow when adding a signed distance.
 It proves that overflow addition followed by span validation agrees with the mathematical shift specification.
 Swift checks 189 signed-boundary shifts with the shared fixture and an independent `Int128` oracle.
+The column theorem bounds offset addition after validation against a valid line interval.
+An `Int128` oracle checks 60 source-position cases across Swift's line endings and integer boundaries.
 Independent byte and boundary sets check interval operations and strict-order laws over 45 spans.
 The tests require complete class coverage and reject duplicate fixture rows.
 CI requires both the Swift checks and the proof job.
 
 The range model uses Swift's signed overflow addition semantics.
-The models don't prove the Swift compiler, Foundation XML parsing, process supervision, or floating-point division.
+The models don't prove line-start construction, the Swift compiler, Foundation XML parsing, process supervision, or floating-point division.
 Correspondence tests check the finite policy boundary.
 Generated XML tests cover 1,024 documents with independent expected identities and counts.
 Real package tests cover the framework output dialects and operating system behavior.

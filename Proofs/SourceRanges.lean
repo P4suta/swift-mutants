@@ -51,6 +51,17 @@ theorem shifting_contract (bound start finish distance : Int)
   exact ⟨⟨firstLower, Int.le_trans firstLower (Int.add_le_add_right ordered distance)⟩,
     shifted_matches_spec bound start finish distance ordered ending upper⟩
 
+theorem column_addition_fits (bound start finish column : Int)
+    (nonnegative : 0 ≤ start) (ending : finish < bound) (positive : 1 ≤ column)
+    (within : column - 1 ≤ finish - start) :
+    0 ≤ start + (column - 1) ∧ start + (column - 1) < bound := by
+  have lower := Int.add_nonneg nonnegative (Int.sub_nonneg_of_le positive)
+  have bounded := Int.add_le_add_right within start
+  rw [Int.sub_add_cancel] at bounded
+  have fits : start + (column - 1) ≤ finish := by
+    simpa only [Int.add_comm] using bounded
+  exact ⟨lower, Int.lt_of_le_of_lt fits ending⟩
+
 /-- info: 'SourceRanges.no_negative_overflow' depends on axioms: [propext] -/
 #guard_msgs in
 #print axioms no_negative_overflow
@@ -62,6 +73,10 @@ theorem shifting_contract (bound start finish distance : Int)
 /-- info: 'SourceRanges.shifting_contract' depends on axioms: [propext] -/
 #guard_msgs in
 #print axioms shifting_contract
+
+/-- info: 'SourceRanges.column_addition_fits' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms column_addition_fits
 
 def offsets : List Int := [0, 1, 2, 7, 9223372036854775806, 9223372036854775807]
 

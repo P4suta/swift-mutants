@@ -110,8 +110,8 @@ public struct LineIndex: Sendable {
         let start = lineStarts[position.line - 1]
         let end =
             position.line < lineStarts.count ? lineStarts[position.line] - 1 : byteCount
-        let offset = start + position.column - 1
-        guard offset <= end else { return nil }
-        return offset
+        let distance = position.column - 1
+        guard distance <= end - start else { return nil }
+        return start + distance
     }
 }
