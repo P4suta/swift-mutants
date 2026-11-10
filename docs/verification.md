@@ -43,7 +43,7 @@ All 32 score presence classes and 1,024 count vectors check the public report.
 The range model proves that valid nonnegative offsets can't underflow when adding a signed distance.
 It proves that overflow addition followed by span validation agrees with the mathematical shift specification.
 Swift checks 189 signed-boundary shifts with the shared fixture and an independent `Int128` oracle.
-The column theorem bounds offset addition after validation against a valid line interval.
+The column theorem bounds offset addition using a valid line interval and a validated column displacement.
 An `Int128` oracle checks 60 source-position cases across Swift's line endings and integer boundaries.
 Independent byte and boundary sets check interval operations and strict-order laws over 45 spans.
 The tests require complete class coverage and reject duplicate fixture rows.

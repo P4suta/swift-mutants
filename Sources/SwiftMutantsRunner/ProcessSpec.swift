@@ -30,23 +30,6 @@ package struct ProcessSpec: Sendable, Hashable {
         self.environment = environment
         self.timeout = timeout
     }
-
-    package static func rendered(_ spec: Self, showing names: Set<String> = []) -> String {
-        let variables = spec.environment
-            .filter { $0.key.hasPrefix("SWIFT_MUTANTS") || names.contains($0.key) }
-            .sorted { $0.key < $1.key }.map { "\($0.key)=\(quoted($0.value))" }
-        return (variables + [quoted(spec.executable)] + spec.arguments.map(quoted)).joined(
-            separator: " "
-        )
-    }
-
-    private static func quoted(_ word: String) -> String {
-        let plain = word.allSatisfy { $0.isLetter || $0.isNumber || "-_./=:,@+".contains($0) }
-        guard !plain || word.isEmpty else { return word }
-        return "'"
-            + word.split(separator: "'", omittingEmptySubsequences: false)
-            .joined(separator: #"'\\''"#) + "'"
-    }
 }
 
 package struct ProcessOutcome: Sendable {

@@ -19,11 +19,11 @@ extension MeasurementSession {
                 executable: executable
             ).describe(environment: environment)
             try rejectUITests(description)
-            let includes = options.include.compactMap(Glob.init)
-            let excludes = options.exclude.compactMap(Glob.init)
+            let scope = GlobSet(
+                include: options.include.compactMap(Glob.init),
+                exclude: options.exclude.compactMap(Glob.init))
             let paths = Set(description.mutableTargets.flatMap(\.sources)).sorted().filter { path in
-                path.isSwift && (includes.isEmpty || includes.contains { $0.matches(path) })
-                    && !excludes.contains { $0.matches(path) }
+                path.isSwift && scope.admits(path)
             }
             return try paths.map(readSource)
         } catch is CancellationError {

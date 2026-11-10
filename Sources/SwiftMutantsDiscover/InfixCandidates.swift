@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-import SwiftMutantsCore
 import SwiftSyntax
 
 /// Expression-based rules for Boolean operand pruning and concatenation order.

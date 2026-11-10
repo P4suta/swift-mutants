@@ -51,8 +51,7 @@ public enum Instrument {
             token: token,
             numbered: numbered,
             comments: discovery.lineComments)
-        let runtime = Runtime.source(
-            token: token, count: numbered.mutants.count, base: base)
+        let runtime = Runtime.source(token: token)
         return InstrumentedFile(
             source: spliced.text + runtime,
             runtime: runtime,

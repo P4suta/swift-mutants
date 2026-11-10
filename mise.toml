@@ -142,7 +142,7 @@ description = "Whole-module analysis: needs a compiler log, so it is not in `che
 #
 # What it would have added over `periphery` is `capture_variable` and `typesafe_array_init`; `unused_declaration` and `unused_import` are `periphery`'s job and it does them better.
 # That is the whole of what is missing here, written down so it can be picked up when the crash is gone.
-run = ["periphery scan --strict"]
+run = ["periphery scan --strict -- --build-system native"]
 
 [tasks.watch]
 description = "The TDD inner loop"
