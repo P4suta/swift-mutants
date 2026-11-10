@@ -18,7 +18,7 @@ enum Runtime {
         "\(index) /*sm:\(token):\(index)*/"
     }
 
-    static func source(token: String, count: Int, base: UInt32 = 0) -> String {
+    static func source(token: String) -> String {
         """
 
         // swift-mutants runtime.

@@ -22,15 +22,21 @@ package struct Runner: Sendable {
         self.outputLimit = outputLimit
     }
 
-    package func run(_ spec: ProcessSpec) async -> ProcessOutcome {
+    package func run(
+        _ spec: ProcessSpec,
+        matchingOutput: [String] = [],
+        matchingLines: [OutputLinePattern] = []
+    ) async -> ProcessOutcome {
         let start = ContinuousClock.now
         let deadline = Deadline()
         let monitor = ProcessMonitor(timeout: spec.timeout) { deadline.markExceeded() }
         defer { monitor.finish() }
         var options = PlatformOptions()
         options.processGroupID = 0
-        let environment = spec.environment.sorted { $0.key < $1.key }
-            .map { Array("\($0.key)=\($0.value)".utf8) }
+        let environment = Dictionary(
+            uniqueKeysWithValues: spec.environment.map {
+                (Environment.Key(stringLiteral: $0.key), $0.value)
+            })
         let configuration = Configuration(
             executable: .path(FilePath(spec.executable)),
             arguments: Arguments(spec.arguments),
@@ -39,7 +45,8 @@ package struct Runner: Sendable {
             platformOptions: options
         )
         do {
-            let collected = try await invoke(configuration, monitor: monitor)
+            let collected = try await invoke(
+                configuration, monitor: monitor, matching: matchingOutput, lines: matchingLines)
             let code: Int
             switch collected.terminationStatus {
             case .exited(let status): code = Int(status)
@@ -69,7 +76,9 @@ package struct Runner: Sendable {
 
     private func invoke(
         _ configuration: Configuration,
-        monitor: ProcessMonitor
+        monitor: ProcessMonitor,
+        matching: [String],
+        lines: [OutputLinePattern]
     ) async throws -> ExecutionResult<Streams, SequenceOutput, SequenceOutput> {
         // Discover descendants before Swift Subprocess can tear down their parent.
         let task = Task {
@@ -80,7 +89,7 @@ package struct Runner: Sendable {
                 error: .sequence
             ) { execution in
                 monitor.start(root: execution.processIdentifier.value)
-                do { return try await collect(execution) } catch {
+                do { return try await collect(execution, matching: matching, lines: lines) } catch {
                     monitor.cancel()
                     throw error
                 }
@@ -94,10 +103,13 @@ package struct Runner: Sendable {
     }
 
     private func collect(
-        _ execution: Execution<NoInput, SequenceOutput, SequenceOutput>
+        _ execution: Execution<NoInput, SequenceOutput, SequenceOutput>,
+        matching: [String],
+        lines: [OutputLinePattern]
     ) async throws -> Streams {
-        async let output = Self.drain(execution.standardOutput, limit: outputLimit)
-        async let errors = Self.drain(execution.standardError, limit: outputLimit)
+        async let output = Self.drain(
+            execution.standardOutput, limit: outputLimit, matching: matching, lines: lines)
+        async let errors = Self.drain(execution.standardError, limit: outputLimit, lines: lines)
         return Streams(output: try await output, errors: try await errors)
     }
 
@@ -140,15 +152,20 @@ package struct Runner: Sendable {
             standardOutputBytes: streams.output.total,
             standardError: streams.errors.retained,
             startFailure: failure,
-            traceSequence: event.sequence
+            traceSequence: event.sequence,
+            matchedOutput: streams.output.matches,
+            standardErrorBytes: streams.errors.total,
+            matchedLines: streams.output.lineMatches.union(streams.errors.lineMatches)
         )
     }
 
     private static func drain(
         _ stream: SubprocessOutputSequence,
-        limit: Int
+        limit: Int,
+        matching: [String] = [],
+        lines: [OutputLinePattern] = []
     ) async throws -> BoundedBytes {
-        var bytes = BoundedBytes(limit: limit)
+        var bytes = BoundedBytes(limit: limit, matching: matching, lines: lines)
         for try await chunk in stream {
             bytes.append(unsafe chunk.withUnsafeBytes { unsafe Array($0) })
         }
@@ -165,12 +182,22 @@ struct BoundedBytes: Sendable {
     private(set) var retained: [UInt8] = []
     private(set) var total = 0
     let limit: Int
+    private var matcher: OutputMatcher
+    private var lineMatcher: OutputLines
+    var matches: Set<String> { matcher.found }
+    var lineMatches: Set<OutputLinePattern> { lineMatcher.found }
 
-    mutating func append(_ chunk: some Sequence<UInt8>) {
-        for byte in chunk {
-            total += 1
-            if retained.count < limit { retained.append(byte) }
-        }
+    init(limit: Int, matching: [String] = [], lines: [OutputLinePattern] = []) {
+        self.limit = limit
+        matcher = OutputMatcher(matching)
+        lineMatcher = OutputLines(lines)
+    }
+
+    mutating func append(_ chunk: [UInt8]) {
+        matcher.append(chunk)
+        lineMatcher.append(chunk)
+        total += chunk.count
+        retained.append(contentsOf: chunk.prefix(max(0, limit - retained.count)))
     }
 }
 

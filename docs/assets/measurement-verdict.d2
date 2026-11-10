@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+direction: down
+title: "Decision flow: one mutation trial" {
+  shape: text
+  near: top-center
+  style.font-color: black
+}
+vars: {
+  d2-config: {
+    theme-overrides: {
+      N1: "#000000"
+      N2: "#000000"
+      N3: "#000000"
+      N4: "#FFFFFF"
+      N5: "#FFFFFF"
+      N6: "#FFFFFF"
+      N7: "#FFFFFF"
+      B1: "#000000"
+      B2: "#000000"
+      B3: "#000000"
+      B4: "#FFFFFF"
+      B5: "#FFFFFF"
+      B6: "#FFFFFF"
+      AA2: "#000000"
+      AA4: "#FFFFFF"
+      AA5: "#FFFFFF"
+      AB4: "#FFFFFF"
+      AB5: "#FFFFFF"
+    }
+  }
+}
+key: "Diamonds ask verdict conditions.\nRectangles name public outcomes.\nArrows label the condition's answer." {
+  shape: text
+  near: bottom-center
+  style.font-color: black
+}
+classes: {
+  condition: {
+    shape: diamond
+    style: { fill: white; stroke: black; font-color: black }
+  }
+  outcome: {
+    style: { fill: white; stroke: black; font-color: black }
+  }
+}
+timeout: "Deadline exceeded?" { class: condition }
+trust: "Trustworthy XML\nand process result?" { class: condition }
+inventory: "Nonempty matching\nexecuted and skipped\ntest inventories?" { class: condition }
+failure: "Recorded test failure?" { class: condition }
+timedOut: "timedOut" { class: outcome }
+errored: "errored" { class: outcome }
+killed: "killed" { class: outcome }
+survived: "survived" { class: outcome }
+timeout -> timedOut: Yes { style: { stroke: black; font-color: black } }
+timeout -> trust: No { style: { stroke: black; font-color: black } }
+trust -> errored: No { style: { stroke: black; font-color: black } }
+trust -> inventory: Yes { style: { stroke: black; font-color: black } }
+inventory -> errored: No { style: { stroke: black; font-color: black } }
+inventory -> failure: Yes { style: { stroke: black; font-color: black } }
+failure -> killed: Yes { style: { stroke: black; font-color: black } }
+failure -> survived: No { style: { stroke: black; font-color: black } }

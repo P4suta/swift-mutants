@@ -30,23 +30,6 @@ package struct ProcessSpec: Sendable, Hashable {
         self.environment = environment
         self.timeout = timeout
     }
-
-    package static func rendered(_ spec: Self, showing names: Set<String> = []) -> String {
-        let variables = spec.environment
-            .filter { $0.key.hasPrefix("SWIFT_MUTANTS") || names.contains($0.key) }
-            .sorted { $0.key < $1.key }.map { "\($0.key)=\(quoted($0.value))" }
-        return (variables + [quoted(spec.executable)] + spec.arguments.map(quoted)).joined(
-            separator: " "
-        )
-    }
-
-    private static func quoted(_ word: String) -> String {
-        let plain = word.allSatisfy { $0.isLetter || $0.isNumber || "-_./=:,@+".contains($0) }
-        guard !plain || word.isEmpty else { return word }
-        return "'"
-            + word.split(separator: "'", omittingEmptySubsequences: false)
-            .joined(separator: #"'\\''"#) + "'"
-    }
 }
 
 package struct ProcessOutcome: Sendable {
@@ -59,6 +42,10 @@ package struct ProcessOutcome: Sendable {
     package let standardError: [UInt8]
     package let startFailure: String?
     package let traceSequence: Int
+    package var matchedOutput: Set<String> = []
+    package var standardErrorBytes = 0
+    package var matchedLines: Set<OutputLinePattern> = []
+    package var standardErrorWasCut: Bool { standardErrorBytes > standardError.count }
     package var standardOutputText: String { String(decoding: standardOutput, as: UTF8.self) }
     package var standardErrorText: String { String(decoding: standardError, as: UTF8.self) }
 }

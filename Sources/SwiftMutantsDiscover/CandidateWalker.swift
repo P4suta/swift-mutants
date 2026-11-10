@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 swift-mutants contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-import SwiftMutantsCore
 import SwiftSyntax
 
 /// Walks a folded tree, collecting candidates and naming what it passed over.
@@ -122,7 +121,7 @@ final class CandidateWalker: SyntaxVisitor {
     }
 
     override func visit(_ node: CodeBlockItemListSyntax) -> SyntaxVisitorContinueKind {
-        offerSkippable(in: node, of: Syntax(node))
+        offerSkippable(in: node)
         return .visitChildren
     }
 

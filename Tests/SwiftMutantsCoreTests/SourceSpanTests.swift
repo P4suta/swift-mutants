@@ -8,12 +8,9 @@ import Testing
 
 /// `SourceSpan` is the anchor every mutant identity is built on.
 ///
-/// It is a half-open range of **UTF-8 byte offsets**, deliberately not a syntax-tree
-/// node identity. Muter keyed its mutation sites on `SwiftSyntax.SyntaxIdentifier` and
-/// then re-parsed the file before applying them; the re-parsed nodes carried fresh
-/// identities, no key matched, and zero mutants were ever inserted
-/// (muter-mutation-testing/muter#307). Byte offsets survive a re-parse because they are
-/// facts about the bytes rather than about a particular tree.
+/// It is a half-open range of **UTF-8 byte offsets**, deliberately not a syntax-tree node identity.
+/// Muter keyed its mutation sites on `SwiftSyntax.SyntaxIdentifier` and then re-parsed the file before applying them; the re-parsed nodes carried fresh identities, no key matched, and zero mutants were ever inserted (muter-mutation-testing/muter#307).
+/// Byte offsets survive a re-parse because they are facts about the bytes rather than about a particular tree.
 @Suite("SourceSpan")
 struct SourceSpanTests {
 
@@ -42,6 +39,15 @@ struct SourceSpanTests {
     func refusesNegativeOffset() {
         #expect(SourceSpan(start: -1, end: 4) == nil)
         #expect(SourceSpan(start: -3, end: -2) == nil)
+    }
+
+    @Test(
+        "refuses shifts outside representable source offsets",
+        arguments: [(Int.max - 1, Int.max, 1), (0, 1, Int.max), (0, 0, Int.min)]
+    )
+    func unrepresentableShift(start: Int, end: Int, distance: Int) throws {
+        let span = try #require(SourceSpan(start: start, end: end))
+        #expect(span.shifted(by: distance) == nil)
     }
 
     @Test(
@@ -104,8 +110,7 @@ struct SourceSpanTests {
         )
     }
 
-    /// The encoded shape is part of the plan format that survives between `list` and
-    /// `run`, so it is pinned here rather than left to synthesis.
+    /// The encoded shape is part of the plan format that survives between `list` and `run`, so it is pinned here rather than left to synthesis.
     @Test("encodes as exactly two integer keys")
     func encodesAsTwoKeys() throws {
         let span = try #require(SourceSpan(start: 10, end: 25))
@@ -128,8 +133,7 @@ struct SourceSpanTests {
 }
 
 extension SourceSpanTests {
-    /// Encodes with sorted keys so the assertion is about the shape rather than about
-    /// whatever order the encoder happened to emit today.
+    /// Encodes with sorted keys so the assertion is about the shape rather than about whatever order the encoder happened to emit today.
     private static func canonicalJSON(of span: SourceSpan) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

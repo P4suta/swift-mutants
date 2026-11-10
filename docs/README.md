@@ -153,11 +153,13 @@ Three inactive baselines must pass and match the original test identities and ex
 Changes to package files by tests stop measurement.
 Each mutation faces the complete selected suite.
 Guards compile once in the normal path.
-Guard build failures fall back to individual source edits.
+After a guard build failure, measurement splits candidate groups to keep compatible instrumentation.
+Only incompatible candidates fall back to individual source edits.
+Guarded candidates execute before individual edits, while report results keep discovery order.
 Only an individual edit's compiler rejection becomes `rejected`.
 
 Outcomes are `killed`, `survived`, `rejected`, `timedOut`, and `errored`.
-The `killed` outcome needs recorded test failure with valid output.
+The `killed` outcome needs recorded test failure with valid output and matching executed and skipped test inventories.
 Survival needs successful process completion and the baseline test executions.
 Missing or malformed XML and abnormal exits never become survival.
 The score is `killed / (killed + survived)`.
@@ -189,6 +191,8 @@ The library CLI exposes listing and measurement through the public API.
 
 Run `mise run check` for static checks and unit tests.
 Run `mise run test:integration` for compiler fixtures, real package measurements, and the external library consumer.
+Run `mise run test:proof` with the Lean toolchain in `Proofs/lean-toolchain` for the measurement model and shared fixtures.
+The [verification guide](verification.md) defines the proof boundary and focused self-mutation command.
 The release gate runs optimized builds and the shipped executable.
 Build counts verify reuse without imposing a timing threshold.
 

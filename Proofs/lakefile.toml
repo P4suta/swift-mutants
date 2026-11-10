@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 swift-mutants contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+name = "measurement-contracts"
+defaultTargets = ["Measurement", "SourceRanges", "verify"]
+moreLeanArgs = ["-DwarningAsError=true"]
+
+[[lean_lib]]
+name = "Measurement"
+
+[[lean_lib]]
+name = "SourceRanges"
+
+[[lean_exe]]
+name = "verify"
+root = "Validate"

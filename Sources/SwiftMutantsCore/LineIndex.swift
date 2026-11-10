@@ -7,19 +7,10 @@ public struct SourcePosition: Sendable, Hashable, Comparable, CustomStringConver
     /// The line, counting from one.
     public let line: Int
 
-    /// The column, counting from one, **in UTF-8 bytes**.
-    ///
-    /// The same unit the spans are in. Counting characters would give two different answers
-    /// for one span depending on which Unicode tables the standard library was built with,
-    /// and an editor that jumped to the wrong column would be worse than one that jumped to
-    /// the right byte.
+    /// The UTF-8 byte column, starting at one.
     public let column: Int
 
-    /// Creates a position.
-    ///
-    /// Unvalidated on purpose: a position arrives from a compiler diagnostic as often as
-    /// from this tool's own arithmetic, and what makes a line or column usable is whether
-    /// the file has one, which ``LineIndex`` is the thing that knows.
+    /// Stores a line and byte column without validating a source file.
     public init(line: Int, column: Int) {
         self.line = line
         self.column = column
@@ -34,43 +25,29 @@ public struct SourcePosition: Sendable, Hashable, Comparable, CustomStringConver
     }
 }
 
-/// Converts byte offsets in one file into positions.
-///
-/// Built once per file and kept. Laying out the line table walks the whole file, so building
-/// one per lookup makes any walk over a file quadratic in its size - which is the shape of
-/// Muter's `startLocation(for:)`, called once per visited node.
+/// Maps UTF-8 byte offsets to source lines, byte columns, and Character columns.
 public struct LineIndex: Sendable {
 
     /// The byte offset each line starts at.
     private let lineStarts: [Int]
 
-    /// For each line, the byte offset each character of it begins at, and one more entry
-    /// for where the line ends.
-    ///
-    /// Kept because the two units cannot be converted without the text: `é` is two bytes
-    /// and one character, `🙂` is four, and a family of scalars is more still. Everything
-    /// inside this tool counts bytes, because that is what a span is and what the compiler
-    /// reports; everything outside it counts characters - the Stryker schema, SARIF, and
-    /// every editor that opens a file at `line:column`.
     private let characterStarts: [[Int]]
 
     /// How long the file is, in bytes.
     private let byteCount: Int
 
-    /// Indexes a file.
+    /// Indexes Swift's LF, CR, and CRLF line breaks.
     public init(_ source: String) {
         var starts = [0]
         var offset = 0
-        for byte in source.utf8 {
-            offset += 1
-            if byte == UInt8(ascii: "\n") { starts.append(offset) }
+        for character in source {
+            offset += character.utf8.count
+            if SourceLineBreak(rawValue: character) != nil { starts.append(offset) }
         }
         lineStarts = starts
         byteCount = offset
 
-        // One pass over the characters, recording where each begins, with a final entry
-        // per line for where the line ends. The sentinel is what makes the lookup a plain
-        // search: one past the last character is one column past it, with no special case.
+        // Each line ends with a sentinel for its end-of-line position.
         var characters: [[Int]] = Array(repeating: [], count: starts.count)
         var line = 0
         var byte = 0
@@ -86,10 +63,8 @@ public struct LineIndex: Sendable {
         characterStarts = characters
     }
 
-    /// Where `offset` is, or nothing when it is not in the file.
-    ///
-    /// One past the last byte has a position, because that is where an insertion at the end
-    /// of a file goes. Anything further does not.
+    /// Returns a one-based line and UTF-8 byte column for an offset.
+    /// Accepts the end-of-file offset and rejects offsets outside the source.
     public func position(of offset: Int) -> SourcePosition? {
         guard offset >= 0, offset <= byteCount else { return nil }
 
@@ -107,19 +82,12 @@ public struct LineIndex: Sendable {
         return SourcePosition(line: low + 1, column: offset - lineStarts[low] + 1)
     }
 
-    /// Where `offset` is, counted in characters rather than in bytes.
-    ///
-    /// The unit everything outside this tool uses. A byte in the middle of a character
-    /// belongs to that character rather than to the next one: rounding forward would put a
-    /// position after something that has not ended, and a report that points past a mutant
-    /// is a report that sends somebody to the wrong expression.
+    /// Returns a one-based line and Character column for an offset.
+    /// A byte inside a Character maps to that Character's column.
     public func characterPosition(of offset: Int) -> SourcePosition? {
         guard let place = position(of: offset) else { return nil }
         let starts = characterStarts[place.line - 1]
 
-        // The last entry at or before the offset. The row ends with where the line ends,
-        // so a byte one past the last character lands on that and counts as one column
-        // past it.
         var low = 0
         var high = starts.count - 1
         while low < high {
@@ -133,16 +101,8 @@ public struct LineIndex: Sendable {
         return SourcePosition(line: place.line, column: low + 1)
     }
 
-    /// Where `position` is, or nothing when the file has no such place.
-    ///
-    /// The direction a compiler diagnostic arrives in. Swift reports `line:col` with the
-    /// column counted in UTF-8 bytes - the same unit spans are in - so this is a lookup
-    /// and an addition rather than a re-scan of the line.
-    ///
-    /// A column past the end of its line is refused rather than clamped. Clamping would
-    /// turn an off-by-one in a diagnostic into a byte offset inside the *next* line, and
-    /// attribution would then reject a mutant that compiles perfectly well while leaving
-    /// the one that does not in the catalogue.
+    /// Returns the byte offset for a one-based source line and byte column.
+    /// Accepts end-of-file and rejects positions outside their source line.
     public func offset(of position: SourcePosition) -> Int? {
         guard position.line >= 1, position.line <= lineStarts.count, position.column >= 1
         else { return nil }
@@ -150,8 +110,8 @@ public struct LineIndex: Sendable {
         let start = lineStarts[position.line - 1]
         let end =
             position.line < lineStarts.count ? lineStarts[position.line] - 1 : byteCount
-        let offset = start + position.column - 1
-        guard offset <= end else { return nil }
-        return offset
+        let distance = position.column - 1
+        guard distance <= end - start else { return nil }
+        return start + distance
     }
 }

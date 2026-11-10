@@ -7,6 +7,25 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Unreleased
 
+Require matching executed and skipped test inventories before reporting `killed`.
+Validate XML parent structure and distinguish test identities without delimiter collisions.
+Support Swift Testing counts that exclude skipped cases.
+Keep compatible instrumentation when another guard fails to compile.
+Check verdict and score contracts with Lean proofs and exhaustive Swift correspondence fixtures.
+Return `nil` for source-range shifts that overflow integer offsets.
+Find activation tokens beyond retained symbol diagnostics while keeping output memory bounded.
+Distinguish SwiftPM abnormal-exit diagnostics from quoted text in verbose test arguments.
+Keep complete Swift Testing failures measurable beyond diagnostic retention while detecting late crashes.
+Report the diagnostic retention limit when XCTest completion output exceeds it.
+Identify abnormal test exits before retained diagnostic text.
+Pass subprocess environments through typed strings so extra bytes can't corrupt mutation activation.
+Ignore quoted XCTest completion text and preserve completion evidence for skipped XCTest cases.
+Reconcile explicit skipped XML cases with XCTest completion records and duplicate test identities.
+Treat an empty diagnostic substring as a prefix-only pattern.
+Preserve UTF-8 byte order marks during source discovery and measurement.
+Index and flatten LF, CR, and CRLF consistently without changing Unicode separators in literals.
+Validate source-position columns before offset arithmetic to reject overflowing positions without trapping.
+
 Expose source discovery, UTF-8 editing, package listing, and complete measurement through `import SwiftMutants`.
 The CLI uses the public library and offers `list` and `run`.
 

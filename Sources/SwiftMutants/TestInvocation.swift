@@ -10,22 +10,38 @@ struct TestObservation: Sendable {
     var diagnostic: String?
     var durationMilliseconds = 0
 
-    func verdict(comparedTo baseline: XUnitResults) -> MutationOutcome {
-        if timedOut { return .timedOut }
-        guard diagnostic == nil, results.errors == 0, !results.executed.isEmpty else {
-            return .errored
+    func verdict(comparedTo baseline: XUnitResults) -> TestVerdict {
+        let inventory: TestInventory
+        if results.executed.isEmpty {
+            inventory = .empty
+        } else if results.executed == baseline.executed && results.skipped == baseline.skipped {
+            inventory = .matched
+        } else {
+            inventory = .changed
         }
-        if results.failures > 0 { return .killed }
-        return results.executed == baseline.executed && results.skipped == baseline.skipped
-            ? .survived : .errored
+        return TestVerdict.classify(
+            timedOut: timedOut,
+            trustworthy: diagnostic == nil && results.errors == 0,
+            inventory: inventory,
+            failed: results.failures > 0
+        )
     }
 }
 
 extension MeasurementSession {
+    private static let abnormalLines = [
+        OutputLinePattern(
+            prefix: "error: Process '", containing: "exited with unexpected signal code"),
+        OutputLinePattern(prefix: "error: Exited with signal"),
+        OutputLinePattern(prefix: "error: Test process exited with signal"),
+    ]
+    private static let xctestLine = OutputLinePattern(prefix: "Test Case '-[")
+
     func test(
         products: [TestProduct],
         budget: Duration,
-        activation: UInt32? = nil
+        activation: UInt32? = nil,
+        verbose: Bool = true
     ) async throws -> TestObservation {
         let started = ContinuousClock.now
         let deadline = started + budget
@@ -33,7 +49,8 @@ extension MeasurementSession {
         for product in products {
             let remaining = deadline - ContinuousClock.now
             guard remaining > .zero else { observation.timedOut = true; break }
-            let trial = try await execute(product, timeout: remaining, activation: activation)
+            let trial = try await execute(
+                product, timeout: remaining, activation: activation, verbose: verbose)
             observation.results.merge(trial.results)
             if trial.timedOut || trial.diagnostic != nil {
                 observation.timedOut = trial.timedOut
@@ -51,30 +68,41 @@ extension MeasurementSession {
     private func execute(
         _ product: TestProduct,
         timeout: Duration,
-        activation: UInt32?
+        activation: UInt32?,
+        verbose: Bool
     ) async throws -> TestObservation {
         let file = temporary.appending(path: "results-\(UUID().uuidString).xml")
         let arguments =
             [
-                "test", "--skip-build", "--verbose", "--parallel", "--num-workers", "1",
+                "test", "--skip-build", "--parallel", "--num-workers", "1",
                 "--test-product", product.name, "--xunit-output", file.path,
-            ] + options.filter.flatMap { ["--filter", $0] }
+            ] + (verbose ? ["--verbose"] : []) + options.filter.flatMap { ["--filter", $0] }
             + options.skip.flatMap { ["--skip", $0] }
         let result = try await command(
             arguments,
             kind: activation == nil ? .baseline : .mutant,
             timeout: timeout,
-            activation: activation
+            activation: activation,
+            matchingLines: Self.abnormalLines + [Self.xctestLine]
         )
         if result.timedOut {
             return TestObservation(timedOut: true, diagnostic: diagnostic(result))
         }
-        guard result.startFailure == nil, result.exitCode == 0 || result.exitCode == 1,
-            !Self.abnormalTestExit(result)
+        guard result.startFailure == nil, result.exitCode == 0 || result.exitCode == 1
         else { return TestObservation(diagnostic: diagnostic(result)) }
+        guard !Self.abnormalLines.contains(where: result.matchedLines.contains) else {
+            return TestObservation(
+                diagnostic:
+                    "SwiftPM reported an abnormal test process exit.\n\(diagnostic(result))")
+        }
         do {
             return TestObservation(
                 results: try readResults(file: file, product: product, process: result)
+            )
+        } catch XUnitError.truncatedTranscript {
+            return TestObservation(
+                diagnostic:
+                    "XCTest output exceeded the diagnostic retention limit of \(runner.outputLimit) bytes for \(product.name).\n\(diagnostic(result))"
             )
         } catch {
             return TestObservation(
@@ -96,6 +124,13 @@ extension MeasurementSession {
             Data(contentsOf: file),
             framework: "\(product.name):xctest"
         )
+        let hasXCTest =
+            !parsed.executed.isEmpty || !parsed.skipped.isEmpty
+            || process.matchedLines.contains(Self.xctestLine)
+        let truncatedTranscript =
+            hasXCTest
+            && (process.standardOutputWasCut || process.standardErrorWasCut)
+        guard !truncatedTranscript else { throw XUnitError.truncatedTranscript }
         try XCTestTranscript.reconcile(
             &parsed,
             output: process.standardOutputText + "\n" + process.standardErrorText,
@@ -109,17 +144,9 @@ extension MeasurementSession {
         )
         guard parsed.errors == 0,
             (process.exitCode == 0 && parsed.failures == 0)
-                || (process.exitCode == 1 && parsed.failures > 0 && !process.standardOutputWasCut
-                    && process.standardError.count < runner.outputLimit)
+                || (process.exitCode == 1 && parsed.failures > 0)
         else { throw XUnitError.invalidDocument }
         return parsed
-    }
-
-    private static func abnormalTestExit(_ result: ProcessOutcome) -> Bool {
-        let output = result.standardOutputText + "\n" + result.standardErrorText
-        return output.contains("exited with unexpected signal code")
-            || output.contains("error: Exited with signal")
-            || output.contains("error: Test process exited with signal")
     }
 
     func requireBaseline(

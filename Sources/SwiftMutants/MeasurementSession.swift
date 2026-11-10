@@ -22,7 +22,9 @@ struct MeasurementSession: Sendable {
         options: RunOptions,
         progress: @escaping @Sendable (RunEvent) -> Void,
         environment: [String: String] = Ambient.environment,
-        executable: String = "/usr/bin/env"
+        executable: String = "/usr/bin/env",
+        outputLimit: Int = 1 << 20,
+        recorder: TraceRecorder = TraceRecorder()
     ) throws {
         #if !os(macOS)
         throw MutationTestingError(
@@ -45,7 +47,7 @@ struct MeasurementSession: Sendable {
         )
         self.options = options
         self.progress = progress
-        self.runner = Runner(recorder: TraceRecorder())
+        self.runner = Runner(recorder: recorder, outputLimit: outputLimit)
         self.environment = environment
         self.executable = executable
         progress(.stage(.snapshot))
@@ -93,7 +95,8 @@ struct MeasurementSession: Sendable {
         _ arguments: [String],
         kind: ProcessSpec.Kind,
         timeout: Duration,
-        activation: UInt32? = nil
+        activation: UInt32? = nil,
+        matchingLines: [OutputLinePattern] = []
     ) async throws -> ProcessOutcome {
         try Task.checkCancellation()
         var variables = environment
@@ -106,7 +109,8 @@ struct MeasurementSession: Sendable {
                 directory: snapshot.root.path,
                 environment: variables,
                 timeout: timeout
-            )
+            ),
+            matchingLines: matchingLines
         )
         try Task.checkCancellation()
         return result

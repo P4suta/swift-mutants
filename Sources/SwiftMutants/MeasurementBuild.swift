@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 import Foundation
-import SwiftMutantsCore
 import SwiftMutantsRunner
 import SwiftMutantsSnapshot
 
@@ -44,8 +43,8 @@ extension MeasurementSession {
         }
     }
 
-    func symbols(in products: [TestProduct]) async throws -> String {
-        var symbols = ""
+    func symbols(in products: [TestProduct], matching tokens: [String]) async throws -> String {
+        var found: Set<String> = []
         guard let directory = products.first?.directory else {
             throw MutationTestingError(
                 stage: .instrumentation,
@@ -54,28 +53,25 @@ extension MeasurementSession {
         }
         let libraries = try files(in: directory, stage: .instrumentation)
             .filter { $0.pathExtension == "dylib" }
-        for binary in products.map(\.binary) + libraries {
+            .sorted { $0.path < $1.path }
+        for binary in libraries + products.map(\.binary) {
             let result = await runner.run(
                 ProcessSpec(
                     kind: .describe,
                     executable: "/usr/bin/nm",
-                    arguments: [binary.path],
+                    arguments: ["--defined-only", "--no-demangle", "-j", binary.path],
                     directory: snapshot.root.path,
                     environment: environment,
                     timeout: .seconds(30)
-                )
+                ),
+                matchingOutput: tokens
             )
             try Task.checkCancellation()
             try requireSuccess(result, stage: .instrumentation)
-            guard !result.standardOutputWasCut else {
-                throw MutationTestingError(
-                    stage: .instrumentation,
-                    diagnostic: "The symbol listing exceeded the output limit."
-                )
-            }
-            symbols += result.standardOutputText
+            found.formUnion(result.matchedOutput)
+            if tokens.allSatisfy({ $0.isEmpty || found.contains($0) }) { break }
         }
-        return symbols
+        return found.sorted().joined(separator: "\n")
     }
 
     private func files(in directory: URL, stage: RunStage) throws -> [URL] {
