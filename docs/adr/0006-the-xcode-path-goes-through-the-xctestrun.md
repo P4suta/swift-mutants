@@ -111,8 +111,10 @@ and reading the result bundle. What does not:
   The cost is an ordering change — `list` would need a build on this path where it needs
   none on the other — and that is a promise about a command, so it wants its own record and
   a measurement on a machine where `xcodebuild` runs. Neither is available here.
+
 - **There is no seam for `Run` to choose at.** It names `SwiftPackageManager` directly at
   four points.
+
 - **Nothing says which project, scheme and destination a run is about.** Deliberately last:
   a setting stored and never read gives a project exactly the run they would have had
   without it, which is a defect this repository has already had once and refuses to have
